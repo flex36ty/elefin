@@ -336,6 +336,54 @@ class JellyfinApiService(
             emptyList()
         }
     }
+    
+    suspend fun getRecentlyAddedShowsFromLibrary(libraryId: String, limit: Int = 20): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("ParentId", libraryId)
+                parameters.append("IncludeItemTypes", "Series")
+                parameters.append("SortBy", "DateCreated")
+                parameters.append("SortOrder", "Descending")
+                parameters.append("Limit", limit.toString())
+                parameters.append("Recursive", "true")
+                parameters.append("Fields", "ImageTags,ChildCount")
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            response.Items
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+    
+    suspend fun getRecentlyAddedEpisodesFromLibrary(libraryId: String, limit: Int = 20): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("ParentId", libraryId)
+                parameters.append("IncludeItemTypes", "Episode")
+                parameters.append("SortBy", "DateCreated")
+                parameters.append("SortOrder", "Descending")
+                parameters.append("Limit", limit.toString())
+                parameters.append("Recursive", "true")
+                parameters.append("Fields", "SeriesId,SeriesName,IndexNumber,ParentIndexNumber,ImageTags")
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            response.Items
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
 
     fun getImageUrl(itemId: String, imageType: String = "Primary", imageTag: String? = null, maxWidth: Int? = null, maxHeight: Int? = null, quality: Int? = null): String {
         val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
@@ -405,7 +453,8 @@ class JellyfinApiService(
         mediaSourceId: String? = null,
         subtitleStreamIndex: Int? = null,
         preserveQuality: Boolean = false, // Set to true for HDR videos to preserve quality
-        transcodeAudio: Boolean = false // Set to true to transcode audio (for unsupported codecs like TrueHD)
+        transcodeAudio: Boolean = false, // Set to true to transcode audio (for unsupported codecs like TrueHD)
+        audioCodec: String? = null // Target audio codec for transcoding (e.g., "ac3", "aac")
     ): String {
         val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
         // Jellyfin video playback URL format: /Videos/{itemId}/stream
@@ -432,6 +481,7 @@ class JellyfinApiService(
                 if (preserveQuality && transcodeAudio) {
                     // Audio needs transcoding - use HLS for progressive playback (avoids long initial buffering)
                     // HLS allows playback to start while transcoding continues
+                    val targetAudioCodec = audioCodec?.lowercase() ?: "aac"
                     val hlsUrl = URLBuilder().takeFrom("${base}Videos/$itemId/master.m3u8").apply {
                         // Set maximum resolution (8K support for future-proofing)
                         parameters.append("MaxWidth", "7680")
@@ -440,15 +490,40 @@ class JellyfinApiService(
                         parameters.append("maxStreamingBitrate", "1000000000")
                         // Try to preserve video codec when possible (remux instead of transcode)
                         parameters.append("VideoCodec", "copy")
-                        // Transcode to AAC for maximum compatibility with Android
-                        parameters.append("AudioCodec", "aac")
-                        parameters.append("AudioBitrate", "640000") // 640 kbps for high quality audio
+                        // Transcode to specified audio codec (AC3 for universal compatibility, or AAC)
+                        parameters.append("AudioCodec", targetAudioCodec)
+                        if (targetAudioCodec == "ac3") {
+                            // AC3 supports up to 5.1 channels, use 640 kbps for high quality
+                            parameters.append("AudioBitrate", "640000") // 640 kbps
+                        } else {
+                            // AAC supports higher bitrates and more channels
+                            parameters.append("AudioBitrate", "640000") // 640 kbps for high quality audio
+                        }
                         // Copy timestamps to avoid re-encoding
                         parameters.append("CopyTimestamps", "true")
                         parameters.append("mediaSourceId", sourceId)
                         parameters.append("api_key", accessToken)
                     }.buildString()
-                    android.util.Log.d("JellyfinAPI", "Using HLS for HDR video with audio transcoding (progressive playback): $hlsUrl")
+                    android.util.Log.d("JellyfinAPI", "Using HLS for HDR video with audio transcoding to $targetAudioCodec (progressive playback): $hlsUrl")
+                    return hlsUrl
+                } else if (transcodeAudio && audioCodec != null) {
+                    // Non-HDR but audio transcoding requested (e.g., AAC to AC3)
+                    // Use HLS for progressive playback
+                    val targetAudioCodec = audioCodec.lowercase()
+                    val hlsUrl = URLBuilder().takeFrom("${base}Videos/$itemId/master.m3u8").apply {
+                        parameters.append("VideoCodec", "copy")
+                        parameters.append("AudioCodec", targetAudioCodec)
+                        if (targetAudioCodec == "ac3") {
+                            parameters.append("AudioBitrate", "640000") // 640 kbps for AC3 (5.1 max)
+                        } else {
+                            parameters.append("AudioBitrate", "640000")
+                        }
+                        parameters.append("CopyTimestamps", "true")
+                        parameters.append("maxStreamingBitrate", "1000000000")
+                        parameters.append("mediaSourceId", sourceId)
+                        parameters.append("api_key", accessToken)
+                    }.buildString()
+                    android.util.Log.d("JellyfinAPI", "Using HLS for audio transcoding to $targetAudioCodec: $hlsUrl")
                     return hlsUrl
                 } else if (preserveQuality && !transcodeAudio) {
                     // HDR video with supported audio - try direct play first for instant startup
@@ -638,6 +713,27 @@ class JellyfinApiService(
         } catch (e: Exception) {
             e.printStackTrace()
             ItemsResponse(Items = emptyList(), TotalRecordCount = 0)
+        }
+    }
+    
+    suspend fun getCollections(): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("IncludeItemTypes", "BoxSet")
+                parameters.append("Recursive", "true")
+                parameters.append("Fields", "ImageTags,ChildCount")
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            
+            response.Items
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
         }
     }
     

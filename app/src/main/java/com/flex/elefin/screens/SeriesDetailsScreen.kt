@@ -69,6 +69,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.foundation.Image
 import androidx.compose.ui.text.style.TextOverflow
@@ -1366,9 +1367,18 @@ fun ResumeEpisodeDialog(
                     modifier = Modifier.wrapContentSize(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    val resumeFocusRequester = remember { FocusRequester() }
+                    
+                    // Request focus on Resume button by default
+                    LaunchedEffect(Unit) {
+                        resumeFocusRequester.requestFocus()
+                    }
+                    
                     Button(
                         onClick = onResume,
-                        modifier = Modifier.widthIn(min = 120.dp, max = 150.dp),
+                        modifier = Modifier
+                            .focusRequester(resumeFocusRequester)
+                            .widthIn(min = 120.dp, max = 150.dp),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
                     ) {
                         Text(
@@ -1561,9 +1571,9 @@ fun EpisodeActionButtonsRow(
     val resumePositionMs = displayEpisode.UserData?.PositionTicks?.let { it / 10_000 } ?: 0L
     
     var showSubtitleDialog by remember { mutableStateOf(false) }
-    val storedSubtitleIndex = settings.getSubtitlePreference(displayEpisode.Id)
     var showAudioDialog by remember { mutableStateOf(false) }
-    var selectedAudioIndex by remember { mutableStateOf<Int?>(null) }
+    val storedSubtitleIndex = settings.getSubtitlePreference(displayEpisode.Id)
+    val storedAudioIndex = settings.getAudioPreference(displayEpisode.Id)
     
     // Fetch episode details to get MediaSources and UserData for time remaining
     var episodeDetails by remember { mutableStateOf<JellyfinItem?>(null) }
@@ -1605,7 +1615,8 @@ fun EpisodeActionButtonsRow(
                                 context = context,
                                 itemId = displayEpisode.Id,
                                 resumePositionMs = resumePositionMs,
-                                subtitleStreamIndex = storedSubtitleIndex
+                                subtitleStreamIndex = storedSubtitleIndex,
+                                audioStreamIndex = storedAudioIndex
                             )
                             context.startActivity(intent)
                         },
@@ -1622,7 +1633,8 @@ fun EpisodeActionButtonsRow(
                                 context = context,
                                 itemId = displayEpisode.Id,
                                 resumePositionMs = resumePositionMs,
-                                subtitleStreamIndex = storedSubtitleIndex
+                                subtitleStreamIndex = storedSubtitleIndex,
+                                audioStreamIndex = storedAudioIndex
                             )
                             context.startActivity(intent)
                         },
@@ -1737,6 +1749,54 @@ fun EpisodeActionButtonsRow(
                             modifier = Modifier.padding(horizontal = 16.dp)
                         )
                     }
+                }
+            }
+            
+            // Audio track button
+            var audioFocused by remember { mutableStateOf(false) }
+            
+            Button(
+                onClick = {
+                    showAudioDialog = true
+                },
+                modifier = Modifier
+                    .then(
+                        if (audioFocused) {
+                            Modifier
+                                .wrapContentWidth()
+                                .height(40.dp)
+                        } else {
+                            Modifier.size(40.dp) // Circular when unfocused
+                        }
+                    )
+                    .animateContentSize(
+                        animationSpec = tween(
+                            durationMillis = 300,
+                            easing = FastOutSlowInEasing
+                        )
+                    )
+                    .onFocusChanged { audioFocused = it.isFocused }
+                    .clip(CircleShape),
+                colors = ButtonDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ),
+                contentPadding = PaddingValues(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.VolumeUp,
+                    contentDescription = "Audio Track",
+                    modifier = Modifier.size(14.3.dp)
+                )
+                if (audioFocused) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Audio",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
+                        ),
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
                 }
             }
             
@@ -1895,7 +1955,7 @@ fun EpisodeActionButtonsRow(
                     it.Type == "Subtitle" && it.Index == storedSubtitleIndex 
                 }
                 
-                // Selected Subtitles only
+                // Selected Subtitles
                 subtitleStream?.let { stream ->
                     val subtitleName = stream.DisplayTitle ?: stream.Language ?: "Unknown"
                     MetadataBox(text = subtitleName, icon = Icons.Default.Language)
@@ -1913,6 +1973,19 @@ fun EpisodeActionButtonsRow(
             onSubtitleSelected = { subtitleIndex ->
                 settings.setSubtitlePreference(episode.Id, subtitleIndex)
                 showSubtitleDialog = false
+            }
+        )
+    }
+    
+    // Audio track selection dialog
+    if (showAudioDialog) {
+        EpisodeAudioSelectionDialog(
+            item = episode,
+            apiService = apiService,
+            onDismiss = { showAudioDialog = false },
+            onAudioSelected = { audioIndex ->
+                settings.setAudioPreference(episode.Id, audioIndex)
+                showAudioDialog = false
             }
         )
     }
@@ -2431,6 +2504,168 @@ fun EpisodeSubtitleSelectionDialog(
                                     ) {
                                         Text(
                                             text = "No subtitles available",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun EpisodeAudioSelectionDialog(
+    item: JellyfinItem,
+    apiService: JellyfinApiService?,
+    onDismiss: () -> Unit,
+    onAudioSelected: (audioStreamIndex: Int?) -> Unit
+) {
+    var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
+    var isLoadingAudio by remember { mutableStateOf(true) }
+    
+    // Fetch full item details to get MediaSources with audio streams
+    LaunchedEffect(item.Id, apiService) {
+        if (apiService != null) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val details = apiService.getItemDetails(item.Id)
+                    itemDetails = details
+                    isLoadingAudio = false
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e("EpisodeAudioDialog", "Error fetching item details", e)
+                    isLoadingAudio = false
+                }
+            }
+        } else {
+            isLoadingAudio = false
+        }
+    }
+    
+    // Get audio streams from MediaSources
+    val audioStreams = remember(itemDetails?.MediaSources) {
+        itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
+            ?.filter { it.Type == "Audio" }
+            ?.sortedBy { it.Index ?: 0 } ?: emptyList()
+    }
+    
+    val context = LocalContext.current
+    val storedAudioIndex = remember(context, item.Id) { 
+        com.flex.elefin.jellyfin.AppSettings(context).getAudioPreference(item.Id) 
+    }
+    
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.7f)),
+            contentAlignment = Alignment.Center
+        ) {
+            androidx.tv.material3.Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.3f)
+                    .fillMaxHeight(0.5f),
+                shape = RoundedCornerShape(16.dp),
+                colors = androidx.tv.material3.SurfaceDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Select Audio Track",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    
+                    if (isLoadingAudio) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fillMaxHeight(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Loading audio tracks...",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            // Audio stream options
+                            items(audioStreams) { stream ->
+                                val audioTitle = stream.DisplayTitle
+                                    ?: stream.Language
+                                    ?: "Unknown"
+                                val audioInfo = buildString {
+                                    stream.Codec?.let { 
+                                        append(it)
+                                    }
+                                }
+                                val isSelected = stream.Index != null && stream.Index == storedAudioIndex
+                                
+                                ListItem(
+                                    selected = isSelected,
+                                    onClick = {
+                                        stream.Index?.let { index ->
+                                            onAudioSelected(index)
+                                            onDismiss()
+                                        }
+                                    },
+                                    headlineContent = {
+                                        Column {
+                                            Text(
+                                                text = audioTitle,
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.7f
+                                                )
+                                            )
+                                            if (audioInfo.isNotEmpty()) {
+                                                Text(
+                                                    text = audioInfo,
+                                                    style = MaterialTheme.typography.bodySmall.copy(
+                                                        fontSize = MaterialTheme.typography.bodySmall.fontSize * 0.7f
+                                                    ),
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                                )
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            
+                            // If no audio tracks available
+                            if (audioStreams.isEmpty()) {
+                                item {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "No audio tracks available",
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                         )

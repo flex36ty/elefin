@@ -41,11 +41,31 @@ class QuickConnectService(
 
     private fun normalizeBaseUrl(url: String): String {
         var normalized = url.trim().removeSuffix("/")
+        var protocol = "http"
         
-        // Add protocol if missing
-        if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
-            normalized = "http://$normalized"
+        // Check if protocol is already specified
+        if (normalized.startsWith("https://")) {
+            protocol = "https"
+            normalized = normalized.removePrefix("https://")
+        } else if (normalized.startsWith("http://")) {
+            protocol = "http"
+            normalized = normalized.removePrefix("http://")
+        } else {
+            // No protocol specified - check port to detect HTTPS
+            val portIndex = normalized.indexOf(':')
+            if (portIndex > 0) {
+                val portStr = normalized.substring(portIndex + 1)
+                val port = portStr.toIntOrNull()
+                
+                // Common HTTPS ports: 443 (standard), 8920 (Jellyfin default HTTPS)
+                if (port != null && (port == 443 || port == 8920)) {
+                    protocol = "https"
+                }
+            }
         }
+        
+        // Add protocol back to normalized URL
+        normalized = "$protocol://$normalized"
         
         // Add default port if missing
         return try {
@@ -53,8 +73,15 @@ class QuickConnectService(
             val port = urlObj.port
             if (port == -1 || port == urlObj.defaultPort) {
                 val host = urlObj.host
-                val protocol = urlObj.protocol
-                "$protocol://$host:8096"
+                val actualProtocol = urlObj.protocol
+                // Use appropriate default port based on protocol
+                val defaultPort = if (actualProtocol == "https") {
+                    // Jellyfin HTTPS default is 8920, but 443 is also common
+                    "8920"
+                } else {
+                    "8096" // Jellyfin HTTP default
+                }
+                "$actualProtocol://$host:$defaultPort"
             } else {
                 normalized
             }
@@ -64,7 +91,9 @@ class QuickConnectService(
             if (parts.size == 2) {
                 normalized
             } else {
-                "$normalized:8096"
+                // Use appropriate default port based on protocol
+                val defaultPort = if (protocol == "https") "8920" else "8096"
+                "$normalized:$defaultPort"
             }
         }
     }

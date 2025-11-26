@@ -36,6 +36,8 @@ import androidx.media3.common.ParserException
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
@@ -73,6 +75,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
+import androidx.media3.common.TrackSelectionOverride
 
 @UnstableApi
 @Composable
@@ -82,12 +86,44 @@ fun JellyfinVideoPlayerScreen(
     onBack: () -> Unit = {},
     resumePositionMs: Long = 0L,
     subtitleStreamIndex: Int? = null,
+    audioStreamIndex: Int? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
-    // Create player with LoadControl configured based on settings
-    // If minimal buffer for 4K is enabled, use minimal buffering (will apply to all content when enabled)
+    
+    // Load stored audio preference if not provided
+    val storedAudioPreference = remember(item.Id) {
+        if (audioStreamIndex == null) {
+            val pref = settings.getAudioPreference(item.Id)
+            Log.d("JellyfinPlayer", "Loaded stored audio preference for ${item.Id}: $pref")
+            pref
+        } else {
+            Log.d("JellyfinPlayer", "Using provided audioStreamIndex: $audioStreamIndex")
+            audioStreamIndex
+        }
+    }
+    // Create player with enhanced codec support and LoadControl configured based on settings
+    // Enable extension renderers and decoder fallback for better audio codec support (TrueHD, DTS, EAC3, etc.)
+    val renderersFactory = DefaultRenderersFactory(context).apply {
+        setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+        setEnableDecoderFallback(true)
+    }
+    
+    // Configure track selector with better track selection
+    val trackSelector = DefaultTrackSelector(context).apply {
+        setParameters(
+            buildUponParameters()
+                .setForceHighestSupportedBitrate(true)
+        )
+    }
+    
+    // Configure audio attributes for media playback
+    val audioAttributes = AudioAttributes.Builder()
+        .setUsage(C.USAGE_MEDIA)
+        .setContentType(C.CONTENT_TYPE_MOVIE)
+        .build()
+    
     val player = remember {
         if (settings.minimalBuffer4K) {
             // Configure LoadControl with minimal buffering
@@ -102,13 +138,24 @@ fun JellyfinVideoPlayerScreen(
                 )
                 .build()
             
-            ExoPlayer.Builder(context)
+            ExoPlayer.Builder(context, renderersFactory)
+                .setTrackSelector(trackSelector)
+                .setAudioAttributes(audioAttributes, true)
                 .setLoadControl(loadControl)
                 .build()
-                .also { Log.d("JellyfinPlayer", "Created player with minimal buffering (for 4K content): start after 1s, min 1.5s, max 2s") }
+                .also { 
+                    Log.d("JellyfinPlayer", "Created player with minimal buffering and enhanced codec support (for 4K content): start after 1s, min 1.5s, max 2s")
+                    Log.d("JellyfinPlayer", "Extension renderer mode: PREFER, Decoder fallback: enabled")
+                }
         } else {
-        ExoPlayer.Builder(context).build()
-                .also { Log.d("JellyfinPlayer", "Created player with default buffering") }
+            ExoPlayer.Builder(context, renderersFactory)
+                .setTrackSelector(trackSelector)
+                .setAudioAttributes(audioAttributes, true)
+                .build()
+                .also { 
+                    Log.d("JellyfinPlayer", "Created player with default buffering and enhanced codec support")
+                    Log.d("JellyfinPlayer", "Extension renderer mode: PREFER, Decoder fallback: enabled")
+                }
         }
     }
     val playerViewRef = remember { mutableStateOf<PlayerView?>(null) }
@@ -125,6 +172,8 @@ fun JellyfinVideoPlayerScreen(
     var showSettingsMenu by remember { mutableStateOf(false) }
     var currentSubtitleIndex by remember { mutableStateOf<Int?>(subtitleStreamIndex) }
     var lastSelectedSubtitleIndex by remember { mutableStateOf<Int?>(subtitleStreamIndex) } // Track last selected subtitle from controller
+    var currentAudioIndex by remember { mutableStateOf<Int?>(storedAudioPreference) }
+    var lastSelectedAudioIndex by remember { mutableStateOf<Int?>(storedAudioPreference) } // Track last selected audio from controller
     var is4KContent by remember { mutableStateOf(false) } // Track if current content is 4K
 
     // Fetch item details and prepare video URL
@@ -161,11 +210,19 @@ fun JellyfinVideoPlayerScreen(
                                             audioCodec.contains("dtsx", ignoreCase = true) ||
                                             audioCodec.contains("atmos", ignoreCase = true) && audioCodec.contains("truehd", ignoreCase = true)
                     
+                    // Check if AAC to AC3 transcoding is enabled
+                    val shouldTranscodeAacToAc3 = settings.transcodeAacToAc3 && audioCodec.contains("aac", ignoreCase = true)
+                    val needsAudioTranscoding = isUnsupportedAudio || shouldTranscodeAacToAc3
+                    val targetAudioCodec = if (shouldTranscodeAacToAc3) "ac3" else null
+                    
                     if (isHDROrHighQuality) {
                         Log.d("JellyfinPlayer", "HDR/high-quality video detected (${videoStream?.Codec}, ${width}x${height}) - requesting full quality")
                     }
                     if (isUnsupportedAudio) {
                         Log.d("JellyfinPlayer", "Unsupported audio codec detected (${audioStream?.Codec}) - will transcode audio while preserving video quality")
+                    }
+                    if (shouldTranscodeAacToAc3) {
+                        Log.d("JellyfinPlayer", "AAC to AC3 transcoding enabled - transcoding audio from AAC to AC3 for universal device compatibility")
                     }
 
                     // Generate video playback URL WITHOUT subtitle stream index
@@ -175,7 +232,8 @@ fun JellyfinVideoPlayerScreen(
                         mediaSourceId = mediaSourceId,
                         subtitleStreamIndex = null, // Don't include in URL, load separately
                         preserveQuality = isHDROrHighQuality, // Preserve quality for HDR videos
-                        transcodeAudio = isUnsupportedAudio // Transcode unsupported audio codecs
+                        transcodeAudio = needsAudioTranscoding, // Transcode unsupported audio codecs or AAC to AC3
+                        audioCodec = targetAudioCodec // Target audio codec (AC3 when AAC to AC3 transcoding is enabled)
                     )
                     mediaUrl = videoUrl
                     Log.d("JellyfinPlayer", "Video URL: $videoUrl")
@@ -219,7 +277,7 @@ fun JellyfinVideoPlayerScreen(
                     
                     // Detect if URL is HLS (ends with .m3u8 or contains master.m3u8)
                     val isHlsUrl = currentMediaUrl.contains(".m3u8", ignoreCase = true)
-                    
+
                     // Create MediaItem with subtitle configuration if subtitle is requested
                     // MediaItem.SubtitleConfiguration is the proper Media3 way to load external subtitles
                     val mediaItem = if (subtitleStreamIndex != null && itemDetails != null) {
@@ -624,6 +682,204 @@ fun JellyfinVideoPlayerScreen(
                                 } catch (e: Exception) {
                                     Log.w("JellyfinPlayer", "Error clearing subtitle track selection: ${e.message}", e)
                                 }
+                            }
+                            
+                            // Handle audio track selection
+                            // Get all audio track groups (both supported and unsupported for mapping)
+                            val allAudioTrackGroups = tracks.groups.filter { group ->
+                                group.type == androidx.media3.common.C.TRACK_TYPE_AUDIO
+                            }
+                            val audioTrackGroups = allAudioTrackGroups.filter { it.isSupported }
+                            
+                            Log.d("JellyfinPlayer", "Found ${allAudioTrackGroups.size} total audio track groups (${audioTrackGroups.size} supported)")
+                            
+                            // Log all audio tracks for debugging (both supported and unsupported)
+                            allAudioTrackGroups.forEachIndexed { index, group ->
+                                val format = group.mediaTrackGroup.getFormat(0)
+                                Log.d("JellyfinPlayer", "Audio track group $index: language=${format.language}, codec=${format.codecs}, supported=${group.isSupported}, selected=${group.isSelected}")
+                            }
+                            
+                            // Log current audio preference
+                            val audioIndexToApply = storedAudioPreference ?: audioStreamIndex
+                            Log.d("JellyfinPlayer", "Audio preference to apply: $audioIndexToApply (stored: $storedAudioPreference, provided: $audioStreamIndex, current: $currentAudioIndex)")
+                            
+                            // Get Jellyfin audio streams for mapping
+                            val jellyfinAudioStreams = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
+                                ?.filter { it.Type == "Audio" }
+                                ?.sortedBy { it.Index ?: 0 } ?: emptyList()
+                            
+                            Log.d("JellyfinPlayer", "Jellyfin audio streams: ${jellyfinAudioStreams.map { "Index=${it.Index}, Language=${it.Language}, Codec=${it.Codec}" }}")
+                            
+                            // Check if user selected an audio track via ExoPlayer's controller
+                            val selectedAudioTrackGroup = audioTrackGroups.firstOrNull { it.isSelected }
+                            if (selectedAudioTrackGroup != null && itemDetails != null) {
+                                // User selected an audio track via ExoPlayer's controller
+                                val selectedFormat = selectedAudioTrackGroup.mediaTrackGroup.getFormat(0)
+                                val selectedLanguage = selectedFormat.language
+                                
+                                // Try to match by language to find the Jellyfin audio stream index
+                                val matchingAudioStream = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
+                                    ?.filter { it.Type == "Audio" }
+                                    ?.firstOrNull { stream ->
+                                        stream.Language?.let { lang ->
+                                            lang.equals(selectedLanguage, ignoreCase = true) ||
+                                            lang.startsWith(selectedLanguage?.take(2) ?: "", ignoreCase = true) ||
+                                            selectedLanguage?.startsWith(lang.take(2), ignoreCase = true) == true
+                                        } == true
+                                    }
+                                
+                                val newAudioIndex = matchingAudioStream?.Index
+                                
+                                if (newAudioIndex != null && newAudioIndex != lastSelectedAudioIndex) {
+                                    Log.d("JellyfinPlayer", "Audio track selected via ExoPlayer controller: index=$newAudioIndex, language=${matchingAudioStream.Language}")
+                                    lastSelectedAudioIndex = newAudioIndex
+                                    currentAudioIndex = newAudioIndex
+                                    
+                                    // Save preference
+                                    settings.setAudioPreference(item.Id, newAudioIndex)
+                                }
+                            }
+                            
+                            // Apply audio preference (from series/movie page or stored preference) if it's different from current selection
+                            // Note: We apply even if currentAudioIndex matches, but ExoPlayer has auto-selected a different track
+                            // Check allAudioTrackGroups (including unsupported) so we can force selection of unsupported tracks
+                            if (audioIndexToApply != null && itemDetails != null && allAudioTrackGroups.isNotEmpty()) {
+                                // Check if the currently selected track matches our preference
+                                // Check allAudioTrackGroups (including unsupported) to see what's currently selected
+                                val currentlySelected = allAudioTrackGroups.firstOrNull { it.isSelected }
+                                val needsUpdate = if (currentlySelected != null) {
+                                    // Check if the selected track matches our preference
+                                    val selectedFormat = currentlySelected.mediaTrackGroup.getFormat(0)
+                                    val selectedLanguage = selectedFormat.language
+                                    val audioStream = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
+                                        ?.find { it.Type == "Audio" && it.Index == audioIndexToApply }
+                                    val preferenceLanguage = audioStream?.Language
+                                    
+                                    // If languages don't match, or if currentAudioIndex doesn't match, we need to update
+                                    val languageMatches = preferenceLanguage?.let { prefLang ->
+                                        selectedLanguage?.let { selLang ->
+                                            prefLang.equals(selLang, ignoreCase = true) ||
+                                            prefLang.startsWith(selLang.take(2), ignoreCase = true) ||
+                                            selLang.startsWith(prefLang.take(2), ignoreCase = true)
+                                        } ?: false
+                                    } ?: false
+                                    
+                                    !languageMatches || currentAudioIndex != audioIndexToApply
+                                } else {
+                                    // No track selected, we need to select our preference
+                                    true
+                                }
+                                
+                                if (needsUpdate) {
+                                // User selected an audio track from series/movie page - select it
+                                try {
+                                    // Get the Jellyfin audio stream with the preferred index
+                                    val preferredAudioStream = jellyfinAudioStreams.find { it.Index == audioIndexToApply }
+                                    
+                                    if (preferredAudioStream == null) {
+                                        Log.w("JellyfinPlayer", "Jellyfin audio stream index $audioIndexToApply not found")
+                                    } else {
+                                        Log.d("JellyfinPlayer", "Looking for ExoPlayer track matching Jellyfin audio stream index=$audioIndexToApply, language=${preferredAudioStream.Language}, codec=${preferredAudioStream.Codec ?: "null"}")
+                                        
+                                        // Fix 2: Handle null codec - try to match by language even if codec is null
+                                        // Fix 3: Force selection even for unsupported tracks
+                                        var groupToSelect: Tracks.Group? = null
+                                        var groupIndexToSelect = -1
+                                        var trackIndexToSelect = 0
+                                        
+                                        // Try to find matching ExoPlayer track group by matching with all track groups (including unsupported)
+                                        // First try to find by language and codec
+                                        // Use for loop instead of forEach to allow early exit
+                                        for ((groupIdx, group) in allAudioTrackGroups.withIndex()) {
+                                            val format = group.mediaTrackGroup.getFormat(0)
+                                            val trackLang = format.language
+                                            val trackCodec = format.codecs
+                                            
+                                            // Match by language (primary)
+                                            val languageMatch = preferredAudioStream.Language?.let { prefLang ->
+                                                trackLang?.let { tLang ->
+                                                    prefLang.equals(tLang, ignoreCase = true) ||
+                                                    prefLang.startsWith(tLang.take(2), ignoreCase = true) ||
+                                                    tLang.startsWith(prefLang.take(2), ignoreCase = true)
+                                                } ?: false
+                                            } ?: false
+                                            
+                                            // Match by codec (secondary, but only if codec is not null)
+                                            val codecMatch = preferredAudioStream.Codec?.let { prefCodec ->
+                                                trackCodec?.equals(prefCodec, ignoreCase = true) ?: false
+                                            } ?: false
+                                            
+                                            // If language matches (or codec matches if both are available), select this track
+                                            // Prefer supported tracks over unsupported ones
+                                            if (languageMatch || codecMatch) {
+                                                // If we haven't found a match yet, or if this one is supported and previous wasn't, use this one
+                                                if (groupToSelect == null || (group.isSupported && !groupToSelect.isSupported)) {
+                                                    groupToSelect = group
+                                                    groupIndexToSelect = groupIdx
+                                                    trackIndexToSelect = 0 // Select first track in the group
+                                                    Log.d("JellyfinPlayer", "Found matching track: group=$groupIdx, language=$trackLang, codec=${trackCodec ?: "null"}, supported=${group.isSupported}")
+                                                    
+                                                    // If we found a supported match, we can break (it's the best match)
+                                                    if (group.isSupported) {
+                                                        break
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        
+                                        // If found a match, force selection even if unsupported (Fix 3)
+                                        if (groupToSelect != null && groupIndexToSelect >= 0) {
+                                            try {
+                                                val trackGroup = groupToSelect.mediaTrackGroup
+                                                
+                                                // Fix 3: Try to force selection even for unsupported tracks
+                                                // Use addOverride which sometimes works even for unsupported tracks
+                                                // (especially with extension renderers enabled)
+                                                val trackSelectionOverride = androidx.media3.common.TrackSelectionOverride(
+                                                    trackGroup,
+                                                    trackIndexToSelect
+                                                )
+                                                
+                                                val updatedParameters = player.trackSelectionParameters
+                                                    .buildUpon()
+                                                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                                                    .addOverride(trackSelectionOverride)
+                                                    .build()
+                                                
+                                                player.trackSelectionParameters = updatedParameters
+                                                
+                                                val selectedFormat = groupToSelect.mediaTrackGroup.getFormat(0)
+                                                currentAudioIndex = audioIndexToApply
+                                                lastSelectedAudioIndex = audioIndexToApply
+                                                
+                                                if (groupToSelect.isSupported) {
+                                                    Log.d("JellyfinPlayer", "✅ Selected audio track: language=${selectedFormat.language}, codec=${selectedFormat.codecs ?: "null"}, Jellyfin index=$audioIndexToApply, ExoPlayer group=$groupIndexToSelect")
+                                                } else {
+                                                    Log.d("JellyfinPlayer", "⚠️ Attempted to force selection of unsupported audio track: language=${selectedFormat.language}, codec=${selectedFormat.codecs ?: "null"}, Jellyfin index=$audioIndexToApply, ExoPlayer group=$groupIndexToSelect (may not work if codec truly unsupported)")
+                                                }
+                                            } catch (e: Exception) {
+                                                Log.w("JellyfinPlayer", "Error selecting audio track: ${e.message}", e)
+                                                // If it's unsupported and addOverride failed, log a warning
+                                                if (!groupToSelect.isSupported) {
+                                                    Log.w("JellyfinPlayer", "⚠️ Audio track index $audioIndexToApply is not supported by ExoPlayer (language=${preferredAudioStream.Language}, codec=${preferredAudioStream.Codec ?: "null"}) and cannot be forced")
+                                                }
+                                            }
+                                        } else {
+                                            Log.w("JellyfinPlayer", "⚠️ Could not find ExoPlayer track matching Jellyfin audio stream index=$audioIndexToApply (language=${preferredAudioStream.Language}, codec=${preferredAudioStream.Codec ?: "null"})")
+                                            Log.d("JellyfinPlayer", "Available ExoPlayer tracks: ${allAudioTrackGroups.mapIndexed { idx, g -> 
+                                                val f = g.mediaTrackGroup.getFormat(0)
+                                                "Group $idx: lang=${f.language}, codec=${f.codecs ?: "null"}, supported=${g.isSupported}"
+                                            }}")
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    Log.w("JellyfinPlayer", "Error selecting audio track: ${e.message}", e)
+                                }
+                                } else {
+                                    Log.d("JellyfinPlayer", "Audio track already matches preference, no update needed")
+                                }
+                            } else {
+                                Log.d("JellyfinPlayer", "No audio preference to apply (audioIndexToApply=$audioIndexToApply, itemDetails=${itemDetails != null}, audioTracks=${audioTrackGroups.size})")
                             }
                         }
                         
@@ -1193,6 +1449,18 @@ fun JellyfinVideoPlayerScreen(
     }
 }
 
+// Data class to hold audio track information
+data class AudioTrackInfo(
+    val group: Tracks.Group,
+    val index: Int,
+    val language: String?,
+    val label: String?,
+    val codec: String?,
+    val isSelected: Boolean,
+    val channelCount: Int,
+    val sampleRate: Int
+)
+
 @Composable
 fun ExoPlayerSettingsMenu(
     item: JellyfinItem,
@@ -1204,8 +1472,9 @@ fun ExoPlayerSettingsMenu(
 ) {
     var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     var isLoadingSubtitles by remember { mutableStateOf(true) }
+    var currentTracks by remember { mutableStateOf<Tracks?>(null) }
     
-    // Fetch full item details to get MediaSources with subtitle streams
+    // Fetch full item details to get MediaSources with subtitle and audio streams
     LaunchedEffect(item.Id, apiService) {
         withContext(Dispatchers.IO) {
             try {
@@ -1220,6 +1489,57 @@ fun ExoPlayerSettingsMenu(
                 isLoadingSubtitles = false
             }
         }
+    }
+    
+    // Update tracks when player tracks change
+    DisposableEffect(player) {
+        val listener = if (player != null) {
+            // Get initial tracks if available
+            val initialTracks = player.currentTracks
+            if (initialTracks.groups.isNotEmpty()) {
+                currentTracks = initialTracks
+            }
+            
+            // Listen for track changes
+            object : Player.Listener {
+                override fun onTracksChanged(tracks: Tracks) {
+                    currentTracks = tracks
+                }
+            }.also { player.addListener(it) }
+        } else null
+        
+        onDispose {
+            listener?.let { player?.removeListener(it) }
+        }
+    }
+    
+    // Get audio tracks from ExoPlayer
+    val audioTracks = remember(currentTracks) {
+        currentTracks?.groups?.filter { group ->
+            group.type == C.TRACK_TYPE_AUDIO && group.isSupported
+        }?.mapIndexedNotNull { index, group ->
+            // Get format info from the first track in the group
+            if (group.mediaTrackGroup.length > 0) {
+                val format = group.mediaTrackGroup.getFormat(0)
+                AudioTrackInfo(
+                    group = group,
+                    index = index,
+                    language = format.language,
+                    label = format.label,
+                    codec = format.codecs,
+                    isSelected = group.isSelected,
+                    channelCount = format.channelCount,
+                    sampleRate = format.sampleRate
+                )
+            } else null
+        } ?: emptyList()
+    }
+    
+    // Get audio streams from Jellyfin MediaSources for additional metadata
+    val audioStreams = remember(itemDetails?.MediaSources) {
+        itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
+            ?.filter { it.Type == "Audio" }
+            ?.sortedBy { it.Index ?: 0 } ?: emptyList()
     }
     
     // Get subtitle streams from MediaSources
@@ -1264,7 +1584,90 @@ fun ExoPlayerSettingsMenu(
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
                     
-                    // Subtitle section - ABOVE speed picker
+                    // Audio section - ABOVE subtitles
+                    if (player != null && audioTracks.isNotEmpty()) {
+                        Text(
+                            text = "Audio Tracks",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = MaterialTheme.typography.titleMedium.fontSize * 0.8f
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(bottom = 8.dp, top = 8.dp)
+                        )
+                        
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp),
+                            modifier = Modifier.heightIn(max = 200.dp)
+                        ) {
+                            items(audioTracks.size) { index ->
+                                val track = audioTracks[index]
+                                val trackTitle = buildString {
+                                    track.label?.let { append(it) }
+                                    if (isEmpty()) {
+                                        track.language?.let { append(it) } ?: append("Unknown")
+                                    }
+                                }
+                                val trackInfo = buildString {
+                                    track.codec?.let { 
+                                        if (isNotEmpty()) append(", ")
+                                        append(it)
+                                    }
+                                    if (track.channelCount > 0) {
+                                        if (isNotEmpty()) append(", ")
+                                        append("${track.channelCount}ch")
+                                    }
+                                    if (track.sampleRate > 0) {
+                                        if (isNotEmpty()) append(", ")
+                                        append("${track.sampleRate / 1000}kHz")
+                                    }
+                                }
+                                
+                                ListItem(
+                                    selected = track.isSelected,
+                                    onClick = {
+                                        // Select audio track
+                                        try {
+                                            val trackSelectionOverride = TrackSelectionOverride(
+                                                track.group.mediaTrackGroup,
+                                                0 // Select first track in the group
+                                            )
+                                            val updatedParameters = player.trackSelectionParameters
+                                                .buildUpon()
+                                                .addOverride(trackSelectionOverride)
+                                                .build()
+                                            player.trackSelectionParameters = updatedParameters
+                                            Log.d("ExoPlayerSettingsMenu", "Selected audio track: $trackTitle")
+                                        } catch (e: Exception) {
+                                            Log.e("ExoPlayerSettingsMenu", "Error selecting audio track", e)
+                                        }
+                                    },
+                                    headlineContent = {
+                                        Column {
+                                            Text(
+                                                text = trackTitle,
+                                                style = MaterialTheme.typography.bodyLarge.copy(
+                                                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
+                                                )
+                                            )
+                                            if (trackInfo.isNotEmpty()) {
+                                                Text(
+                                                    text = trackInfo,
+                                                    style = MaterialTheme.typography.bodySmall.copy(
+                                                        fontSize = MaterialTheme.typography.bodySmall.fontSize * 0.7f
+                                                    ),
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                                )
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+                    
+                    // Subtitle section - BELOW audio tracks
                     Text(
                         text = "Subtitles",
                         style = MaterialTheme.typography.titleMedium.copy(
@@ -1392,50 +1795,6 @@ fun ExoPlayerSettingsMenu(
                                     selected = index == currentSpeedIndex,
                                     onClick = {
                                         player.playbackParameters = androidx.media3.common.PlaybackParameters(speed)
-                                        Log.d("ExoPlayerSettingsMenu", "Changed playback speed to ${speed}x")
-                                    },
-                                    headlineContent = {
-                                        Text(
-                                            text = speedText,
-                                            style = MaterialTheme.typography.bodyLarge.copy(
-                                                fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
-                                            )
-                                        )
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                        }
-                    }
-                    
-                    // Speed section - BELOW subtitles
-                    if (player != null) {
-                        Text(
-                            text = "Playback Speed",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = MaterialTheme.typography.titleMedium.fontSize * 0.8f
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(bottom = 8.dp, top = 16.dp)
-                        )
-                        
-                        val speedOptions = listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
-                        val currentSpeed = player.playbackParameters.speed
-                        val currentSpeedIndex = speedOptions.indexOfFirst { kotlin.math.abs(it - currentSpeed) < 0.01f }.takeIf { it >= 0 } ?: 3
-                        
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            contentPadding = PaddingValues(vertical = 4.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            items(speedOptions.size) { index ->
-                                val speed = speedOptions[index]
-                                val speedText = if (speed == 1.0f) "Normal (1.0x)" else "${speed}x"
-                                
-                                ListItem(
-                                    selected = index == currentSpeedIndex,
-                                    onClick = {
-                                        player.playbackParameters = PlaybackParameters(speed)
                                         Log.d("ExoPlayerSettingsMenu", "Changed playback speed to ${speed}x")
                                     },
                                     headlineContent = {

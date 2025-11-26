@@ -87,6 +87,10 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls) // HLS streaming support (better subtitle track detection)
     implementation(libs.media3.exoplayer.dash) // DASH streaming support (better subtitle track detection)
+    // Note: FFmpeg extension is not available as a pre-built Maven dependency
+    // Extension renderer mode (EXTENSION_RENDERER_MODE_PREFER) is already configured in JellyfinVideoPlayerScreen
+    // which enables software decoding for additional codecs. For full FFmpeg support (DTS, TrueHD),
+    // the extension would need to be built from source or use a third-party build.
     implementation(libs.media3.ui)
     implementation(libs.media3.ui.compose)
     implementation(libs.media3.common)

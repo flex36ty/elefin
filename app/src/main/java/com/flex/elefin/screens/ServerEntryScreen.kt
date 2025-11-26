@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
@@ -140,53 +141,59 @@ fun ServerEntryScreen(
                 modifier = Modifier.padding(top = 16.dp)
             )
             
-            // Address input field
+            // Address input field - matching Jellyfin Android TV Input.Default style
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
+                    .height(44.dp)
                     .background(
                         color = if (addressFocused)
-                            MaterialTheme.colorScheme.primaryContainer
+                            Color(0xFFDDDDDD) // Light background when focused (input_default_highlight_background)
                         else
-                            MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(8.dp)
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f), // Visible darker background when not focused
+                        shape = RoundedCornerShape(3.dp)
                     )
                     .border(
-                        width = if (addressFocused) 2.dp else 1.dp,
+                        width = if (addressFocused) 3.dp else 2.dp, // Thicker border when focused for better visibility
                         color = if (addressFocused)
-                            MaterialTheme.colorScheme.primary
+                            Color(0xFF9C27B0) // Purple border when focused for better visibility
                         else
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        shape = RoundedCornerShape(8.dp)
+                            Color(0xB3747474), // input_default_stroke color when not focused
+                        shape = RoundedCornerShape(3.dp)
                     )
-                    .focusRequester(addressFocusRequester)
-                    .focusable()
-                    .onFocusChanged { addressFocused = it.isFocused }
-                    .padding(horizontal = 16.dp),
-                contentAlignment = Alignment.CenterStart
             ) {
                 BasicTextField(
                     value = serverAddress,
                     onValueChange = { serverAddress = it },
                     textStyle = TextStyle(
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = MaterialTheme.typography.bodyLarge.fontSize
+                        color = if (addressFocused)
+                            Color(0xFF444444) // Dark text when focused (input_default_highlight_text)
+                        else
+                            Color(0xFFDDDDDD), // Light text when not focused (input_default_normal_text)
+                        fontSize = MaterialTheme.typography.bodyMedium.fontSize
                     ),
+                    singleLine = true,
+                    maxLines = 1,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .fillMaxSize()
+                        .focusRequester(addressFocusRequester)
+                        .focusable()
+                        .onFocusChanged { addressFocused = it.isFocused }
+                        .padding(8.dp) // 8dp padding all around (matching Input.Default style)
                         .onKeyEvent { keyEvent ->
-                            if (keyEvent.type == KeyEventType.KeyUp && keyEvent.key == Key.Enter) {
-                                // Show keyboard when Enter is pressed
-                                keyboardController?.show()
-                                true
-                            } else if (keyEvent.key == Key.Tab) {
-                                if (serverAddress.isNotBlank()) {
-                                    connectButtonFocusRequester.requestFocus()
-                                } else {
-                                    focusManager.moveFocus(FocusDirection.Down)
+                            if (keyEvent.type == KeyEventType.KeyUp) {
+                                when (keyEvent.key) {
+                                    Key.Enter -> {
+                                        keyboardController?.show()
+                                        true
+                                    }
+                                    Key.DirectionDown -> {
+                                        connectButtonFocusRequester.requestFocus()
+                                        true
+                                    }
+                                    else -> false
                                 }
-                                true
                             } else {
                                 false
                             }
@@ -194,7 +201,8 @@ fun ServerEntryScreen(
                     enabled = !isConnecting && prefillAddress == null,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Uri,
-                        imeAction = ImeAction.Done
+                        imeAction = ImeAction.Done,
+                        autoCorrectEnabled = false
                     ),
                     keyboardActions = KeyboardActions(
                         onDone = {

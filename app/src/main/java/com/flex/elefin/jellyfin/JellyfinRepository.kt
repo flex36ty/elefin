@@ -17,21 +17,39 @@ class JellyfinRepository(
 
     private val _recentlyAddedMovies = MutableStateFlow<List<JellyfinItem>>(emptyList())
     val recentlyAddedMovies: StateFlow<List<JellyfinItem>> = _recentlyAddedMovies.asStateFlow()
+    
+    // Movies per library - key is library ID, value is list of movies
+    private val _recentlyAddedMoviesByLibrary = MutableStateFlow<Map<String, List<JellyfinItem>>>(emptyMap())
+    val recentlyAddedMoviesByLibrary: StateFlow<Map<String, List<JellyfinItem>>> = _recentlyAddedMoviesByLibrary.asStateFlow()
 
     private val _recentlyReleasedMovies = MutableStateFlow<List<JellyfinItem>>(emptyList())
     val recentlyReleasedMovies: StateFlow<List<JellyfinItem>> = _recentlyReleasedMovies.asStateFlow()
 
     private val _recentlyAddedShows = MutableStateFlow<List<JellyfinItem>>(emptyList())
     val recentlyAddedShows: StateFlow<List<JellyfinItem>> = _recentlyAddedShows.asStateFlow()
+    
+    // Shows per library - key is library ID, value is list of shows
+    private val _recentlyAddedShowsByLibrary = MutableStateFlow<Map<String, List<JellyfinItem>>>(emptyMap())
+    val recentlyAddedShowsByLibrary: StateFlow<Map<String, List<JellyfinItem>>> = _recentlyAddedShowsByLibrary.asStateFlow()
 
     private val _recentlyAddedEpisodes = MutableStateFlow<List<JellyfinItem>>(emptyList())
     val recentlyAddedEpisodes: StateFlow<List<JellyfinItem>> = _recentlyAddedEpisodes.asStateFlow()
+    
+    // Episodes per library - key is library ID, value is list of episodes
+    private val _recentlyAddedEpisodesByLibrary = MutableStateFlow<Map<String, List<JellyfinItem>>>(emptyMap())
+    val recentlyAddedEpisodesByLibrary: StateFlow<Map<String, List<JellyfinItem>>> = _recentlyAddedEpisodesByLibrary.asStateFlow()
 
     private val _libraries = MutableStateFlow<List<JellyfinLibrary>>(emptyList())
     val libraries: StateFlow<List<JellyfinLibrary>> = _libraries.asStateFlow()
+    
+    private val _collections = MutableStateFlow<List<JellyfinItem>>(emptyList())
+    val collections: StateFlow<List<JellyfinItem>> = _collections.asStateFlow()
 
     private val _libraryItems = MutableStateFlow<Map<String, List<JellyfinItem>>>(emptyMap())
     val libraryItems: StateFlow<Map<String, List<JellyfinItem>>> = _libraryItems.asStateFlow()
+    
+    private val _collectionItems = MutableStateFlow<Map<String, List<JellyfinItem>>>(emptyMap())
+    val collectionItems: StateFlow<Map<String, List<JellyfinItem>>> = _collectionItems.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -68,11 +86,6 @@ class JellyfinRepository(
 
     suspend fun fetchRecentlyAddedMovies() {
         try {
-            // First, get the default list (includes all accessible libraries)
-            val defaultItems = apiService.getRecentlyAddedMovies()
-            
-            // Also fetch from all libraries individually to ensure we get items from all libraries
-            // including "Movies 4K" or any other movie libraries
             // Fetch libraries if not already loaded
             val libraries = if (_libraries.value.isEmpty()) {
                 try {
@@ -89,24 +102,29 @@ class JellyfinRepository(
                 _libraries.value
             }
             
+            // Fetch movies from each library separately and store per library
+            val moviesByLibrary = mutableMapOf<String, List<JellyfinItem>>()
             val allItems = mutableListOf<JellyfinItem>()
             val seenIds = mutableSetOf<String>()
-            
-            // Add default items first
-            defaultItems.forEach { item ->
-                if (seenIds.add(item.Id)) {
-                    allItems.add(item)
-                }
-            }
             
             // Fetch from each library that might contain movies
             libraries.forEach { library ->
                 try {
                     // Fetch recently added items from this specific library
                     val libraryItems = apiService.getRecentlyAddedMoviesFromLibrary(library.Id)
-                    libraryItems.forEach { item ->
-                        if (seenIds.add(item.Id)) {
-                            allItems.add(item)
+                    if (libraryItems.isNotEmpty()) {
+                        // Only store libraries that have movies
+                        // Sort by DateCreated descending and limit to 20 most recent
+                        val sortedItems = libraryItems.sortedByDescending { 
+                            it.DateCreated ?: ""
+                        }.take(20)
+                        moviesByLibrary[library.Id] = sortedItems
+                        
+                        // Also add to combined list for backward compatibility
+                        sortedItems.forEach { item ->
+                            if (seenIds.add(item.Id)) {
+                                allItems.add(item)
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -115,6 +133,10 @@ class JellyfinRepository(
                 }
             }
             
+            // Store movies per library
+            _recentlyAddedMoviesByLibrary.value = moviesByLibrary
+            
+            // Also store combined list (sorted and limited) for backward compatibility
             // Sort by DateCreated descending and limit to 20 most recent
             val sortedItems = allItems.sortedByDescending { 
                 it.DateCreated ?: ""
@@ -192,8 +214,59 @@ class JellyfinRepository(
 
     suspend fun fetchRecentlyAddedShows() {
         try {
-            val items = apiService.getRecentlyAddedShows()
-            _recentlyAddedShows.value = items
+            // Fetch libraries if not already loaded
+            val libraries = if (_libraries.value.isEmpty()) {
+                try {
+                    val fetchedLibraries = apiService.getLibraries()
+                    _libraries.value = fetchedLibraries.filterNot { 
+                        it.Type.equals("livetv", ignoreCase = true) || 
+                        it.Name.equals("Live TV", ignoreCase = true)
+                    }
+                    _libraries.value
+                } catch (e: Exception) {
+                    emptyList()
+                }
+            } else {
+                _libraries.value
+            }
+            
+            // Fetch shows from each library separately and store per library
+            val showsByLibrary = mutableMapOf<String, List<JellyfinItem>>()
+            val allItems = mutableListOf<JellyfinItem>()
+            
+            // Fetch from each library that might contain shows
+            libraries.forEach { library ->
+                try {
+                    // Fetch recently added shows from this specific library
+                    val libraryItems = apiService.getRecentlyAddedShowsFromLibrary(library.Id)
+                    if (libraryItems.isNotEmpty()) {
+                        // Only store libraries that have shows
+                        // Sort by DateCreated descending and limit to 20 most recent
+                        val sortedItems = libraryItems.sortedByDescending { 
+                            it.DateCreated ?: ""
+                        }.take(20)
+                        showsByLibrary[library.Id] = sortedItems
+                        
+                        // Also add to combined list for backward compatibility
+                        sortedItems.forEach { item ->
+                            allItems.add(item)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Log but continue with other libraries
+                    android.util.Log.w("JellyfinRepository", "Error fetching shows from library ${library.Name}: ${e.message}")
+                }
+            }
+            
+            // Store shows per library
+            _recentlyAddedShowsByLibrary.value = showsByLibrary
+            
+            // Also store combined list (sorted and limited) for backward compatibility
+            val sortedItems = allItems.sortedByDescending { 
+                it.DateCreated ?: ""
+            }.take(20)
+            
+            _recentlyAddedShows.value = sortedItems
         } catch (e: Exception) {
             e.printStackTrace()
             println("Error fetching recently added shows: ${e.message}")
@@ -202,8 +275,59 @@ class JellyfinRepository(
 
     suspend fun fetchRecentlyAddedEpisodes() {
         try {
-            val items = apiService.getRecentlyAddedEpisodes()
-            _recentlyAddedEpisodes.value = items
+            // Fetch libraries if not already loaded
+            val libraries = if (_libraries.value.isEmpty()) {
+                try {
+                    val fetchedLibraries = apiService.getLibraries()
+                    _libraries.value = fetchedLibraries.filterNot { 
+                        it.Type.equals("livetv", ignoreCase = true) || 
+                        it.Name.equals("Live TV", ignoreCase = true)
+                    }
+                    _libraries.value
+                } catch (e: Exception) {
+                    emptyList()
+                }
+            } else {
+                _libraries.value
+            }
+            
+            // Fetch episodes from each library separately and store per library
+            val episodesByLibrary = mutableMapOf<String, List<JellyfinItem>>()
+            val allItems = mutableListOf<JellyfinItem>()
+            
+            // Fetch from each library that might contain episodes
+            libraries.forEach { library ->
+                try {
+                    // Fetch recently added episodes from this specific library
+                    val libraryItems = apiService.getRecentlyAddedEpisodesFromLibrary(library.Id)
+                    if (libraryItems.isNotEmpty()) {
+                        // Only store libraries that have episodes
+                        // Sort by DateCreated descending and limit to 20 most recent
+                        val sortedItems = libraryItems.sortedByDescending { 
+                            it.DateCreated ?: ""
+                        }.take(20)
+                        episodesByLibrary[library.Id] = sortedItems
+                        
+                        // Also add to combined list for backward compatibility
+                        sortedItems.forEach { item ->
+                            allItems.add(item)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Log but continue with other libraries
+                    android.util.Log.w("JellyfinRepository", "Error fetching episodes from library ${library.Name}: ${e.message}")
+                }
+            }
+            
+            // Store episodes per library
+            _recentlyAddedEpisodesByLibrary.value = episodesByLibrary
+            
+            // Also store combined list (sorted and limited) for backward compatibility
+            val sortedItems = allItems.sortedByDescending { 
+                it.DateCreated ?: ""
+            }.take(20)
+            
+            _recentlyAddedEpisodes.value = sortedItems
         } catch (e: Exception) {
             e.printStackTrace()
             println("Error fetching recently added episodes: ${e.message}")
@@ -223,6 +347,16 @@ class JellyfinRepository(
             println("Error fetching libraries: ${e.message}")
         }
     }
+    
+    suspend fun fetchCollections() {
+        try {
+            val collections = apiService.getCollections()
+            _collections.value = collections
+        } catch (e: Exception) {
+            e.printStackTrace()
+            println("Error fetching collections: ${e.message}")
+        }
+    }
 
     suspend fun fetchLibraryItems(libraryId: String) {
         try {
@@ -236,6 +370,22 @@ class JellyfinRepository(
         } catch (e: Exception) {
             e.printStackTrace()
             println("Error fetching library items: ${e.message}")
+        }
+    }
+    
+    suspend fun fetchCollectionItems(collectionId: String) {
+        try {
+            // Fetch items from a collection (BoxSet)
+            // Collections are BoxSets, so we fetch their children items
+            val items = apiService.getAllLibraryItems(collectionId)
+            _collectionItems.update { currentMap ->
+                currentMap.toMutableMap().apply {
+                    put(collectionId, items)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            println("Error fetching collection items: ${e.message}")
         }
     }
 

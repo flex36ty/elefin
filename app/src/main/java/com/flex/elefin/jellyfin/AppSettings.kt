@@ -25,6 +25,7 @@ class AppSettings(context: Context) {
         private const val KEY_SORT_TYPE = "library_sort_type"
         private const val KEY_HIDE_SHOWS_WITH_ZERO_EPISODES = "hide_shows_with_zero_episodes"
         private const val KEY_MINIMAL_BUFFER_4K = "minimal_buffer_4k"
+        private const val KEY_TRANSCODE_AAC_TO_AC3 = "transcode_aac_to_ac3"
     }
 
     var isMpvEnabled: Boolean
@@ -103,6 +104,23 @@ class AppSettings(context: Context) {
         }
     }
     
+    // Audio track preferences per episode/item
+    fun getAudioPreference(itemId: String): Int? {
+        val index = prefs.getInt("audio_$itemId", -1)
+        return if (index >= 0) index else null
+    }
+    
+    fun setAudioPreference(itemId: String, audioIndex: Int?) {
+        prefs.edit().apply {
+            if (audioIndex != null) {
+                putInt("audio_$itemId", audioIndex)
+            } else {
+                remove("audio_$itemId")
+            }
+            apply()
+        }
+    }
+    
     // Sort preference for library views
     fun getSortType(): String {
         return prefs.getString(KEY_SORT_TYPE, "Alphabetically") ?: "Alphabetically"
@@ -119,5 +137,9 @@ class AppSettings(context: Context) {
     var minimalBuffer4K: Boolean
         get() = prefs.getBoolean(KEY_MINIMAL_BUFFER_4K, false) // Disabled by default
         set(value) = prefs.edit().putBoolean(KEY_MINIMAL_BUFFER_4K, value).apply()
+    
+    var transcodeAacToAc3: Boolean
+        get() = prefs.getBoolean(KEY_TRANSCODE_AAC_TO_AC3, true) // Enabled by default
+        set(value) = prefs.edit().putBoolean(KEY_TRANSCODE_AAC_TO_AC3, value).apply()
 }
 

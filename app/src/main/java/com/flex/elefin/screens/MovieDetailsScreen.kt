@@ -72,6 +72,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.Button
@@ -868,6 +869,175 @@ fun SubtitleSelectionDialog(
         }
     }
 }
+
+@Composable
+fun AudioSelectionDialog(
+    item: JellyfinItem,
+    apiService: JellyfinApiService?,
+    onDismiss: () -> Unit,
+    onAudioSelected: (audioStreamIndex: Int?) -> Unit
+) {
+    var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
+    var isLoadingAudio by remember { mutableStateOf(true) }
+    
+    // Fetch full item details to get MediaSources with audio streams
+    LaunchedEffect(item.Id, apiService) {
+        if (apiService != null) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val details = apiService.getItemDetails(item.Id)
+                    itemDetails = details
+                    isLoadingAudio = false
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e("AudioDialog", "Error fetching item details", e)
+                    isLoadingAudio = false
+                }
+            }
+        } else {
+            isLoadingAudio = false
+        }
+    }
+    
+    // Get audio streams from MediaSources
+    val audioStreams = remember(itemDetails?.MediaSources) {
+        itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
+            ?.filter { it.Type == "Audio" }
+            ?.sortedBy { it.Index ?: 0 } ?: emptyList()
+    }
+    
+    val context = LocalContext.current
+    val storedAudioIndex = remember(context, item.Id) { 
+        com.flex.elefin.jellyfin.AppSettings(context).getAudioPreference(item.Id) 
+    }
+    
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.7f)),
+            contentAlignment = Alignment.Center
+        ) {
+            androidx.tv.material3.Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.3f)
+                    .fillMaxHeight(0.5f),
+                shape = RoundedCornerShape(16.dp),
+                colors = androidx.tv.material3.SurfaceDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                ) {
+                    // Dialog title
+                    Text(
+                        text = "Select Audio Track",
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.7f
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                    
+                    // Vertical list of audio track options
+                    if (isLoadingAudio) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Loading audio tracks...",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.7f
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp)
+                        ) {
+                            // Audio stream options
+                            items(audioStreams) { stream ->
+                                val audioTitle = stream.DisplayTitle
+                                    ?: stream.Language
+                                    ?: "Unknown"
+                                val audioInfo = buildString {
+                                    stream.Codec?.let { 
+                                        append(it)
+                                    }
+                                }
+                                val isSelected = stream.Index != null && stream.Index == storedAudioIndex
+                                
+                                ListItem(
+                                    selected = isSelected,
+                                    onClick = {
+                                        stream.Index?.let { index ->
+                                            onAudioSelected(index)
+                                            onDismiss()
+                                        }
+                                    },
+                                    headlineContent = {
+                                        Column {
+                                            Text(
+                                                text = audioTitle,
+                                                style = MaterialTheme.typography.bodyLarge.copy(
+                                                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.7f
+                                                )
+                                            )
+                                            if (audioInfo.isNotEmpty()) {
+                                                Text(
+                                                    text = audioInfo,
+                                                    style = MaterialTheme.typography.bodySmall.copy(
+                                                        fontSize = MaterialTheme.typography.bodySmall.fontSize * 0.7f
+                                                    ),
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                                )
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            
+                            // If no audio tracks available
+                            if (audioStreams.isEmpty()) {
+                                item {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "No audio tracks available",
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.7f
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun ActionButtonsRow(
     item: JellyfinItem,
@@ -908,8 +1078,13 @@ fun ActionButtonsRow(
     Log.d("ActionButtonsRow", "isResumable: $isResumable, resumePositionMs: $resumePositionMs")
     
     var showSubtitleDialog by remember { mutableStateOf(false) }
-    // Load stored subtitle preference
+    var showAudioDialog by remember { mutableStateOf(false) }
+    // Load stored subtitle and audio preferences
     var selectedSubtitleIndex by remember { mutableStateOf<Int?>(settings.getSubtitlePreference(item.Id)) }
+    var selectedAudioIndex by remember { mutableStateOf<Int?>(settings.getAudioPreference(item.Id)) }
+    
+    // Change label to "Play From Start" when there's a resume button
+    val playButtonLabel = if (isResumable) "Play From Start" else "Play"
     
     Row(
         modifier = modifier
@@ -924,6 +1099,18 @@ fun ActionButtonsRow(
         ) {
         // Resume button (only show if resumable, on the left)
         if (isResumable) {
+            val resumeFocusRequester = remember { FocusRequester() }
+            
+            // Request focus on Resume button by default when resumable
+            // Use Unit as key to request focus when button first appears
+            LaunchedEffect(Unit) {
+                if (isResumable) {
+                    // Small delay to ensure button is fully composed and focusable
+                    kotlinx.coroutines.delay(50)
+                    resumeFocusRequester.requestFocus()
+                }
+            }
+            
             if (useAnimatedButton) {
                 AnimatedPlayButton(
                     onClick = {
@@ -932,14 +1119,16 @@ fun ActionButtonsRow(
                             context = context,
                             itemId = displayItem.Id,
                             resumePositionMs = resumePositionMs,
-                            subtitleStreamIndex = selectedSubtitleIndex
+                            subtitleStreamIndex = selectedSubtitleIndex,
+                            audioStreamIndex = selectedAudioIndex
                         )
                         context.startActivity(intent)
                         // Don't finish - let back button return to movie details screen
                     },
                     label = "Resume",
                     containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.onSurface
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.focusRequester(resumeFocusRequester)
                 )
             } else {
                 var resumeFocused by remember { mutableStateOf(false) }
@@ -951,12 +1140,14 @@ fun ActionButtonsRow(
                             context = context,
                             itemId = displayItem.Id,
                             resumePositionMs = resumePositionMs,
-                            subtitleStreamIndex = selectedSubtitleIndex
+                            subtitleStreamIndex = selectedSubtitleIndex,
+                            audioStreamIndex = selectedAudioIndex
                         )
                         context.startActivity(intent)
                         // Don't finish - let back button return to movie details screen
                     },
                     modifier = Modifier
+                        .focusRequester(resumeFocusRequester)
                         .then(
                             if (resumeFocused) {
                                 Modifier
@@ -1013,7 +1204,7 @@ fun ActionButtonsRow(
                     context.startActivity(intent)
                     // Don't finish - let back button return to movie details screen
                 },
-                label = "Play",
+                label = playButtonLabel,
                 containerColor = MaterialTheme.colorScheme.surface,
                 contentColor = MaterialTheme.colorScheme.onSurface
             )
@@ -1061,18 +1252,66 @@ fun ActionButtonsRow(
                     contentDescription = "Play",
                     modifier = Modifier.size(14.3.dp)
                 )
-                if (playFocused) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Play",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                        ),
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                }
+                    if (playFocused) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = playButtonLabel,
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
+                            ),
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+                    }
             }
         }
+        }
+        
+        // Audio track button
+        var audioFocused by remember { mutableStateOf(false) }
+        
+        Button(
+            onClick = {
+                showAudioDialog = true
+            },
+            modifier = Modifier
+                .then(
+                    if (audioFocused) {
+                        Modifier
+                            .wrapContentWidth()
+                            .height(40.dp)
+                    } else {
+                        Modifier.size(40.dp) // Circular when unfocused
+                    }
+                )
+                .animateContentSize(
+                    animationSpec = tween(
+                        durationMillis = 300,
+                        easing = FastOutSlowInEasing
+                    )
+                )
+                .onFocusChanged { audioFocused = it.isFocused }
+                .clip(CircleShape),
+            colors = ButtonDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            ),
+            contentPadding = PaddingValues(12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.VolumeUp,
+                contentDescription = "Audio Track",
+                modifier = Modifier.size(14.3.dp)
+            )
+            if (audioFocused) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Audio",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
+                    ),
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
         }
         
         // Subtitles button
@@ -1207,15 +1446,23 @@ fun ActionButtonsRow(
             }
         }
         
-        // Right side: Spacer to push subtitle display to the right
+        // Right side: Spacer to push audio/subtitle display to the right
         Spacer(modifier = Modifier.weight(1f))
         
         // Applied subtitle display (right-aligned)
-        if (selectedSubtitleIndex != null && itemDetails != null) {
-            val subtitleStream = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
-                ?.find { it.Type == "Subtitle" && it.Index == selectedSubtitleIndex }
-            val subtitleName = subtitleStream?.DisplayTitle ?: subtitleStream?.Language ?: "Unknown"
-            MetadataBox(text = subtitleName, icon = Icons.Default.Language)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Applied subtitle display
+            if (selectedSubtitleIndex != null && itemDetails != null) {
+                val subtitleStream = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
+                    ?.find { it.Type == "Subtitle" && it.Index == selectedSubtitleIndex }
+                subtitleStream?.let { stream ->
+                    val subtitleName = stream.DisplayTitle ?: stream.Language ?: "Unknown"
+                    MetadataBox(text = subtitleName, icon = Icons.Default.Language)
+                }
+            }
         }
     }
     
@@ -1228,6 +1475,19 @@ fun ActionButtonsRow(
             onSubtitleSelected = { subtitleIndex ->
                 selectedSubtitleIndex = subtitleIndex
                 settings.setSubtitlePreference(item.Id, subtitleIndex)
+            }
+        )
+    }
+    
+    // Audio track selection dialog
+    if (showAudioDialog) {
+        AudioSelectionDialog(
+            item = displayItem,
+            apiService = apiService,
+            onDismiss = { showAudioDialog = false },
+            onAudioSelected = { audioIndex ->
+                selectedAudioIndex = audioIndex
+                settings.setAudioPreference(item.Id, audioIndex)
             }
         )
     }

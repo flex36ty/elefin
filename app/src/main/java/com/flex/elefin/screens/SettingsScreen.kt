@@ -67,6 +67,7 @@ fun SettingsScreen(
     var autoRefreshIntervalMinutes by remember { mutableStateOf(settings.autoRefreshIntervalMinutes) }
     var hideShowsWithZeroEpisodesEnabled by remember { mutableStateOf(settings.hideShowsWithZeroEpisodes) }
     var minimalBuffer4KEnabled by remember { mutableStateOf(settings.minimalBuffer4K) }
+    var transcodeAacToAc3Enabled by remember { mutableStateOf(settings.transcodeAacToAc3) }
 
     Box(
         modifier = Modifier
@@ -711,6 +712,45 @@ fun SettingsScreen(
                 }
             }
             */
+            
+            // Transcode AAC to AC3 setting
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "Transcode AAC to AC3",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Transcode all AAC audio to AC3 (5.1 max). AC3 is universally supported on all devices.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                
+                Button(
+                    onClick = {
+                        transcodeAacToAc3Enabled = !transcodeAacToAc3Enabled
+                        settings.transcodeAacToAc3 = transcodeAacToAc3Enabled
+                    },
+                    colors = ButtonDefaults.colors(
+                        containerColor = if (transcodeAacToAc3Enabled) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        }
+                    )
+                ) {
+                    Text(if (transcodeAacToAc3Enabled) "ON" else "OFF")
+                }
+            }
             
             // Clear Cache button
             Row(

@@ -202,40 +202,50 @@ fun JellyfinHomeScreen(
     val nextUpItemsState = repository?.nextUpItems?.collectAsState(initial = emptyList())
     val nextUpItems = nextUpItemsState?.value ?: emptyList()
     
-    val recentlyAddedMoviesState = repository?.recentlyAddedMovies?.collectAsState(initial = emptyList())
-    val recentlyAddedMovies = recentlyAddedMoviesState?.value ?: emptyList()
+    val recentlyAddedMoviesByLibraryState = repository?.recentlyAddedMoviesByLibrary?.collectAsState(initial = emptyMap())
+    val recentlyAddedMoviesByLibrary = recentlyAddedMoviesByLibraryState?.value ?: emptyMap()
+    
+    // Get movie libraries from the existing libraries state (defined later in the file)
+    // We'll use the libraries state that's already defined, but filter for movie libraries
+    val movieLibrariesState = repository?.libraries?.collectAsState(initial = emptyList())
+    val allMovieLibraries = movieLibrariesState?.value ?: emptyList()
+    
+    // Get movie libraries (libraries that have movies)
+    val movieLibraries = allMovieLibraries.filter { library ->
+        recentlyAddedMoviesByLibrary.containsKey(library.Id)
+    }.sortedBy { it.Name } // Sort by name for consistent ordering
     
     val recentlyReleasedMoviesState = repository?.recentlyReleasedMovies?.collectAsState(initial = emptyList())
     val recentlyReleasedMovies = recentlyReleasedMoviesState?.value ?: emptyList()
     
-    val recentlyAddedShowsState = repository?.recentlyAddedShows?.collectAsState(initial = emptyList())
-    val recentlyAddedShowsRaw = recentlyAddedShowsState?.value ?: emptyList()
+    val recentlyAddedShowsByLibraryState = repository?.recentlyAddedShowsByLibrary?.collectAsState(initial = emptyMap())
+    val recentlyAddedShowsByLibrary = recentlyAddedShowsByLibraryState?.value ?: emptyMap()
     
-    // Filter shows with zero episodes if setting is enabled
-    val recentlyAddedShows = remember(recentlyAddedShowsRaw, hideShowsWithZeroEpisodes) {
-        if (hideShowsWithZeroEpisodes) {
-            recentlyAddedShowsRaw.filter { item ->
-                // Keep non-Series items, or Series items with episodes (ChildCount > 0)
-                item.Type != "Series" || (item.ChildCount != null && item.ChildCount!! > 0)
-            }
-        } else {
-            recentlyAddedShowsRaw
-        }
-    }
+    val recentlyAddedEpisodesByLibraryState = repository?.recentlyAddedEpisodesByLibrary?.collectAsState(initial = emptyMap())
+    val recentlyAddedEpisodesByLibrary = recentlyAddedEpisodesByLibraryState?.value ?: emptyMap()
     
-    val recentlyAddedEpisodesState = repository?.recentlyAddedEpisodes?.collectAsState(initial = emptyList())
-    val recentlyAddedEpisodes = recentlyAddedEpisodesState?.value ?: emptyList()
+    // Get TV show libraries (libraries that have shows or episodes)
+    val tvShowLibraries = (movieLibrariesState?.value ?: emptyList()).filter { library ->
+        recentlyAddedShowsByLibrary.containsKey(library.Id) || recentlyAddedEpisodesByLibrary.containsKey(library.Id)
+    }.sortedBy { it.Name } // Sort by name for consistent ordering
     
     val librariesState = repository?.libraries?.collectAsState(initial = emptyList())
     val libraries = librariesState?.value ?: emptyList()
     
+    val collectionsState = repository?.collections?.collectAsState(initial = emptyList())
+    val collections = collectionsState?.value ?: emptyList()
+    
     val libraryItemsState = repository?.libraryItems?.collectAsState(initial = emptyMap())
     val libraryItems = libraryItemsState?.value ?: emptyMap()
+    
+    val collectionItemsState = repository?.collectionItems?.collectAsState(initial = emptyMap())
+    val collectionItems = collectionItemsState?.value ?: emptyMap()
     
     // Track unwatched episode counts for TV shows (series ID -> count)
     var unwatchedEpisodeCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     
     var selectedLibraryId by remember { mutableStateOf<String?>(null) }
+    var selectedCollectionId by remember { mutableStateOf<String?>(null) }
     var showExitConfirmation by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var darkModeWhenSettingsOpened by remember { mutableStateOf(false) }
@@ -257,6 +267,9 @@ fun JellyfinHomeScreen(
         if (selectedLibraryId != null) {
             // If library is selected, deselect it
             selectedLibraryId = null
+        } else if (selectedCollectionId == "__COLLECTIONS__") {
+            // If Collections tab is selected, deselect it
+            selectedCollectionId = null
         } else {
             // If on home screen, show exit confirmation
             showExitConfirmation = true
@@ -270,6 +283,8 @@ fun JellyfinHomeScreen(
             repository.fetchNextUp()
             repository.fetchRecentlyAddedMovies()
             repository.fetchRecentlyReleasedMovies()
+            repository.fetchLibraries()
+            repository.fetchCollections()
             repository.fetchRecentlyAddedShows()
             repository.fetchRecentlyAddedEpisodes()
             repository.fetchLibraries()
@@ -277,10 +292,11 @@ fun JellyfinHomeScreen(
     }
     
     // Fetch unwatched episode counts for recently added shows
-    LaunchedEffect(recentlyAddedShows, apiService) {
-        if (apiService != null && recentlyAddedShows.isNotEmpty()) {
+    // Fetch unwatched episode counts for shows in all libraries
+    LaunchedEffect(recentlyAddedShowsByLibrary, apiService) {
+        if (apiService != null && recentlyAddedShowsByLibrary.isNotEmpty()) {
             val countsMap = unwatchedEpisodeCounts.toMutableMap()
-            recentlyAddedShows.filter { it.Type == "Series" }.forEach { show ->
+            recentlyAddedShowsByLibrary.values.flatten().filter { it.Type == "Series" }.forEach { show ->
                 try {
                     val count = apiService.getUnwatchedEpisodeCount(show.Id)
                     countsMap[show.Id] = count
@@ -375,6 +391,16 @@ fun JellyfinHomeScreen(
             repository?.fetchLibraryItems(libraryId)
         }
     }
+    
+    // Fetch collection items for all collections when Collections tab is selected
+    LaunchedEffect(selectedCollectionId, collections, repository) {
+        // When Collections tab is selected (selectedCollectionId == "__COLLECTIONS__"), fetch items for all collections
+        if (selectedCollectionId == "__COLLECTIONS__" && collections.isNotEmpty()) {
+            collections.forEach { collection ->
+                repository?.fetchCollectionItems(collection.Id)
+            }
+        }
+    }
     val focusRequester = remember { FocusRequester() }
     var highlightedItem by remember { mutableStateOf<JellyfinItem?>(null) }
     var highlightedItemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
@@ -382,9 +408,13 @@ fun JellyfinHomeScreen(
     var originalEpisodeItem by remember { mutableStateOf<JellyfinItem?>(null) }
     
     // Set initial highlighted item to first continue watching item or first recently added movie
-    LaunchedEffect(continueWatchingItems, recentlyAddedMovies) {
+    LaunchedEffect(continueWatchingItems, recentlyAddedMoviesByLibrary) {
         if (highlightedItem == null) {
-            highlightedItem = continueWatchingItems.firstOrNull() ?: recentlyAddedMovies.firstOrNull()
+            // Get first movie from first library as fallback
+            val firstMovie = movieLibraries.firstOrNull()?.let { library ->
+                recentlyAddedMoviesByLibrary[library.Id]?.firstOrNull()
+            }
+            highlightedItem = continueWatchingItems.firstOrNull() ?: firstMovie
         }
     }
     
@@ -432,7 +462,8 @@ fun JellyfinHomeScreen(
             
             // Use Crossfade for smooth fade in/out animation
             // In dark mode, don't show background image - use Material dark background instead
-            if (!darkModeEnabled) {
+            // Hide carousel when Collections tab is selected
+            if (!darkModeEnabled && selectedCollectionId != "__COLLECTIONS__") {
                 Crossfade(
                     targetState = imageUrl,
                     animationSpec = tween(durationMillis = 500),
@@ -459,7 +490,7 @@ fun JellyfinHomeScreen(
                     }
                 }
             } else {
-                // Dark mode: use Material dark background
+                // Dark mode or Collections view: use Material dark background
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -469,7 +500,7 @@ fun JellyfinHomeScreen(
             
             // Dark overlay and scrim - different opacity based on view mode
             // Skip overlay in dark mode since we're using a dark background
-            if (selectedLibraryId == null && !darkModeEnabled) {
+            if (selectedLibraryId == null && selectedCollectionId != "__COLLECTIONS__" && !darkModeEnabled) {
                 // Default view: 20% darkness + gradient scrim
                 Box(
                     modifier = Modifier
@@ -484,7 +515,7 @@ fun JellyfinHomeScreen(
                         .carouselGradient()
                 )
             } else {
-                // Library view: 50% darkness (no gradient scrim)
+                // Library or Collections view: 50% darkness (no gradient scrim)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -620,7 +651,7 @@ fun JellyfinHomeScreen(
                 
                 // Home button - styled like tab row items with underline
                 var homeFocused by remember { mutableStateOf(false) }
-                val homeSelected = selectedLibraryId == null
+                val homeSelected = selectedLibraryId == null && selectedCollectionId == null
                 
                 // Create a mini TabRow for the home button to get the underline indicator
                 TabRow(
@@ -642,6 +673,7 @@ fun JellyfinHomeScreen(
                         },
                         onClick = {
                             selectedLibraryId = null
+                            selectedCollectionId = null
                         },
                         colors = TabDefaults.underlinedIndicatorTabColors(),
                         modifier = Modifier
@@ -672,81 +704,122 @@ fun JellyfinHomeScreen(
                 }
                 
                 // Library buttons with underlined indicator using TV Material3 TabRow
-                val selectedTabIndex = remember(selectedLibraryId, libraries) {
-                    libraries.indexOfFirst { it.Id == selectedLibraryId }.takeIf { it >= 0 } ?: 0
+                // Add a single "Collections" tab if collections are available
+                val allTabs = remember(libraries, collections) {
+                    buildList<Pair<String?, String>> {
+                        // Add all libraries (exclude any library named "Collections" to avoid conflicts)
+                        addAll(libraries.filter { !it.Name.equals("Collections", ignoreCase = true) }.map { null to it.Id })
+                        // Add a single "Collections" tab if collections exist
+                        // Use a unique identifier to avoid conflicts with library names
+                        if (collections.isNotEmpty()) {
+                            add("__COLLECTIONS__" to "__COLLECTIONS__")
+                        }
+                    }
+                }
+                
+                val selectedTabIndex = remember(selectedLibraryId, selectedCollectionId, allTabs) {
+                    val selectedId = selectedLibraryId ?: if (selectedCollectionId == "__COLLECTIONS__") "__COLLECTIONS__" else null
+                    allTabs.indexOfFirst { it.second == selectedId }.takeIf { it >= 0 } ?: 0
                 }
                 
                 var focusedTabIndex by remember { mutableStateOf<Int?>(null) }
                 
-                TabRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    selectedTabIndex = if (selectedLibraryId != null) selectedTabIndex else -1,
-                    separator = { Spacer(modifier = Modifier.width(16.dp)) },
-                    indicator = { tabPositions, doesTabRowHaveFocus ->
-                        if (selectedLibraryId != null && selectedTabIndex >= 0 && selectedTabIndex < tabPositions.size) {
-                            TabRowDefaults.UnderlinedIndicator(
-                                currentTabPosition = tabPositions[selectedTabIndex],
-                                doesTabRowHaveFocus = doesTabRowHaveFocus
-                            )
+                if (allTabs.isNotEmpty()) {
+                    TabRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        selectedTabIndex = if (selectedLibraryId != null || selectedCollectionId == "__COLLECTIONS__") selectedTabIndex else -1,
+                        separator = { Spacer(modifier = Modifier.width(16.dp)) },
+                        indicator = { tabPositions, doesTabRowHaveFocus ->
+                            if ((selectedLibraryId != null || selectedCollectionId == "__COLLECTIONS__") && selectedTabIndex >= 0 && selectedTabIndex < tabPositions.size) {
+                                TabRowDefaults.UnderlinedIndicator(
+                                    currentTabPosition = tabPositions[selectedTabIndex],
+                                    doesTabRowHaveFocus = doesTabRowHaveFocus
+                                )
+                            }
                         }
-                    }
-                ) {
-                    libraries.forEachIndexed { index, library ->
-                        var isFocused by remember { mutableStateOf(false) }
-                        
-                        Tab(
-                            selected = selectedLibraryId == library.Id,
-                            onFocus = {
-                                // Do nothing on focus - only load on click
-                            },
-                            onClick = {
-                                // Only load library on Enter/OK press, not on focus
-                                if (selectedLibraryId == library.Id) {
-                                    selectedLibraryId = null // Deselect if already selected
-                                } else {
-                                    selectedLibraryId = library.Id
-                                }
-                            },
-                            colors = TabDefaults.underlinedIndicatorTabColors(),
-                            modifier = Modifier
-                                .onFocusChanged { focusState ->
-                                    isFocused = focusState.isFocused || focusState.hasFocus
-                                    if (focusState.isFocused || focusState.hasFocus) {
-                                        focusedTabIndex = index
+                    ) {
+                        allTabs.forEachIndexed { index, (tabName, itemId) ->
+                            var isFocused by remember { mutableStateOf(false) }
+                            
+                            val isCollectionsTab = tabName == "__COLLECTIONS__"
+                            val isSelected = if (isCollectionsTab) {
+                                selectedCollectionId == "__COLLECTIONS__"
+                            } else {
+                                selectedLibraryId == itemId
+                            }
+                            val itemName = if (isCollectionsTab) {
+                                "Collections"
+                            } else {
+                                libraries.find { it.Id == itemId }?.Name ?: ""
+                            }
+                            
+                            Tab(
+                                selected = isSelected,
+                                onFocus = {
+                                    // Do nothing on focus - only load on click
+                                },
+                                onClick = {
+                                    // Only load library/collections on Enter/OK press, not on focus
+                                    if (isSelected) {
+                                        // Deselect if already selected
+                                        if (isCollectionsTab) {
+                                            selectedCollectionId = null
+                                        } else {
+                                            selectedLibraryId = null
+                                        }
                                     } else {
-                                        if (focusedTabIndex == index) {
-                                            focusedTabIndex = null
+                                        // Select the new tab
+                                        if (isCollectionsTab) {
+                                            // When Collections tab is clicked, set the special Collections identifier
+                                            selectedCollectionId = "__COLLECTIONS__"
+                                            selectedLibraryId = null
+                                        } else {
+                                            selectedLibraryId = itemId
+                                            selectedCollectionId = null
                                         }
                                     }
-                                }
-                                .then(
-                                    if (isFocused) {
-                                        Modifier.background(Color.White, RoundedCornerShape(4.dp))
-                                    } else {
-                                        Modifier
+                                },
+                                colors = TabDefaults.underlinedIndicatorTabColors(),
+                                modifier = Modifier
+                                    .onFocusChanged { focusState ->
+                                        isFocused = focusState.isFocused || focusState.hasFocus
+                                        if (focusState.isFocused || focusState.hasFocus) {
+                                            focusedTabIndex = index
+                                        } else {
+                                            if (focusedTabIndex == index) {
+                                                focusedTabIndex = null
+                                            }
+                                        }
                                     }
+                                    .then(
+                                        if (isFocused) {
+                                            Modifier.background(Color.White, RoundedCornerShape(4.dp))
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
+                            ) {
+                                // Make 30% bigger, then 10% smaller (1.3 * 0.9 = 1.17x normal size)
+                                val scaledFontSize = MaterialTheme.typography.labelLarge.fontSize * 1.17f
+                                // Add horizontal padding (20% increase from default 16dp = 19.2dp)
+                                val horizontalPadding = 16.dp * 1.2f
+                                Text(
+                                    text = itemName,
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = scaledFontSize
+                                    ),
+                                    color = if (isFocused) Color.Black else Color.White,
+                                    modifier = Modifier.padding(horizontal = horizontalPadding, vertical = 6.dp)
                                 )
-                        ) {
-                            // Make 30% bigger, then 10% smaller (1.3 * 0.9 = 1.17x normal size)
-                            val scaledFontSize = MaterialTheme.typography.labelLarge.fontSize * 1.17f
-                            // Add horizontal padding (20% increase from default 16dp = 19.2dp)
-                            val horizontalPadding = 16.dp * 1.2f
-                            Text(
-                                text = library.Name,
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = scaledFontSize
-                                ),
-                                color = if (isFocused) Color.Black else Color.White,
-                                modifier = Modifier.padding(horizontal = horizontalPadding, vertical = 6.dp)
-                            )
+                            }
                         }
                     }
                 }
                 }
                 
                 // Sort button - on the far right, same vertical position as settings button
-                // Only shown when a library is selected
+                // Only shown when a library is selected (not for collections view)
                 if (selectedLibraryId != null) {
                     IconButton(
                         onClick = {
@@ -772,13 +845,23 @@ fun JellyfinHomeScreen(
         }
         
         // Item details section - below settings button (only show when not viewing a library)
-        if (selectedLibraryId == null) {
+        // Don't show highlighted item panel when viewing collections
+        if (selectedLibraryId == null && selectedCollectionId != "__COLLECTIONS__") {
             highlightedItem?.let { item ->
                 val details = highlightedItemDetails ?: item
             val runtimeText = formatRuntime(details.RunTimeTicks)
-            val yearText = details.ProductionYear?.toString() ?: ""
+            
+            // For episodes from Continue Watching, Next Up, or Recently Added Episodes, show air date instead of ProductionYear
+            val yearText = if (originalEpisodeItem != null && originalEpisodeItem?.Type == "Episode") {
+                // Show episode air date formatted like on season info screen
+                formatDate(originalEpisodeItem?.PremiereDate ?: originalEpisodeItem?.DateCreated)
+            } else {
+                // For movies and series, show ProductionYear
+                details.ProductionYear?.toString() ?: ""
+            }
+            
             val genreText = details.Genres?.take(3)?.joinToString(", ") ?: ""
-            // Only show episode info if this is an episode highlight (from Recently Added Episodes row)
+            // Only show episode info if this is an episode highlight (from Continue Watching, Next Up, or Recently Added Episodes row)
             // For Series items in Recently Added Shows row, never show episode info
             val isEpisodeHighlight = originalEpisodeItem != null && item.Type == "Series"
             val isSeriesItem = item.Type == "Series" && originalEpisodeItem == null
@@ -940,8 +1023,8 @@ fun JellyfinHomeScreen(
                 )
         ) {
             // Spacer to push content down, allowing carousel to show behind top 10%
-            // Only show spacer when not viewing a library (on home screen)
-            if (selectedLibraryId == null) {
+            // Only show spacer when not viewing a library or collections (on home screen)
+            if (selectedLibraryId == null && selectedCollectionId != "__COLLECTIONS__") {
                 Spacer(modifier = Modifier.weight(0.4f))
             }
             
@@ -1214,8 +1297,299 @@ fun JellyfinHomeScreen(
                         }
                     }
                 }
-            } else {
-                    // Default rows when no library is selected
+            }
+            
+            // Show collections in grid (like libraries) when Collections tab is selected
+            if (selectedCollectionId == "__COLLECTIONS__") {
+                // Display all collections as individual grid items
+                // Container for collections grid - positioned below tab row
+                Spacer(modifier = Modifier.height(86.dp)) // Add space below tab row (reduced by 40% from 144: 144 * 0.6 = 86)
+                
+                val context = LocalContext.current
+                val lazyListState = rememberLazyListState()
+                
+                // Get all collection items combined
+                val allCollectionItems = remember(collections, collectionItems) {
+                    collections.flatMap { collection ->
+                        collectionItems[collection.Id] ?: emptyList()
+                    }
+                }
+                
+                // Sort items based on selected sort type, then filter if needed
+                val items = remember(allCollectionItems, sortType, hideShowsWithZeroEpisodes) {
+                    val sortedItems = when (sortType) {
+                        SortType.Alphabetically -> allCollectionItems.sortedBy { it.Name.lowercase() }
+                        SortType.DateAdded -> {
+                            // Sort by DateCreated (most recent first)
+                            allCollectionItems.sortedByDescending { 
+                                it.DateCreated?.let { dateStr ->
+                                    try {
+                                        val formats = listOf(
+                                            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US),
+                                            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US),
+                                            SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                                        )
+                                        formats.firstNotNullOfOrNull { format ->
+                                            try {
+                                                format.parse(dateStr)?.time
+                                            } catch (e: Exception) {
+                                                null
+                                            }
+                                        } ?: Long.MIN_VALUE
+                                    } catch (e: Exception) {
+                                        Long.MIN_VALUE
+                                    }
+                                } ?: Long.MIN_VALUE
+                            }
+                        }
+                        SortType.DateReleased -> {
+                            // Sort by PremiereDate (most recent first)
+                            allCollectionItems.sortedByDescending { 
+                                it.PremiereDate?.let { dateStr ->
+                                    try {
+                                        val formats = listOf(
+                                            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US),
+                                            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US),
+                                            SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                                        )
+                                        formats.firstNotNullOfOrNull { format ->
+                                            try {
+                                                format.parse(dateStr)?.time
+                                            } catch (e: Exception) {
+                                                null
+                                            }
+                                        } ?: Long.MIN_VALUE
+                                    } catch (e: Exception) {
+                                        Long.MIN_VALUE
+                                    }
+                                } ?: Long.MIN_VALUE
+                            }
+                        }
+                    }
+                    
+                    // Filter shows with zero episodes if setting is enabled
+                    if (hideShowsWithZeroEpisodes) {
+                        sortedItems.filter { item ->
+                            // Keep non-Series items, or Series items with episodes (ChildCount > 0)
+                            item.Type != "Series" || (item.ChildCount != null && item.ChildCount!! > 0)
+                        }
+                    } else {
+                        sortedItems
+                    }
+                }
+                
+                val imageLoader = context.imageLoader
+                
+                // Preload images for items that are about to come into view
+                LaunchedEffect(items, apiService, selectedCollectionId, preloadLibraryImages, cacheLibraryImages, reducePosterResolution) {
+                    if (preloadLibraryImages && apiService != null && items.isNotEmpty()) {
+                        // Preload images for the first 6 rows (36 items) - more aggressive preloading
+                        val preloadCount = minOf(36, items.size) // First 6 rows (6 columns * 6 rows)
+                        
+                        items.take(preloadCount).forEach { item ->
+                            // Use reduced resolution (600x900) or 4K resolution (3840x5760) based on setting
+                            val imageUrl = if (reducePosterResolution) {
+                                apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 600, maxHeight = 900, quality = 90)
+                            } else {
+                                apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90)
+                            }
+                            if (imageUrl.isNotEmpty()) {
+                                try {
+                                    val request = ImageRequest.Builder(context)
+                                        .data(imageUrl)
+                                        .headers(apiService.getImageRequestHeaders())
+                                        .size(300) // Hint to Coil about target size
+                                        .memoryCachePolicy(if (cacheLibraryImages) CachePolicy.ENABLED else CachePolicy.DISABLED)
+                                        .diskCachePolicy(if (cacheLibraryImages) CachePolicy.ENABLED else CachePolicy.DISABLED)
+                                        .build()
+                                    imageLoader.enqueue(request)
+                                } catch (e: Exception) {
+                                    // Silently fail preloading
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Preload images as user scrolls - more aggressive (5 rows ahead)
+                LaunchedEffect(lazyListState.firstVisibleItemIndex, items, apiService, selectedCollectionId, preloadLibraryImages, cacheLibraryImages, reducePosterResolution) {
+                    if (preloadLibraryImages && apiService != null && items.isNotEmpty()) {
+                        val firstVisible = lazyListState.firstVisibleItemIndex
+                        val columns = 6
+                        val preloadStart = (firstVisible + 5) * columns // Start preloading 5 rows ahead
+                        val preloadEnd = minOf(preloadStart + (5 * columns), items.size) // Preload 5 rows
+                        
+                        if (preloadStart < items.size && preloadEnd > preloadStart) {
+                            items.subList(preloadStart, preloadEnd).forEach { item ->
+                                // Use reduced resolution (600x900) or 4K resolution (3840x5760) based on setting
+                                val imageUrl = if (reducePosterResolution) {
+                                    apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 600, maxHeight = 900, quality = 90)
+                                } else {
+                                    apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90)
+                                }
+                                if (imageUrl.isNotEmpty()) {
+                                    try {
+                                        val request = ImageRequest.Builder(context)
+                                            .data(imageUrl)
+                                            .headers(apiService.getImageRequestHeaders())
+                                            .size(300) // Hint to Coil about target size
+                                            .memoryCachePolicy(if (cacheLibraryImages) CachePolicy.ENABLED else CachePolicy.DISABLED)
+                                            .diskCachePolicy(if (cacheLibraryImages) CachePolicy.ENABLED else CachePolicy.DISABLED)
+                                            .build()
+                                        imageLoader.enqueue(request)
+                                    } catch (e: Exception) {
+                                        // Silently fail preloading
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Show loading indicator while items are being fetched
+                if (items.isEmpty() && collections.isNotEmpty() && collections.all { collectionItems[it.Id].isNullOrEmpty() }) {
+                    androidx.tv.material3.Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                        colors = androidx.tv.material3.SurfaceDefaults.colors(
+                            containerColor = Color.Transparent
+                        )
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 54.dp, top = 24.dp, end = 38.dp)
+                                .height(400.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Loading...",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                    }
+                } else {
+                    androidx.tv.material3.Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .then(
+                                if (debugOutlinesEnabled) {
+                                    Modifier.border(3.dp, Color.Green)
+                                } else {
+                                    Modifier
+                                }
+                            ),
+                        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                        colors = androidx.tv.material3.SurfaceDefaults.colors(
+                            containerColor = Color.Transparent
+                        )
+                    ) {
+                        LazyColumn(
+                            state = lazyListState,
+                            contentPadding = PaddingValues(bottom = 20.dp * 1.15f, top = 24.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 54.dp, end = 38.dp)
+                                .then(
+                                    if (debugOutlinesEnabled) {
+                                        Modifier.border(3.dp, Color.Blue)
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                        ) {
+                            // Grid layout with 6 columns - integrate directly into LazyColumn
+                            val columns = 6
+                            items(
+                                items = items.chunked(columns),
+                                key = { rowItems -> rowItems.firstOrNull()?.Id ?: "" },
+                                contentType = { "collection_row" }
+                            ) { rowItems ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    // Add spacer at the start for equal spacing
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    
+                                    // Cards with spacing between them
+                                    rowItems.forEachIndexed { index, item ->
+                                        if (index > 0) {
+                                            Spacer(modifier = Modifier.width(20.dp))
+                                        }
+                                        Column(
+                                            modifier = Modifier.width(105.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            JellyfinHorizontalCard(
+                                                item = item,
+                                                apiService = apiService,
+                                                onClick = {
+                                                    // Collection item click - pass fromLibrary flag
+                                                    val intent = when (item.Type) {
+                                                        "Series" -> {
+                                                            com.flex.elefin.SeriesDetailsActivity.createIntent(
+                                                                context = context,
+                                                                item = item,
+                                                                fromLibrary = true
+                                                            )
+                                                        }
+                                                        else -> {
+                                                            // Movies and other types
+                                                            com.flex.elefin.MovieDetailsActivity.createIntent(
+                                                                context = context,
+                                                                item = item,
+                                                                fromLibrary = true
+                                                            )
+                                                        }
+                                                    }
+                                                    context.startActivity(intent)
+                                                },
+                                                onFocusChanged = { },
+                                                enableCaching = cacheLibraryImages,
+                                                reducePosterResolution = reducePosterResolution,
+                                                unwatchedEpisodeCount = if (item.Type == "Series") unwatchedEpisodeCounts[item.Id] else null
+                                            )
+                                            // Item name below the card
+                                            Text(
+                                                text = item.Name ?: "",
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.85f
+                                                ),
+                                                color = Color.White,
+                                                maxLines = 2,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                                modifier = Modifier
+                                                    .padding(top = 8.dp)
+                                                    .fillMaxWidth()
+                                            )
+                                        }
+                                    }
+                                    
+                                    // Fill remaining space if row has fewer than columns items
+                                    if (rowItems.size < columns) {
+                                        repeat(columns - rowItems.size) {
+                                            Spacer(modifier = Modifier.width(105.dp + 20.dp)) // Width of card + spacing
+                                        }
+                                    }
+                                    
+                                    // Add spacer at the end for equal spacing
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (selectedLibraryId == null && selectedCollectionId != "__COLLECTIONS__") {
+                    // Default rows when no library or collection is selected
                     LazyColumn(
                         contentPadding = PaddingValues(bottom = 20.dp * 1.15f), // 15% increase in bottom padding
                         modifier = Modifier
@@ -1359,39 +1733,51 @@ fun JellyfinHomeScreen(
                                 }
                             }
                             
-                            // Recently Added Movies row
-                            Text(
-                                text = "Recently Added Movies",
-                                style = MaterialTheme.typography.headlineMedium.copy(
-                                    fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
-                                ),
-                                modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp) // Increased by 15%: 26.4 * 1.15 = 30.36.dp
-                            )
-                            
-                            LazyRow(
-                                contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)), // Bottom increased by another 20% (15.87 * 1.05 * 1.05 * 1.1 * 1.2 = 19.24 * 1.2 = 23.09)
-                                horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                modifier = if (debugOutlinesEnabled) {
-                                    Modifier.border(2.dp, Color.Magenta)
-                                } else {
-                                    Modifier
-                                }
-                            ) {
-                                items(recentlyAddedMovies) { item ->
-                                    JellyfinHorizontalCard(
-                                        item = item,
-                                        apiService = apiService,
-                                        onClick = {
-                                            onItemClick(item, 0L)
-                                        },
-                                        onFocusChanged = { isFocused ->
-                                            if (isFocused) {
-                                                highlightedItem = item
-                                            }
-                                        },
-                                        enableCaching = cacheLibraryImages,
-                                        reducePosterResolution = reducePosterResolution
+                            // Recently Added Movies rows - one per movie library
+                            movieLibraries.forEachIndexed { index, library ->
+                                val libraryMovies = recentlyAddedMoviesByLibrary[library.Id] ?: emptyList()
+                                if (libraryMovies.isNotEmpty()) {
+                                    // Row title: "Recently Added Movies" for first library, "Recently Added <libraryname>" for others
+                                    val rowTitle = if (index == 0) {
+                                        "Recently Added Movies"
+                                    } else {
+                                        "Recently Added ${library.Name}"
+                                    }
+                                    
+                                    Text(
+                                        text = rowTitle,
+                                        style = MaterialTheme.typography.headlineMedium.copy(
+                                            fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+                                        ),
+                                        modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp) // Increased by 15%: 26.4 * 1.15 = 30.36.dp
                                     )
+                                    
+                                    LazyRow(
+                                        contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)), // Bottom increased by another 20% (15.87 * 1.05 * 1.05 * 1.1 * 1.2 = 19.24 * 1.2 = 23.09)
+                                        horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                        modifier = if (debugOutlinesEnabled) {
+                                            Modifier.border(2.dp, Color.Magenta)
+                                        } else {
+                                            Modifier
+                                        }
+                                    ) {
+                                        items(libraryMovies) { item ->
+                                            JellyfinHorizontalCard(
+                                                item = item,
+                                                apiService = apiService,
+                                                onClick = {
+                                                    onItemClick(item, 0L)
+                                                },
+                                                onFocusChanged = { isFocused ->
+                                                    if (isFocused) {
+                                                        highlightedItem = item
+                                                    }
+                                                },
+                                                enableCaching = cacheLibraryImages,
+                                                reducePosterResolution = reducePosterResolution
+                                            )
+                                        }
+                                    }
                                 }
                             }
                             
@@ -1431,100 +1817,136 @@ fun JellyfinHomeScreen(
                                 }
                             }
                             
-                            // Recently Added Shows row
-                            Text(
-                                text = "Recently Added Shows",
-                                style = MaterialTheme.typography.headlineMedium.copy(
-                                    fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
-                                ),
-                                modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp) // Increased by 15%: 26.4 * 1.15 = 30.36.dp
-                            )
-                            
-                            LazyRow(
-                                contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)), // Bottom increased by another 20% (15.87 * 1.05 * 1.05 * 1.1 * 1.2 = 19.24 * 1.2 = 23.09)
-                                horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                modifier = if (debugOutlinesEnabled) {
-                                    Modifier.border(2.dp, Color.Magenta)
-                                } else {
-                                    Modifier
-                                }
-                            ) {
-                                items(recentlyAddedShows) { item ->
-                                    JellyfinHorizontalCard(
-                                        item = item,
-                                        apiService = apiService,
-                                        onClick = {
-                                            onItemClick(item, 0L)
-                                        },
-                                        onFocusChanged = { isFocused ->
-                                            if (isFocused) {
-                                                highlightedItem = item
-                                            }
-                                        },
-                                        enableCaching = cacheLibraryImages,
-                                        reducePosterResolution = reducePosterResolution,
-                                        unwatchedEpisodeCount = if (item.Type == "Series") unwatchedEpisodeCounts[item.Id] else null
+                            // Recently Added Shows rows - one per TV show library
+                            tvShowLibraries.forEachIndexed { libraryIndex, library ->
+                                val libraryShows = recentlyAddedShowsByLibrary[library.Id]?.let { shows ->
+                                    // Filter shows with zero episodes if setting is enabled
+                                    if (hideShowsWithZeroEpisodes) {
+                                        shows.filter { item ->
+                                            // Keep non-Series items, or Series items with episodes (ChildCount > 0)
+                                            item.Type != "Series" || (item.ChildCount != null && item.ChildCount!! > 0)
+                                        }
+                                    } else {
+                                        shows
+                                    }
+                                } ?: emptyList()
+                                
+                                if (libraryShows.isNotEmpty()) {
+                                    // Row title: "Recently Added Shows" for first library, "Recently Added Shows in <libraryname>" for others
+                                    val rowTitle = if (libraryIndex == 0) {
+                                        "Recently Added Shows"
+                                    } else {
+                                        "Recently Added Shows in ${library.Name}"
+                                    }
+                                    
+                                    Text(
+                                        text = rowTitle,
+                                        style = MaterialTheme.typography.headlineMedium.copy(
+                                            fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+                                        ),
+                                        modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp) // Increased by 15%: 26.4 * 1.15 = 30.36.dp
                                     )
+                                    
+                                    LazyRow(
+                                        contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)), // Bottom increased by another 20% (15.87 * 1.05 * 1.05 * 1.1 * 1.2 = 19.24 * 1.2 = 23.09)
+                                        horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                        modifier = if (debugOutlinesEnabled) {
+                                            Modifier.border(2.dp, Color.Magenta)
+                                        } else {
+                                            Modifier
+                                        }
+                                    ) {
+                                        items(libraryShows) { item ->
+                                            JellyfinHorizontalCard(
+                                                item = item,
+                                                apiService = apiService,
+                                                onClick = {
+                                                    onItemClick(item, 0L)
+                                                },
+                                                onFocusChanged = { isFocused ->
+                                                    if (isFocused) {
+                                                        highlightedItem = item
+                                                    }
+                                                },
+                                                enableCaching = cacheLibraryImages,
+                                                reducePosterResolution = reducePosterResolution,
+                                                unwatchedEpisodeCount = if (item.Type == "Series") unwatchedEpisodeCounts[item.Id] else null
+                                            )
+                                        }
+                                    }
                                 }
                             }
                             
-                            // Recently Added Episodes row
-                            Text(
-                                text = "Recently Added Episodes",
-                                style = MaterialTheme.typography.headlineMedium.copy(
-                                    fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
-                                ),
-                                modifier = Modifier.padding(bottom = 12.dp, top = 36.96.dp) // Increased by 40%: 26.4 * 1.4 = 36.96.dp
-                            )
-                            
-                            LazyRow(
-                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.4f * 1.3f)), // Bottom increased by another 30%: (15.87 * 1.4553 * 1.4) * 1.3 = 42.024.dp
-                                horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                modifier = if (debugOutlinesEnabled) {
-                                    Modifier.border(2.dp, Color.Magenta)
-                                } else {
-                                    Modifier
-                                }
-                            ) {
-                                items(recentlyAddedEpisodes) { item ->
-                                    // For episodes, use series info for highlighting; for movies, use item itself
-                                    JellyfinHorizontalCard(
-                                        item = item,
-                                        apiService = apiService,
-                                        onClick = {
-                                            // Convert PositionTicks to milliseconds (10,000,000 ticks = 1 second)
-                                            val resumePositionMs = item.UserData?.PositionTicks?.let { 
-                                                it / 10_000 
-                                            } ?: 0L
-                                            onItemClick(item, resumePositionMs)
-                                        },
-                                        onFocusChanged = { isFocused ->
-                                            if (isFocused) {
-                                                // For episodes, highlight the series instead of the episode
-                                                if (item.Type == "Episode" && item.SeriesId != null) {
-                                                    // Store the original episode item to show its name
-                                                    originalEpisodeItem = item
-                                                    // Fetch series details for highlighting
-                                                    scope.launch {
-                                                        val seriesDetails = apiService?.getItemDetails(item.SeriesId)
-                                                        if (seriesDetails != null) {
-                                                            highlightedItem = seriesDetails
+                            // Recently Added Episodes rows - one per TV show library
+                            tvShowLibraries.forEachIndexed { libraryIndex, library ->
+                                val libraryEpisodes = recentlyAddedEpisodesByLibrary[library.Id] ?: emptyList()
+                                
+                                if (libraryEpisodes.isNotEmpty()) {
+                                    // Row title: "Recently Added Episodes" for first library, "Recently Added Episodes in <libraryname>" for others
+                                    val rowTitle = if (libraryIndex == 0) {
+                                        "Recently Added Episodes"
+                                    } else {
+                                        "Recently Added Episodes in ${library.Name}"
+                                    }
+                                    
+                                    Text(
+                                        text = rowTitle,
+                                        style = MaterialTheme.typography.headlineMedium.copy(
+                                            fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+                                        ),
+                                        modifier = Modifier.padding(bottom = 12.dp, top = 36.96.dp) // Increased by 40%: 26.4 * 1.4 = 36.96.dp
+                                    )
+                                    
+                                    LazyRow(
+                                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.4f * 1.3f)), // Bottom increased by another 30%: (15.87 * 1.4553 * 1.4) * 1.3 = 42.024.dp
+                                        horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                        modifier = if (debugOutlinesEnabled) {
+                                            Modifier.border(2.dp, Color.Magenta)
+                                        } else {
+                                            Modifier
+                                        }
+                                    ) {
+                                        items(libraryEpisodes) { item ->
+                                            // For episodes, use series info for highlighting; for movies, use item itself
+                                            JellyfinHorizontalCard(
+                                                item = item,
+                                                apiService = apiService,
+                                                onClick = {
+                                                    // Convert PositionTicks to milliseconds (10,000,000 ticks = 1 second)
+                                                    val resumePositionMs = item.UserData?.PositionTicks?.let { 
+                                                        it / 10_000 
+                                                    } ?: 0L
+                                                    onItemClick(item, resumePositionMs)
+                                                },
+                                                onFocusChanged = { isFocused ->
+                                                    if (isFocused) {
+                                                        // For episodes, highlight the series instead of the episode
+                                                        if (item.Type == "Episode" && item.SeriesId != null) {
+                                                            // Store the original episode item to show its name
+                                                            originalEpisodeItem = item
+                                                            // Fetch series details for highlighting
+                                                            scope.launch {
+                                                                val seriesDetails = apiService?.getItemDetails(item.SeriesId)
+                                                                if (seriesDetails != null) {
+                                                                    highlightedItem = seriesDetails
+                                                                } else {
+                                                                    highlightedItem = item
+                                                                    originalEpisodeItem = null
+                                                                }
+                                                            }
                                                         } else {
                                                             highlightedItem = item
                                                             originalEpisodeItem = null
                                                         }
                                                     }
-                                                } else {
-                                                    highlightedItem = item
-                                                    originalEpisodeItem = null
-                                                }
-                                            }
-                                        },
-                                        enableCaching = cacheLibraryImages,
-                                        reducePosterResolution = reducePosterResolution,
-                                        // For episodes in Recently Added Episodes, use series poster
-                                        useSeriesPosterForEpisodes = true
-                                    )
+                                                },
+                                                enableCaching = cacheLibraryImages,
+                                                reducePosterResolution = reducePosterResolution,
+                                                // For episodes in Recently Added Episodes, use series poster
+                                                useSeriesPosterForEpisodes = true
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

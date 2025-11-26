@@ -25,17 +25,20 @@ class JellyfinVideoPlayerActivity : ComponentActivity() {
         private const val EXTRA_ITEM_ID = "item_id"
         private const val EXTRA_RESUME_POSITION_MS = "resume_position_ms"
         private const val EXTRA_SUBTITLE_STREAM_INDEX = "subtitle_stream_index"
+        private const val EXTRA_AUDIO_STREAM_INDEX = "audio_stream_index"
 
         fun createIntent(
             context: Context,
             itemId: String,
             resumePositionMs: Long = 0L,
-            subtitleStreamIndex: Int? = null
+            subtitleStreamIndex: Int? = null,
+            audioStreamIndex: Int? = null
         ): Intent {
             return Intent(context, JellyfinVideoPlayerActivity::class.java).apply {
                 putExtra(EXTRA_ITEM_ID, itemId)
                 putExtra(EXTRA_RESUME_POSITION_MS, resumePositionMs)
                 subtitleStreamIndex?.let { putExtra(EXTRA_SUBTITLE_STREAM_INDEX, it) }
+                audioStreamIndex?.let { putExtra(EXTRA_AUDIO_STREAM_INDEX, it) }
             }
         }
     }
@@ -91,6 +94,9 @@ class JellyfinVideoPlayerActivity : ComponentActivity() {
         val resumePositionMs = intent.getLongExtra(EXTRA_RESUME_POSITION_MS, 0L)
         val subtitleStreamIndex = if (intent.hasExtra(EXTRA_SUBTITLE_STREAM_INDEX)) {
             intent.getIntExtra(EXTRA_SUBTITLE_STREAM_INDEX, -1).takeIf { it >= 0 }
+        } else null
+        val audioStreamIndex = if (intent.hasExtra(EXTRA_AUDIO_STREAM_INDEX)) {
+            intent.getIntExtra(EXTRA_AUDIO_STREAM_INDEX, -1).takeIf { it >= 0 }
         } else null
 
         // Get Jellyfin configuration and API service
@@ -167,7 +173,8 @@ class JellyfinVideoPlayerActivity : ComponentActivity() {
                                 finish()
                             },
                             resumePositionMs = resumePositionMs,
-                            subtitleStreamIndex = subtitleStreamIndex
+                            subtitleStreamIndex = subtitleStreamIndex,
+                            audioStreamIndex = audioStreamIndex
                         )
                 }
             }

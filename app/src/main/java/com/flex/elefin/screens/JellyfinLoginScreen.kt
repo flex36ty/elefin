@@ -31,6 +31,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -299,61 +300,78 @@ private fun CredentialsLoginContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
+            // Outer box for border - matching IP address field style
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(44.dp)
                     .background(
                         color = if (usernameFocused)
-                            MaterialTheme.colorScheme.primaryContainer
+                            Color(0xFFDDDDDD) // Light background when focused (input_default_highlight_background)
                         else
-                            MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(8.dp)
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f), // Visible darker background when not focused
+                        shape = RoundedCornerShape(3.dp)
                     )
                     .border(
-                        width = if (usernameFocused) 2.dp else 1.dp,
+                        width = if (usernameFocused) 3.dp else 2.dp, // Thicker border when focused for better visibility
                         color = if (usernameFocused)
-                            MaterialTheme.colorScheme.primary
+                            Color(0xFF9C27B0) // Purple border when focused for better visibility
                         else
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        shape = RoundedCornerShape(8.dp)
+                            Color(0xB3747474), // input_default_stroke color when not focused
+                        shape = RoundedCornerShape(3.dp)
                     )
-                    .focusRequester(usernameFocusRequester)
-                    .focusable(enabled = usernameEditable)
-                    .onFocusChanged { usernameFocused = it.isFocused }
-                    .padding(horizontal = 12.dp),
-                contentAlignment = Alignment.CenterStart
             ) {
-                BasicTextField(
-                    value = username,
-                    onValueChange = onUsernameChange,
-                    textStyle = TextStyle(
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = MaterialTheme.typography.bodyMedium.fontSize
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onKeyEvent { keyEvent ->
-                            if (keyEvent.type == KeyEventType.KeyUp && keyEvent.key == Key.Enter) {
-                                // Show keyboard when Enter is pressed
-                                keyboardController?.show()
-                                true
-                            } else if (keyEvent.key == Key.Tab) {
-                                focusManager.moveFocus(FocusDirection.Down)
-                                true
-                            } else {
-                                false
+            // Inner box for content with focus
+            BasicTextField(
+                value = username,
+                onValueChange = onUsernameChange,
+                textStyle = TextStyle(
+                    color = if (usernameFocused)
+                        Color(0xFF444444) // Dark text when focused (input_default_highlight_text)
+                    else
+                        Color(0xFFDDDDDD), // Light text when not focused (input_default_normal_text)
+                    fontSize = MaterialTheme.typography.bodyMedium.fontSize
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxSize()
+                    .focusRequester(usernameFocusRequester)
+                    .focusable() // Always focusable for navigation, even if not editable
+                    .onFocusChanged { usernameFocused = it.isFocused }
+                    .padding(8.dp) // 8dp padding all around (matching Jellyfin style)
+                    .onKeyEvent { keyEvent ->
+                        if (keyEvent.type == KeyEventType.KeyUp) {
+                            when (keyEvent.key) {
+                                Key.Enter -> {
+                                    if (usernameEditable) {
+                                        // Show keyboard when Enter is pressed (only if editable)
+                                        keyboardController?.show()
+                                    } else {
+                                        // If not editable, move to password field
+                                        passwordFocusRequester.requestFocus()
+                                    }
+                                    true
+                                }
+                                Key.DirectionDown -> {
+                                    // Move to password field
+                                    passwordFocusRequester.requestFocus()
+                                    true
+                                }
+                                else -> false
                             }
-                        },
-                    enabled = !isAuthenticating && usernameEditable,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Text,
-                        imeAction = ImeAction.Next
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onNext = { focusManager.moveFocus(FocusDirection.Down) }
-                    )
+                        } else {
+                            false
+                        }
+                    },
+                enabled = !isAuthenticating && usernameEditable,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { passwordFocusRequester.requestFocus() }
                 )
+            )
             }
         }
 
@@ -365,72 +383,92 @@ private fun CredentialsLoginContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
+            // Outer box for border - matching IP address field style
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(44.dp)
                     .background(
                         color = if (passwordFocused)
-                            MaterialTheme.colorScheme.primaryContainer
+                            Color(0xFFDDDDDD) // Light background when focused (input_default_highlight_background)
                         else
-                            MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(8.dp)
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f), // Visible darker background when not focused
+                        shape = RoundedCornerShape(3.dp)
                     )
                     .border(
-                        width = if (passwordFocused) 2.dp else 1.dp,
+                        width = if (passwordFocused) 3.dp else 2.dp, // Thicker border when focused for better visibility
                         color = if (passwordFocused)
-                            MaterialTheme.colorScheme.primary
+                            Color(0xFF9C27B0) // Purple border when focused for better visibility
                         else
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        shape = RoundedCornerShape(8.dp)
+                            Color(0xB3747474), // input_default_stroke color when not focused
+                        shape = RoundedCornerShape(3.dp)
                     )
-                    .focusRequester(passwordFocusRequester)
-                    .focusable()
-                    .onFocusChanged { passwordFocused = it.isFocused }
-                    .padding(horizontal = 12.dp),
-                contentAlignment = Alignment.CenterStart
             ) {
-                BasicTextField(
-                    value = password,
-                    onValueChange = onPasswordChange,
-                    textStyle = TextStyle(
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = MaterialTheme.typography.bodyMedium.fontSize
-                    ),
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onKeyEvent { keyEvent ->
-                            if (keyEvent.type == KeyEventType.KeyUp && keyEvent.key == Key.Enter) {
-                                // Show keyboard when Enter is pressed
-                                keyboardController?.show()
-                                true
-                            } else if (keyEvent.key == Key.Tab) {
-                                if (username.isNotBlank() && password.isNotBlank()) {
-                                    loginButtonFocusRequester.requestFocus()
-                                } else {
-                                    focusManager.moveFocus(FocusDirection.Down)
+            // Inner box for content with focus
+            BasicTextField(
+                value = password,
+                onValueChange = onPasswordChange,
+                textStyle = TextStyle(
+                    color = if (passwordFocused)
+                        Color(0xFF444444) // Dark text when focused (input_default_highlight_text)
+                    else
+                        Color(0xFFDDDDDD), // Light text when not focused (input_default_normal_text)
+                    fontSize = MaterialTheme.typography.bodyMedium.fontSize
+                ),
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxSize()
+                    .focusRequester(passwordFocusRequester)
+                    .focusable() // Always focusable
+                    .onFocusChanged { passwordFocused = it.isFocused }
+                    .padding(8.dp) // 8dp padding all around (matching Jellyfin style)
+                    .onKeyEvent { keyEvent ->
+                        if (keyEvent.type == KeyEventType.KeyUp) {
+                            when (keyEvent.key) {
+                                Key.Enter -> {
+                                    if (!isAuthenticating) {
+                                        // Show keyboard when Enter is pressed
+                                        keyboardController?.show()
+                                    }
+                                    true
                                 }
-                                true
-                            } else {
-                                false
+                                Key.DirectionDown -> {
+                                    // Move to login button
+                                    loginButtonFocusRequester.requestFocus()
+                                    true
+                                }
+                                Key.DirectionUp -> {
+                                    // Move back to username field (if editable) or skip to login button
+                                    if (usernameEditable) {
+                                        usernameFocusRequester.requestFocus()
+                                    } else {
+                                        // If username not editable, move directly to login button
+                                        loginButtonFocusRequester.requestFocus()
+                                    }
+                                    true
+                                }
+                                else -> false
                             }
-                        },
-                    enabled = !isAuthenticating,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Password,
-                        imeAction = ImeAction.Done
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onDone = {
-                            if (username.isNotBlank() && password.isNotBlank()) {
-                                keyboardController?.hide()
-                                loginButtonFocusRequester.requestFocus()
-                                onLogin()
-                            }
+                        } else {
+                            false
                         }
-                    )
+                    },
+                enabled = !isAuthenticating, // Always enabled (not disabled when not authenticating)
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        if (username.isNotBlank() && password.isNotBlank()) {
+                            keyboardController?.hide()
+                            loginButtonFocusRequester.requestFocus()
+                            onLogin()
+                        }
+                    }
                 )
+            )
             }
         }
 
@@ -447,9 +485,23 @@ private fun CredentialsLoginContent(
                     .focusRequester(loginButtonFocusRequester)
                     .onFocusChanged { loginButtonFocused = it.isFocused }
                     .onKeyEvent { keyEvent ->
-                        if (keyEvent.type == KeyEventType.KeyUp && (keyEvent.key == Key.Enter) && !isAuthenticating && username.isNotBlank() && password.isNotBlank()) {
-                            onLogin()
-                            true
+                        if (keyEvent.type == KeyEventType.KeyUp) {
+                            when (keyEvent.key) {
+                                Key.Enter -> {
+                                    if (!isAuthenticating && username.isNotBlank() && password.isNotBlank()) {
+                                        onLogin()
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+                                Key.DirectionUp -> {
+                                    // Move back to password field
+                                    passwordFocusRequester.requestFocus()
+                                    true
+                                }
+                                else -> false
+                            }
                         } else {
                             false
                         }
