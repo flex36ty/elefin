@@ -87,24 +87,6 @@ Elefin is an Android TV jellyfin client. It's built from the ground up using Jet
 - **Jellyfin Server** (any version with API support)
 - Network connection to Jellyfin server
 
-## Building
-
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/yourusername/elefin.git
-   cd elefin
-   ```
-
-2. Open the project in Android Studio or build from command line:
-   ```bash
-   ./gradlew assembleDebug
-   ```
-
-3. Install on your Android TV device:
-   ```bash
-   ./gradlew installDebug
-   ```
-
 ## Configuration
 
 ### Server Connection
