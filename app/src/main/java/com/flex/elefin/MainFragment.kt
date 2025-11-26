@@ -38,6 +38,7 @@ import com.bumptech.glide.request.transition.Transition
 /**
  * Loads a grid of cards with movies to browse.
  */
+@Suppress("DEPRECATION")
 class MainFragment : BrowseSupportFragment() {
 
     private val mHandler = Handler(Looper.myLooper()!!)
@@ -47,6 +48,7 @@ class MainFragment : BrowseSupportFragment() {
     private var mBackgroundTimer: Timer? = null
     private var mBackgroundUri: String? = null
 
+    @Deprecated("Deprecated in Java")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         Log.i(TAG, "onCreate")
         super.onActivityCreated(savedInstanceState)
@@ -72,7 +74,10 @@ class MainFragment : BrowseSupportFragment() {
         mBackgroundManager.attach(activity!!.window)
         mDefaultBackground = ContextCompat.getDrawable(activity!!, R.drawable.default_background)
         mMetrics = DisplayMetrics()
-        activity!!.windowManager.defaultDisplay.getMetrics(mMetrics)
+        @Suppress("DEPRECATION")
+        val display = activity!!.windowManager.defaultDisplay
+        @Suppress("DEPRECATION")
+        display.getMetrics(mMetrics)
     }
 
     private fun setupUIElements() {
@@ -140,12 +145,16 @@ class MainFragment : BrowseSupportFragment() {
                 val intent = Intent(activity!!, DetailsActivity::class.java)
                 intent.putExtra(DetailsActivity.MOVIE, item)
 
-                val bundle = ActivityOptionsCompat.makeSceneTransitionAnimation(
-                    activity!!,
-                    (itemViewHolder.view as ImageCardView).mainImageView,
-                    DetailsActivity.SHARED_ELEMENT_NAME
-                )
-                    .toBundle()
+                val imageView = (itemViewHolder.view as ImageCardView).mainImageView
+                val bundle = if (imageView != null) {
+                    ActivityOptionsCompat.makeSceneTransitionAnimation(
+                        activity!!,
+                        imageView,
+                        DetailsActivity.SHARED_ELEMENT_NAME
+                    ).toBundle()
+                } else {
+                    null
+                }
                 startActivity(intent, bundle)
             } else if (item is String) {
                 if (item.contains(getString(R.string.error_fragment))) {
@@ -170,22 +179,23 @@ class MainFragment : BrowseSupportFragment() {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun updateBackground(uri: String?) {
         val width = mMetrics.widthPixels
         val height = mMetrics.heightPixels
+        val target = object : SimpleTarget<Drawable>(width, height) {
+            override fun onResourceReady(
+                drawable: Drawable,
+                transition: Transition<in Drawable>?
+            ) {
+                mBackgroundManager.drawable = drawable
+            }
+        }
         Glide.with(activity!!)
             .load(uri)
             .centerCrop()
             .error(mDefaultBackground)
-            .into<SimpleTarget<Drawable>>(
-                object : SimpleTarget<Drawable>(width, height) {
-                    override fun onResourceReady(
-                        drawable: Drawable,
-                        transition: Transition<in Drawable>?
-                    ) {
-                        mBackgroundManager.drawable = drawable
-                    }
-                })
+            .into(target)
         mBackgroundTimer?.cancel()
     }
 
@@ -214,8 +224,8 @@ class MainFragment : BrowseSupportFragment() {
             return Presenter.ViewHolder(view)
         }
 
-        override fun onBindViewHolder(viewHolder: Presenter.ViewHolder, item: Any) {
-            (viewHolder.view as TextView).text = item as String
+        override fun onBindViewHolder(viewHolder: Presenter.ViewHolder, item: Any?) {
+            (viewHolder.view as TextView).text = item as? String ?: ""
         }
 
         override fun onUnbindViewHolder(viewHolder: Presenter.ViewHolder) {}

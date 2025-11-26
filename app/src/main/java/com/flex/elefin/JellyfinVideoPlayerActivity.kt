@@ -118,7 +118,20 @@ class JellyfinVideoPlayerActivity : ComponentActivity() {
         // Force MPVLib initialization by accessing it (only if MPV is enabled)
         val mpvAvailable = if (useMpv) {
             try {
-                `is`.xyz.mpv.MPVLib.isAvailable()
+                // Check MPV availability - the library should auto-detect .so files
+                val available = `is`.xyz.mpv.MPVLib.isAvailable()
+                android.util.Log.d("VideoPlayer", "MPV availability check: $available")
+                if (!available) {
+                    // If not available, log more details for debugging
+                    android.util.Log.w("VideoPlayer", "MPV libraries exist but isAvailable() returned false - this may indicate a library loading issue")
+                }
+                available
+            } catch (e: UnsatisfiedLinkError) {
+                android.util.Log.e("VideoPlayer", "MPV native libraries not found (UnsatisfiedLinkError)", e)
+                false
+            } catch (e: NoClassDefFoundError) {
+                android.util.Log.e("VideoPlayer", "MPV classes not found (NoClassDefFoundError)", e)
+                false
             } catch (e: Exception) {
                 android.util.Log.e("VideoPlayer", "Error checking MPV availability", e)
                 false

@@ -1,11 +1,19 @@
 package com.flex.elefin.screens
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.animation.animateContentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -75,17 +83,24 @@ fun AnimatedPlayButton(
         restartOnPlay = true
     )
     
-    // Icon scale animation on focus
-    val iconScale by animateFloatAsState(
-        targetValue = if (focused) 1.1f else 1f,
-        animationSpec = tween(durationMillis = 200),
-        label = "iconScale"
-    )
-    
-    // Box with glow animation and icon
+    // Button container that extends horizontally when focused
     Box(
         modifier = modifier
-            .size(size)
+            .then(
+                if (focused) {
+                    Modifier
+                        .wrapContentWidth()
+                        .height(40.dp)
+                } else {
+                    Modifier.size(40.dp) // Circular when unfocused
+                }
+            )
+            .animateContentSize(
+                animationSpec = tween(
+                    durationMillis = 300,
+                    easing = FastOutSlowInEasing
+                )
+            )
             .background(containerColor, androidx.compose.foundation.shape.CircleShape)
             .focusable()
             .clickable(
@@ -97,7 +112,7 @@ fun AnimatedPlayButton(
                 focused = focusState.isFocused
             }
     ) {
-        // Glow expanding circle (Lottie) - only show if composition loaded
+        // Lottie glow animation (optional - only if composition loaded)
         if (glowComposition != null) {
             LottieAnimation(
                 composition = glowComposition,
@@ -106,34 +121,31 @@ fun AnimatedPlayButton(
             )
         }
         
-        // Icon with morph animation
+        // Icon and label content
         Row(
-            modifier = Modifier.align(Alignment.Center),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = 12.dp),
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                modifier = Modifier
-                    .size(iconSize)
-                    .graphicsLayer {
-                        scaleX = iconScale
-                        scaleY = iconScale
-                    },
+                modifier = Modifier.size(iconSize),
                 tint = contentColor
             )
             
-            // Show label when focused
-            if (focused && showLabel) {
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = label,
-                    style = labelTextStyle,
-                    color = contentColor,
-                    modifier = Modifier.padding(end = 4.dp)
-                )
-            }
+                // Show label when focused
+                if (focused && showLabel) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = label,
+                        style = labelTextStyle,
+                        color = contentColor,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
         }
     }
 }

@@ -249,7 +249,7 @@ abstract class BaseMPVView(context: Context, attrs: AttributeSet?) : SurfaceView
             Log.w(TAG, "Could not set fbo-format (may not be supported)", e)
         }
         
-        Log.d(TAG, "✅ HDR support fully configured: Surface=RGBA_1010102, vo=gpu-next, fbo-format=rgb10_a2, gpu-hdr=yes, native-hdr=yes, tone-mapping=auto")
+        Log.d(TAG, "✅ HDR support fully configured: Surface=RGBA_1010102, vo=gpu-next, fbo-format=rgb10_a2, gpu-hdr=yes, native-hdr=yes, tone-mapping=bt2390")
         
         // This forces mpv to render subs/osd/whatever into our surface even if it would ordinarily not
         MPVLib.setOptionString("force-window", "yes")

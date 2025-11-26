@@ -24,6 +24,7 @@ class AppSettings(context: Context) {
         private const val KEY_IS_FIRST_LAUNCH = "is_first_launch"
         private const val KEY_SORT_TYPE = "library_sort_type"
         private const val KEY_HIDE_SHOWS_WITH_ZERO_EPISODES = "hide_shows_with_zero_episodes"
+        private const val KEY_MINIMAL_BUFFER_4K = "minimal_buffer_4k"
     }
 
     var isMpvEnabled: Boolean
@@ -114,5 +115,9 @@ class AppSettings(context: Context) {
     var hideShowsWithZeroEpisodes: Boolean
         get() = prefs.getBoolean(KEY_HIDE_SHOWS_WITH_ZERO_EPISODES, true) // Enabled by default
         set(value) = prefs.edit().putBoolean(KEY_HIDE_SHOWS_WITH_ZERO_EPISODES, value).apply()
+    
+    var minimalBuffer4K: Boolean
+        get() = prefs.getBoolean(KEY_MINIMAL_BUFFER_4K, false) // Disabled by default
+        set(value) = prefs.edit().putBoolean(KEY_MINIMAL_BUFFER_4K, value).apply()
 }
 

@@ -40,8 +40,8 @@ class CardPresenter : Presenter() {
         return Presenter.ViewHolder(cardView)
     }
 
-    override fun onBindViewHolder(viewHolder: Presenter.ViewHolder, item: Any) {
-        val movie = item as Movie
+    override fun onBindViewHolder(viewHolder: Presenter.ViewHolder, item: Any?) {
+        val movie = item as? Movie ?: return
         val cardView = viewHolder.view as ImageCardView
 
         Log.d(TAG, "onBindViewHolder")
@@ -49,11 +49,14 @@ class CardPresenter : Presenter() {
             cardView.titleText = movie.title
             cardView.contentText = movie.studio
             cardView.setMainImageDimensions(CARD_WIDTH, CARD_HEIGHT)
-            Glide.with(viewHolder.view.context)
-                .load(movie.cardImageUrl)
-                .centerCrop()
-                .error(mDefaultCardImage)
-                .into(cardView.mainImageView)
+            val imageView = cardView.mainImageView
+            if (imageView != null) {
+                Glide.with(viewHolder.view.context)
+                    .load(movie.cardImageUrl)
+                    .centerCrop()
+                    .error(mDefaultCardImage)
+                    .into(imageView)
+            }
         }
     }
 

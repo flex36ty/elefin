@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -31,7 +33,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -398,12 +406,6 @@ fun TopContainer(
                             MetadataBox(text = lang.uppercase())
                         }
                         
-                        // Selected Subtitles
-                        subtitleStream?.let { stream ->
-                            val subtitleName = stream.DisplayTitle ?: stream.Language ?: "Unknown"
-                            MetadataBox(text = subtitleName)
-                        }
-                        
                         // Watched indicator
                         val isWatched = (displayItemForMetadata.UserData?.Played == true) ||
                                        (displayItemForMetadata.UserData?.PlayedPercentage == 100.0)
@@ -702,6 +704,9 @@ fun SubtitleSelectionDialog(
                     val details = apiService.getItemDetails(item.Id)
                     itemDetails = details
                     isLoadingSubtitles = false
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    // Normal cancellation when composable leaves composition - don't log as error
+                    throw e // Re-throw to respect cancellation
                 } catch (e: Exception) {
                     Log.e("SubtitleDialog", "Error fetching item details", e)
                     isLoadingSubtitles = false
@@ -922,7 +927,7 @@ fun ActionButtonsRow(
             if (useAnimatedButton) {
                 AnimatedPlayButton(
                     onClick = {
-                        // Finish MovieDetailsActivity before launching player
+                        // Launch video player - keep MovieDetailsActivity in back stack so back button returns here
                         val intent = JellyfinVideoPlayerActivity.createIntent(
                             context = context,
                             itemId = displayItem.Id,
@@ -930,7 +935,7 @@ fun ActionButtonsRow(
                             subtitleStreamIndex = selectedSubtitleIndex
                         )
                         context.startActivity(intent)
-                        (context as? androidx.activity.ComponentActivity)?.finish()
+                        // Don't finish - let back button return to movie details screen
                     },
                     label = "Resume",
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -938,9 +943,10 @@ fun ActionButtonsRow(
                 )
             } else {
                 var resumeFocused by remember { mutableStateOf(false) }
+                
                 Button(
                     onClick = {
-                        // Finish MovieDetailsActivity before launching player
+                        // Launch video player - keep MovieDetailsActivity in back stack so back button returns here
                         val intent = JellyfinVideoPlayerActivity.createIntent(
                             context = context,
                             itemId = displayItem.Id,
@@ -948,9 +954,24 @@ fun ActionButtonsRow(
                             subtitleStreamIndex = selectedSubtitleIndex
                         )
                         context.startActivity(intent)
-                        (context as? androidx.activity.ComponentActivity)?.finish()
+                        // Don't finish - let back button return to movie details screen
                     },
                     modifier = Modifier
+                        .then(
+                            if (resumeFocused) {
+                                Modifier
+                                    .wrapContentWidth()
+                                    .height(40.dp)
+                            } else {
+                                Modifier.size(40.dp) // Circular when unfocused
+                            }
+                        )
+                        .animateContentSize(
+                            animationSpec = tween(
+                                durationMillis = 300,
+                                easing = FastOutSlowInEasing
+                            )
+                        )
                         .onFocusChanged { resumeFocused = it.isFocused }
                         .clip(CircleShape),
                     colors = ButtonDefaults.colors(
@@ -970,7 +991,8 @@ fun ActionButtonsRow(
                             text = "Resume",
                             style = MaterialTheme.typography.labelLarge.copy(
                                 fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                            )
+                            ),
+                            modifier = Modifier.padding(horizontal = 16.dp)
                         )
                     }
                 }
@@ -981,7 +1003,7 @@ fun ActionButtonsRow(
         if (useAnimatedButton) {
             AnimatedPlayButton(
                 onClick = {
-                    // Finish MovieDetailsActivity before launching player
+                    // Launch video player - keep MovieDetailsActivity in back stack so back button returns here
                         val intent = JellyfinVideoPlayerActivity.createIntent(
                             context = context,
                             itemId = displayItem.Id,
@@ -989,7 +1011,7 @@ fun ActionButtonsRow(
                             subtitleStreamIndex = selectedSubtitleIndex
                         )
                     context.startActivity(intent)
-                    (context as? androidx.activity.ComponentActivity)?.finish()
+                    // Don't finish - let back button return to movie details screen
                 },
                 label = "Play",
                 containerColor = MaterialTheme.colorScheme.surface,
@@ -997,9 +1019,10 @@ fun ActionButtonsRow(
             )
         } else {
             var playFocused by remember { mutableStateOf(false) }
+            
             Button(
                 onClick = {
-                    // Finish MovieDetailsActivity before launching player
+                    // Launch video player - keep MovieDetailsActivity in back stack so back button returns here
                         val intent = JellyfinVideoPlayerActivity.createIntent(
                             context = context,
                             itemId = displayItem.Id,
@@ -1007,9 +1030,24 @@ fun ActionButtonsRow(
                             subtitleStreamIndex = selectedSubtitleIndex
                         )
                     context.startActivity(intent)
-                    (context as? androidx.activity.ComponentActivity)?.finish()
+                    // Don't finish - let back button return to movie details screen
                 },
                 modifier = Modifier
+                    .then(
+                        if (playFocused) {
+                            Modifier
+                                .wrapContentWidth()
+                                .height(40.dp)
+                        } else {
+                            Modifier.size(40.dp) // Circular when unfocused
+                        }
+                    )
+                    .animateContentSize(
+                        animationSpec = tween(
+                            durationMillis = 300,
+                            easing = FastOutSlowInEasing
+                        )
+                    )
                     .onFocusChanged { playFocused = it.isFocused }
                     .clip(CircleShape),
                 colors = ButtonDefaults.colors(
@@ -1029,7 +1067,8 @@ fun ActionButtonsRow(
                         text = "Play",
                         style = MaterialTheme.typography.labelLarge.copy(
                             fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                        )
+                        ),
+                        modifier = Modifier.padding(horizontal = 16.dp)
                     )
                 }
             }
@@ -1038,11 +1077,27 @@ fun ActionButtonsRow(
         
         // Subtitles button
         var subtitleFocused by remember { mutableStateOf(false) }
+        
         Button(
             onClick = {
                 showSubtitleDialog = true
             },
             modifier = Modifier
+                .then(
+                    if (subtitleFocused) {
+                        Modifier
+                            .wrapContentWidth()
+                            .height(40.dp)
+                    } else {
+                        Modifier.size(40.dp) // Circular when unfocused
+                    }
+                )
+                .animateContentSize(
+                    animationSpec = tween(
+                        durationMillis = 300,
+                        easing = FastOutSlowInEasing
+                    )
+                )
                 .onFocusChanged { subtitleFocused = it.isFocused }
                 .clip(CircleShape),
             colors = ButtonDefaults.colors(
@@ -1063,7 +1118,8 @@ fun ActionButtonsRow(
                     text = "Subtitles",
                     style = MaterialTheme.typography.labelLarge.copy(
                         fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                    )
+                    ),
+                    modifier = Modifier.padding(horizontal = 16.dp)
                 )
             }
         }
@@ -1073,6 +1129,7 @@ fun ActionButtonsRow(
                                (displayItem.UserData?.PlayedPercentage == 100.0)
         
         var watchedFocused by remember { mutableStateOf(false) }
+        
         Button(
             onClick = {
                 apiService?.let { service ->
@@ -1111,6 +1168,21 @@ fun ActionButtonsRow(
                 }
             },
             modifier = Modifier
+                .then(
+                    if (watchedFocused) {
+                        Modifier
+                            .wrapContentWidth()
+                            .height(40.dp)
+                    } else {
+                        Modifier.size(40.dp) // Circular when unfocused
+                    }
+                )
+                .animateContentSize(
+                    animationSpec = tween(
+                        durationMillis = 300,
+                        easing = FastOutSlowInEasing
+                    )
+                )
                 .onFocusChanged { watchedFocused = it.isFocused }
                 .clip(CircleShape),
             colors = ButtonDefaults.colors(
@@ -1135,8 +1207,16 @@ fun ActionButtonsRow(
             }
         }
         
-        // Right side: Spacer to push buttons to the left
+        // Right side: Spacer to push subtitle display to the right
         Spacer(modifier = Modifier.weight(1f))
+        
+        // Applied subtitle display (right-aligned)
+        if (selectedSubtitleIndex != null && itemDetails != null) {
+            val subtitleStream = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
+                ?.find { it.Type == "Subtitle" && it.Index == selectedSubtitleIndex }
+            val subtitleName = subtitleStream?.DisplayTitle ?: subtitleStream?.Language ?: "Unknown"
+            MetadataBox(text = subtitleName, icon = Icons.Default.Language)
+        }
     }
     
     // Subtitle selection dialog
@@ -1179,17 +1259,33 @@ private fun getResolution(item: JellyfinItem): String? {
 
 // Metadata box component
 @Composable
-private fun MetadataBox(text: String) {
+private fun MetadataBox(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null
+) {
     Box(
         modifier = Modifier
             .background(Color.Black, RoundedCornerShape(4.dp))
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelSmall,
-            color = Color.White
-        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            icon?.let {
+                Icon(
+                    imageVector = it,
+                    contentDescription = null,
+                    modifier = Modifier.size(12.dp),
+                    tint = Color.White
+                )
+            }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White
+            )
+        }
     }
 }
 

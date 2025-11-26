@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
@@ -35,8 +37,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -204,22 +210,26 @@ fun SeriesDetailsScreen(
                     focusedEpisode = targetEpisode
                     // Request focus on the episode card with retries to ensure composable is ready
                     val focusRequester = episodeFocusRequesters.getOrPut(targetEpisode.Id) { FocusRequester() }
-                    delay(500) // Small delay to ensure UI is ready
+                    delay(1000) // Longer delay to ensure UI is ready and LazyColumn has composed
                     // Try to request focus with retries
                     var retries = 0
-                    val maxRetries = 10
-                    while (retries < maxRetries) {
+                    val maxRetries = 20
+                    var success = false
+                    while (retries < maxRetries && !success) {
                         try {
                             focusRequester.requestFocus()
                             Log.d("SeriesDetailsScreen", "Focused on initial episode: ${targetEpisode.Name}")
-                            break
+                            success = true
                         } catch (e: IllegalStateException) {
                             retries++
                             if (retries < maxRetries) {
-                                delay(100)
+                                delay(300)
                             } else {
                                 Log.w("SeriesDetailsScreen", "Failed to request focus on initial episode after $maxRetries retries: ${e.message}")
                             }
+                        } catch (e: Exception) {
+                            Log.e("SeriesDetailsScreen", "Unexpected error requesting focus: ${e.message}", e)
+                            break
                         }
                     }
                     hasPerformedInitialFocus = true
@@ -240,22 +250,26 @@ fun SeriesDetailsScreen(
                                     focusedEpisode = episodeInSeason
                                     // Request focus on the episode card with retries to ensure composable is ready
                                     val focusRequester = episodeFocusRequesters.getOrPut(episodeInSeason.Id) { FocusRequester() }
-                                    delay(800) // Delay to ensure episodes are loaded and UI is ready
+                                    delay(1200) // Longer delay to ensure episodes are loaded and UI is ready
                                     // Try to request focus with retries
                                     var retries = 0
-                                    val maxRetries = 10
-                                    while (retries < maxRetries) {
+                                    val maxRetries = 20
+                                    var success = false
+                                    while (retries < maxRetries && !success) {
                                         try {
                                             focusRequester.requestFocus()
                                             Log.d("SeriesDetailsScreen", "Found initial episode in season ${index + 1}, focused: ${episodeInSeason.Name}")
-                                            break
+                                            success = true
                                         } catch (e: IllegalStateException) {
                                             retries++
                                             if (retries < maxRetries) {
-                                                delay(100)
+                                                delay(300)
                                             } else {
                                                 Log.w("SeriesDetailsScreen", "Failed to request focus on initial episode after $maxRetries retries: ${e.message}")
                                             }
+                                        } catch (e: Exception) {
+                                            Log.e("SeriesDetailsScreen", "Unexpected error requesting focus: ${e.message}", e)
+                                            break
                                         }
                                     }
                                     hasPerformedInitialFocus = true
@@ -593,7 +607,8 @@ fun SeriesTopContainer(
                             Text(
                                 text = synopsis,
                                 style = MaterialTheme.typography.bodyLarge.copy(
-                                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
+                                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f,
+                                    lineHeight = MaterialTheme.typography.bodyLarge.fontSize * 0.8f * 1.1f // Reduced line spacing (10% of font size)
                                 ),
                                 color = Color.White.copy(alpha = 0.9f),
                                 maxLines = Int.MAX_VALUE,
@@ -687,7 +702,8 @@ fun SeriesTopContainer(
                             Text(
                                 text = synopsis,
                                 style = MaterialTheme.typography.bodyLarge.copy(
-                                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
+                                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f,
+                                    lineHeight = MaterialTheme.typography.bodyLarge.fontSize * 0.8f * 1.1f // Reduced line spacing (10% of font size)
                                 ),
                                 color = Color.White.copy(alpha = 0.9f),
                                 maxLines = Int.MAX_VALUE,
@@ -753,53 +769,51 @@ fun SeriesSeasonSelectorContainer(
                         val isSelected = index == selectedSeasonIndex
                         val seasonNumber = index + 1
                         
-                        // Animate scale for focused state
-                        val scale by animateFloatAsState(
-                            targetValue = if (isFocused) 1.1f else 1f,
-                            animationSpec = tween(durationMillis = 200),
-                            label = "seasonScale"
-                        )
-                        
-                        val colorScheme = MaterialTheme.colorScheme
-                        
-                        // Calculate border color
-                        val borderColor = when {
-                            isSelected && isFocused -> Color.White
-                            isFocused -> MaterialTheme.colorScheme.onSurface
-                            else -> Color.Transparent
-                        }
-                        
-                        IconButton(
+                        Button(
                             onClick = { onSeasonSelected(index) },
                             modifier = Modifier
-                                .graphicsLayer {
-                                    scaleX = scale
-                                    scaleY = scale
-                                }
-                                .clip(CircleShape)
                                 .then(
                                     if (isFocused) {
-                                        // Add border when focused
-                                        Modifier.border(4.dp, borderColor, CircleShape)
-                                    } else {
                                         Modifier
+                                            .wrapContentWidth()
+                                            .height(40.dp)
+                                    } else {
+                                        Modifier.size(40.dp) // Circular when unfocused
                                     }
                                 )
-                                .onFocusChanged { focusState ->
-                                    isFocused = focusState.isFocused || focusState.hasFocus
-                                },
-                            colors = IconButtonDefaults.colors(
+                                .animateContentSize(
+                                    animationSpec = tween(
+                                        durationMillis = 300,
+                                        easing = FastOutSlowInEasing
+                                    )
+                                )
+                                .onFocusChanged { isFocused = it.isFocused }
+                                .clip(CircleShape),
+                            colors = ButtonDefaults.colors(
                                 containerColor = MaterialTheme.colorScheme.surface,
                                 contentColor = MaterialTheme.colorScheme.onSurface
-                            )
+                            ),
+                            contentPadding = PaddingValues(12.dp)
                         ) {
-                            Text(
-                                text = seasonNumber.toString(),
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
+                            if (!isFocused) {
+                                // Show just the number when unfocused
+                                Text(
+                                    text = seasonNumber.toString(),
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
+                                    )
                                 )
-                            )
+                            } else {
+                                // Show "Season X" when focused
+                                Text(
+                                    text = "Season $seasonNumber",
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
+                                    ),
+                                    modifier = Modifier.padding(horizontal = 16.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -835,7 +849,7 @@ fun SeriesBottomContainer(
     
     // Handle initial episode focus when episodes are loaded
     // Only run once when initialEpisodeId is set, not when episodes change
-    LaunchedEffect(initialEpisodeId, isLoadingEpisodes, episodes.isNotEmpty()) {
+    LaunchedEffect(initialEpisodeId, isLoadingEpisodes, episodes.size) {
         if (initialEpisodeId != null && !hasPerformedInitialFocus && episodes.isNotEmpty() && !isLoadingEpisodes) {
             val targetEpisode = episodes.find { it.Id == initialEpisodeId }
             if (targetEpisode != null) {
@@ -843,27 +857,37 @@ fun SeriesBottomContainer(
                 lastFocusedEpisode = targetEpisode
                 onEpisodeFocused(targetEpisode)
                 // Request focus on the episode card with retries to ensure composable is ready
+                // Get or create the focusRequester - it will be attached when EpisodeCard composes
                 val focusRequester = lastFocusedEpisodeRequester.getOrPut(targetEpisode.Id) { FocusRequester() }
-                // Wait for composition to complete
-                kotlinx.coroutines.delay(500)
+                // Wait longer for composition to complete and UI to be ready
+                // LazyColumn needs time to compose all items
+                kotlinx.coroutines.delay(1000)
                 // Try to request focus with retries
                 var retries = 0
-                val maxRetries = 10
-                while (retries < maxRetries) {
+                val maxRetries = 20
+                var success = false
+                while (retries < maxRetries && !success) {
                     try {
                         focusRequester.requestFocus()
                         Log.d("SeriesBottomContainer", "Focused on initial episode: ${targetEpisode.Name}")
-                        break
+                        success = true
                     } catch (e: IllegalStateException) {
                         retries++
                         if (retries < maxRetries) {
-                            // Wait a bit longer and try again
-                            kotlinx.coroutines.delay(100)
+                            // Wait longer between retries to ensure UI is ready
+                            kotlinx.coroutines.delay(300)
                         } else {
                             Log.w("SeriesBottomContainer", "Failed to request focus on initial episode after $maxRetries retries: ${e.message}")
                         }
+                    } catch (e: Exception) {
+                        // Catch any other exceptions
+                        Log.e("SeriesBottomContainer", "Unexpected error requesting focus: ${e.message}", e)
+                        break
                     }
                 }
+                hasPerformedInitialFocus = true
+            } else {
+                // Episode not found, mark as performed to prevent retrying
                 hasPerformedInitialFocus = true
             }
         }
@@ -992,13 +1016,15 @@ fun SeriesBottomContainer(
                                         showResumeDialog = episode
                                     } else {
                                         // Play from start
-                                        val intent = JellyfinVideoPlayerActivity.createIntent(
-                                            context,
-                                            episode.Id,
-                                            0L,
-                                            subtitlePreference
-                                        )
-                                        context.startActivity(intent)
+                                    // Launch video player - keep SeriesDetailsActivity in back stack so back button returns here
+                                    val intent = JellyfinVideoPlayerActivity.createIntent(
+                                        context,
+                                        episode.Id,
+                                        0L,
+                                        subtitlePreference
+                                    )
+                                    context.startActivity(intent)
+                                    // Don't finish - let back button return to series details screen
                                     }
                                 },
                                 onFocusChanged = { isFocused ->
@@ -1147,7 +1173,7 @@ fun EpisodeCard(
     
     StandardCardContainer(
         modifier = Modifier
-            .width(154.dp) // 15% bigger (134 * 1.15 = 154.1, rounded to 154)
+            .width(185.dp) // 20% bigger (154 * 1.20 = 184.8, rounded to 185)
             .then(
                 if (showDebugOutlines) {
                     Modifier.border(2.dp, Color.Cyan)
@@ -1315,7 +1341,7 @@ fun ResumeEpisodeDialog(
         Surface(
             modifier = Modifier
                 .wrapContentSize()
-                .widthIn(min = 300.dp, max = 600.dp),
+                .widthIn(min = 250.dp, max = 400.dp),
             shape = RoundedCornerShape(12.dp),
             colors = SurfaceDefaults.colors(
                 containerColor = MaterialTheme.colorScheme.surface,
@@ -1324,7 +1350,7 @@ fun ResumeEpisodeDialog(
         ) {
             Column(
                 modifier = Modifier
-                    .padding(24.dp),
+                    .padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -1337,13 +1363,13 @@ fun ResumeEpisodeDialog(
                 )
                 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.wrapContentSize(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Button(
                         onClick = onResume,
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp)
+                        modifier = Modifier.widthIn(min = 120.dp, max = 150.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
                     ) {
                         Text(
                             "Resume",
@@ -1355,8 +1381,8 @@ fun ResumeEpisodeDialog(
                     
                     Button(
                         onClick = onPlayFromStart,
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp)
+                        modifier = Modifier.widthIn(min = 120.dp, max = 180.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
                     ) {
                         Text(
                             "Play from Start",
@@ -1399,6 +1425,9 @@ fun EpisodeMetadataRow(
                         episodeDetails = fetchedDetails ?: episode
                     }
                     Log.d("EpisodeMetadataRow", "Fetched episode details for ${episode.Name}, using UserData PlayedPercentage=${episode.UserData?.PlayedPercentage}")
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    // Normal cancellation when composable leaves composition - don't log as error
+                    throw e // Re-throw to respect cancellation
                 } catch (e: Exception) {
                     Log.e("EpisodeMetadataRow", "Error fetching episode details", e)
                     // Use episode prop directly (has latest UserData)
@@ -1586,6 +1615,7 @@ fun EpisodeActionButtonsRow(
                     )
                 } else {
                     var resumeFocused by remember { mutableStateOf(false) }
+                    
                     Button(
                         onClick = {
                             val intent = JellyfinVideoPlayerActivity.createIntent(
@@ -1597,6 +1627,21 @@ fun EpisodeActionButtonsRow(
                             context.startActivity(intent)
                         },
                         modifier = Modifier
+                            .then(
+                                if (resumeFocused) {
+                                    Modifier
+                                        .wrapContentWidth()
+                                        .height(40.dp)
+                                } else {
+                                    Modifier.size(40.dp) // Circular when unfocused
+                                }
+                            )
+                            .animateContentSize(
+                                animationSpec = tween(
+                                    durationMillis = 300,
+                                    easing = FastOutSlowInEasing
+                                )
+                            )
                             .onFocusChanged { resumeFocused = it.isFocused }
                             .clip(CircleShape),
                         colors = ButtonDefaults.colors(
@@ -1616,7 +1661,8 @@ fun EpisodeActionButtonsRow(
                                 text = "Resume",
                                 style = MaterialTheme.typography.labelLarge.copy(
                                     fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                                )
+                                ),
+                                modifier = Modifier.padding(horizontal = 16.dp)
                             )
                         }
                     }
@@ -1641,17 +1687,33 @@ fun EpisodeActionButtonsRow(
                 )
             } else {
                 var playFocused by remember { mutableStateOf(false) }
+                
                 Button(
-                        onClick = {
-                            val intent = JellyfinVideoPlayerActivity.createIntent(
-                                context = context,
-                                itemId = displayEpisode.Id,
-                                resumePositionMs = 0L,
-                                subtitleStreamIndex = storedSubtitleIndex
-                            )
-                            context.startActivity(intent)
-                        },
+                    onClick = {
+                        val intent = JellyfinVideoPlayerActivity.createIntent(
+                            context = context,
+                            itemId = displayEpisode.Id,
+                            resumePositionMs = 0L,
+                            subtitleStreamIndex = storedSubtitleIndex
+                        )
+                        context.startActivity(intent)
+                    },
                     modifier = Modifier
+                        .then(
+                            if (playFocused) {
+                                Modifier
+                                    .wrapContentWidth()
+                                    .height(40.dp)
+                            } else {
+                                Modifier.size(40.dp) // Circular when unfocused
+                            }
+                        )
+                        .animateContentSize(
+                            animationSpec = tween(
+                                durationMillis = 300,
+                                easing = FastOutSlowInEasing
+                            )
+                        )
                         .onFocusChanged { playFocused = it.isFocused }
                         .clip(CircleShape),
                     colors = ButtonDefaults.colors(
@@ -1671,7 +1733,8 @@ fun EpisodeActionButtonsRow(
                             text = "Play",
                             style = MaterialTheme.typography.labelLarge.copy(
                                 fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                            )
+                            ),
+                            modifier = Modifier.padding(horizontal = 16.dp)
                         )
                     }
                 }
@@ -1679,11 +1742,27 @@ fun EpisodeActionButtonsRow(
             
             // Subtitles button
             var subtitleFocused by remember { mutableStateOf(false) }
+            
             Button(
                 onClick = {
                     showSubtitleDialog = true
                 },
                 modifier = Modifier
+                    .then(
+                        if (subtitleFocused) {
+                            Modifier
+                                .wrapContentWidth()
+                                .height(40.dp)
+                        } else {
+                            Modifier.size(40.dp) // Circular when unfocused
+                        }
+                    )
+                    .animateContentSize(
+                        animationSpec = tween(
+                            durationMillis = 300,
+                            easing = FastOutSlowInEasing
+                        )
+                    )
                     .onFocusChanged { subtitleFocused = it.isFocused }
                     .clip(CircleShape),
                 colors = ButtonDefaults.colors(
@@ -1704,7 +1783,8 @@ fun EpisodeActionButtonsRow(
                         text = "Subtitles",
                         style = MaterialTheme.typography.labelLarge.copy(
                             fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                        )
+                        ),
+                        modifier = Modifier.padding(horizontal = 16.dp)
                     )
                 }
             }
@@ -1718,6 +1798,7 @@ fun EpisodeActionButtonsRow(
                                   (displayEpisode.UserData?.PlayedPercentage == 100.0)
             
             var watchedFocused by remember { mutableStateOf(false) }
+            
             Button(
                 onClick = {
                     apiService?.let { service ->
@@ -1762,6 +1843,21 @@ fun EpisodeActionButtonsRow(
                     }
                 },
                 modifier = Modifier
+                    .then(
+                        if (watchedFocused) {
+                            Modifier
+                                .wrapContentWidth()
+                                .height(40.dp)
+                        } else {
+                            Modifier.size(40.dp) // Circular when unfocused
+                        }
+                    )
+                    .animateContentSize(
+                        animationSpec = tween(
+                            durationMillis = 300,
+                            easing = FastOutSlowInEasing
+                        )
+                    )
                     .onFocusChanged { watchedFocused = it.isFocused }
                     .clip(CircleShape),
                 colors = ButtonDefaults.colors(
@@ -1802,7 +1898,7 @@ fun EpisodeActionButtonsRow(
                 // Selected Subtitles only
                 subtitleStream?.let { stream ->
                     val subtitleName = stream.DisplayTitle ?: stream.Language ?: "Unknown"
-                    MetadataBox(text = subtitleName)
+                    MetadataBox(text = subtitleName, icon = Icons.Default.Language)
                 }
             }
         }
@@ -2008,17 +2104,33 @@ private fun RatingBoxWithIcon(
 
 // Metadata box component
 @Composable
-private fun MetadataBox(text: String) {
+private fun MetadataBox(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null
+) {
     Box(
         modifier = Modifier
             .background(Color.Black, RoundedCornerShape(4.dp))
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelSmall,
-            color = Color.White
-        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            icon?.let {
+                Icon(
+                    imageVector = it,
+                    contentDescription = null,
+                    modifier = Modifier.size(12.dp),
+                    tint = Color.White
+                )
+            }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White
+            )
+        }
     }
 }
 
@@ -2163,7 +2275,8 @@ fun EpisodeSubtitleSelectionDialog(
                     itemDetails = details
                     isLoadingSubtitles = false
                 } catch (e: kotlinx.coroutines.CancellationException) {
-                    throw e
+                    // Normal cancellation when composable leaves composition - don't log as error
+                    throw e // Re-throw to respect cancellation
                 } catch (e: Exception) {
                     Log.e("EpisodeSubtitleDialog", "Error fetching item details", e)
                     isLoadingSubtitles = false

@@ -136,6 +136,9 @@ fun JellyfinHomeScreen(
     // Dark mode setting - read from settings and update when screen resumes
     var darkModeEnabled by remember { mutableStateOf(settings.darkModeEnabled) }
     
+    // Debug outlines setting - read from settings and update when settings dialog closes
+    var debugOutlinesEnabled by remember { mutableStateOf(settings.showDebugOutlines) }
+    
     // Hide shows with zero episodes setting - read from settings
     var hideShowsWithZeroEpisodes by remember { mutableStateOf(settings.hideShowsWithZeroEpisodes) }
     
@@ -235,6 +238,8 @@ fun JellyfinHomeScreen(
     var selectedLibraryId by remember { mutableStateOf<String?>(null) }
     var showExitConfirmation by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var darkModeWhenSettingsOpened by remember { mutableStateOf(false) }
+    var debugOutlinesWhenSettingsOpened by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     var showSortDialog by remember { mutableStateOf(false) }
@@ -495,7 +500,7 @@ fun JellyfinHomeScreen(
                 .align(Alignment.TopCenter)
                 .padding(top = 22.4.dp) // Reduced by 30% (32 * 0.7 = 22.4)
                 .then(
-                    if (showDebugOutlines) {
+                    if (debugOutlinesEnabled) {
                         Modifier.border(4.dp, Color.Red)
                     } else {
                         Modifier
@@ -510,11 +515,13 @@ fun JellyfinHomeScreen(
                 Row(
                     horizontalArrangement = Arrangement.Start,
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                 // Settings button - first on the left (same size as library buttons)
                 IconButton(
                     onClick = {
+                        darkModeWhenSettingsOpened = settings.darkModeEnabled
+                        debugOutlinesWhenSettingsOpened = settings.showDebugOutlines
                         showSettings = true
                     },
                     colors = IconButtonDefaults.colors(
@@ -672,7 +679,7 @@ fun JellyfinHomeScreen(
                 var focusedTabIndex by remember { mutableStateOf<Int?>(null) }
                 
                 TabRow(
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier.fillMaxWidth(),
                     selectedTabIndex = if (selectedLibraryId != null) selectedTabIndex else -1,
                     separator = { Spacer(modifier = Modifier.width(16.dp)) },
                     indicator = { tabPositions, doesTabRowHaveFocus ->
@@ -906,7 +913,8 @@ fun JellyfinHomeScreen(
                         Text(
                             text = synopsis,
                             style = MaterialTheme.typography.bodyLarge.copy(
-                                fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
+                                fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f,
+                                lineHeight = MaterialTheme.typography.bodyLarge.fontSize * 0.8f * 1.1f // Reduced line spacing (10% of font size)
                             ),
                             color = Color.White.copy(alpha = 0.9f),
                             maxLines = 3,
@@ -924,7 +932,7 @@ fun JellyfinHomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .then(
-                    if (showDebugOutlines) {
+                    if (debugOutlinesEnabled) {
                         Modifier.border(4.dp, Color.Blue)
                     } else {
                         Modifier
@@ -1086,7 +1094,7 @@ fun JellyfinHomeScreen(
                             .fillMaxWidth()
                             .weight(1f)
                             .then(
-                                if (showDebugOutlines) {
+                                if (debugOutlinesEnabled) {
                                     Modifier.border(3.dp, Color.Green)
                                 } else {
                                     Modifier
@@ -1104,7 +1112,7 @@ fun JellyfinHomeScreen(
                                 .fillMaxWidth()
                                 .padding(start = 54.dp, end = 38.dp)
                                 .then(
-                                    if (showDebugOutlines) {
+                                    if (debugOutlinesEnabled) {
                                         Modifier.border(3.dp, Color.Blue)
                                     } else {
                                         Modifier
@@ -1215,7 +1223,7 @@ fun JellyfinHomeScreen(
                             .weight(0.6f)
                             .padding(start = 54.dp, top = 0.dp, end = 38.dp, bottom = 0.dp)
                             .then(
-                                if (showDebugOutlines) {
+                                if (debugOutlinesEnabled) {
                                     Modifier.border(3.dp, Color.Yellow)
                                 } else {
                                     Modifier
@@ -1240,7 +1248,7 @@ fun JellyfinHomeScreen(
                             LazyRow(
                                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)), // Bottom increased by another 20% (15.87 * 1.05 * 1.05 * 1.1 * 1.2 = 19.24 * 1.2 = 23.09)
                                 horizontalArrangement = Arrangement.spacedBy(26.dp), // Increased by 30%: 20 * 1.3 = 26.dp
-                                modifier = if (showDebugOutlines) {
+                                modifier = if (debugOutlinesEnabled) {
                                     Modifier.border(2.dp, Color.Magenta)
                                 } else {
                                     Modifier
@@ -1303,7 +1311,7 @@ fun JellyfinHomeScreen(
                             LazyRow(
                                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)),
                                 horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                modifier = if (showDebugOutlines) {
+                                modifier = if (debugOutlinesEnabled) {
                                     Modifier.border(2.dp, Color.Magenta)
                                 } else {
                                     Modifier
@@ -1363,7 +1371,7 @@ fun JellyfinHomeScreen(
                             LazyRow(
                                 contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)), // Bottom increased by another 20% (15.87 * 1.05 * 1.05 * 1.1 * 1.2 = 19.24 * 1.2 = 23.09)
                                 horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                modifier = if (showDebugOutlines) {
+                                modifier = if (debugOutlinesEnabled) {
                                     Modifier.border(2.dp, Color.Magenta)
                                 } else {
                                     Modifier
@@ -1399,7 +1407,7 @@ fun JellyfinHomeScreen(
                             LazyRow(
                                 contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)), // Bottom increased by another 20% (15.87 * 1.05 * 1.05 * 1.1 * 1.2 = 19.24 * 1.2 = 23.09)
                                 horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                modifier = if (showDebugOutlines) {
+                                modifier = if (debugOutlinesEnabled) {
                                     Modifier.border(2.dp, Color.Magenta)
                                 } else {
                                     Modifier
@@ -1435,7 +1443,7 @@ fun JellyfinHomeScreen(
                             LazyRow(
                                 contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)), // Bottom increased by another 20% (15.87 * 1.05 * 1.05 * 1.1 * 1.2 = 19.24 * 1.2 = 23.09)
                                 horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                modifier = if (showDebugOutlines) {
+                                modifier = if (debugOutlinesEnabled) {
                                     Modifier.border(2.dp, Color.Magenta)
                                 } else {
                                     Modifier
@@ -1472,7 +1480,7 @@ fun JellyfinHomeScreen(
                             LazyRow(
                                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.4f * 1.3f)), // Bottom increased by another 30%: (15.87 * 1.4553 * 1.4) * 1.3 = 42.024.dp
                                 horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                modifier = if (showDebugOutlines) {
+                                modifier = if (debugOutlinesEnabled) {
                                     Modifier.border(2.dp, Color.Magenta)
                                 } else {
                                     Modifier
@@ -1543,7 +1551,19 @@ fun JellyfinHomeScreen(
     // Settings screen
     if (showSettings) {
         Dialog(
-            onDismissRequest = { showSettings = false },
+            onDismissRequest = { 
+                // Check if dark mode changed and refresh UI if needed
+                val darkModeChanged = settings.darkModeEnabled != darkModeWhenSettingsOpened
+                if (darkModeChanged) {
+                    darkModeEnabled = settings.darkModeEnabled
+                }
+                // Check if debug outlines changed and refresh UI if needed
+                val debugOutlinesChanged = settings.showDebugOutlines != debugOutlinesWhenSettingsOpened
+                if (debugOutlinesChanged) {
+                    debugOutlinesEnabled = settings.showDebugOutlines
+                }
+                showSettings = false 
+            },
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
             Box(
@@ -1563,7 +1583,19 @@ fun JellyfinHomeScreen(
                     )
                 ) {
                     SettingsScreen(
-                        onBack = { showSettings = false }
+                        onBack = { 
+                            // Check if dark mode changed and refresh UI if needed
+                            val darkModeChanged = settings.darkModeEnabled != darkModeWhenSettingsOpened
+                            if (darkModeChanged) {
+                                darkModeEnabled = settings.darkModeEnabled
+                            }
+                            // Check if debug outlines changed and refresh UI if needed
+                            val debugOutlinesChanged = settings.showDebugOutlines != debugOutlinesWhenSettingsOpened
+                            if (debugOutlinesChanged) {
+                                debugOutlinesEnabled = settings.showDebugOutlines
+                            }
+                            showSettings = false 
+                        }
                     )
                 }
             }

@@ -68,8 +68,59 @@ class JellyfinRepository(
 
     suspend fun fetchRecentlyAddedMovies() {
         try {
-            val items = apiService.getRecentlyAddedMovies()
-            _recentlyAddedMovies.value = items
+            // First, get the default list (includes all accessible libraries)
+            val defaultItems = apiService.getRecentlyAddedMovies()
+            
+            // Also fetch from all libraries individually to ensure we get items from all libraries
+            // including "Movies 4K" or any other movie libraries
+            // Fetch libraries if not already loaded
+            val libraries = if (_libraries.value.isEmpty()) {
+                try {
+                    val fetchedLibraries = apiService.getLibraries()
+                    _libraries.value = fetchedLibraries.filterNot { 
+                        it.Type.equals("livetv", ignoreCase = true) || 
+                        it.Name.equals("Live TV", ignoreCase = true)
+                    }
+                    _libraries.value
+                } catch (e: Exception) {
+                    emptyList()
+                }
+            } else {
+                _libraries.value
+            }
+            
+            val allItems = mutableListOf<JellyfinItem>()
+            val seenIds = mutableSetOf<String>()
+            
+            // Add default items first
+            defaultItems.forEach { item ->
+                if (seenIds.add(item.Id)) {
+                    allItems.add(item)
+                }
+            }
+            
+            // Fetch from each library that might contain movies
+            libraries.forEach { library ->
+                try {
+                    // Fetch recently added items from this specific library
+                    val libraryItems = apiService.getRecentlyAddedMoviesFromLibrary(library.Id)
+                    libraryItems.forEach { item ->
+                        if (seenIds.add(item.Id)) {
+                            allItems.add(item)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Log but continue with other libraries
+                    android.util.Log.w("JellyfinRepository", "Error fetching movies from library ${library.Name}: ${e.message}")
+                }
+            }
+            
+            // Sort by DateCreated descending and limit to 20 most recent
+            val sortedItems = allItems.sortedByDescending { 
+                it.DateCreated ?: ""
+            }.take(20)
+            
+            _recentlyAddedMovies.value = sortedItems
         } catch (e: Exception) {
             e.printStackTrace()
             // Don't set error for recently added movies, just log it
@@ -79,8 +130,59 @@ class JellyfinRepository(
 
     suspend fun fetchRecentlyReleasedMovies() {
         try {
-            val items = apiService.getRecentlyReleasedMovies()
-            _recentlyReleasedMovies.value = items
+            // First, get the default list (includes all accessible libraries)
+            val defaultItems = apiService.getRecentlyReleasedMovies()
+            
+            // Also fetch from all libraries individually to ensure we get items from all libraries
+            // including "Movies 4K" or any other movie libraries
+            // Fetch libraries if not already loaded
+            val libraries = if (_libraries.value.isEmpty()) {
+                try {
+                    val fetchedLibraries = apiService.getLibraries()
+                    _libraries.value = fetchedLibraries.filterNot { 
+                        it.Type.equals("livetv", ignoreCase = true) || 
+                        it.Name.equals("Live TV", ignoreCase = true)
+                    }
+                    _libraries.value
+                } catch (e: Exception) {
+                    emptyList()
+                }
+            } else {
+                _libraries.value
+            }
+            
+            val allItems = mutableListOf<JellyfinItem>()
+            val seenIds = mutableSetOf<String>()
+            
+            // Add default items first
+            defaultItems.forEach { item ->
+                if (seenIds.add(item.Id)) {
+                    allItems.add(item)
+                }
+            }
+            
+            // Fetch from each library that might contain movies
+            libraries.forEach { library ->
+                try {
+                    // Fetch recently released items from this specific library
+                    val libraryItems = apiService.getRecentlyReleasedMoviesFromLibrary(library.Id)
+                    libraryItems.forEach { item ->
+                        if (seenIds.add(item.Id)) {
+                            allItems.add(item)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Log but continue with other libraries
+                    android.util.Log.w("JellyfinRepository", "Error fetching released movies from library ${library.Name}: ${e.message}")
+                }
+            }
+            
+            // Sort by PremiereDate descending and limit to 20 most recent
+            val sortedItems = allItems.sortedByDescending { 
+                it.PremiereDate ?: ""
+            }.take(20)
+            
+            _recentlyReleasedMovies.value = sortedItems
         } catch (e: Exception) {
             e.printStackTrace()
             // Don't set error for recently released movies, just log it

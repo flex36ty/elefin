@@ -24,7 +24,7 @@ class ErrorFragment : ErrorSupportFragment() {
 
         buttonText = resources.getString(R.string.dismiss_error)
         buttonClickListener = View.OnClickListener {
-            fragmentManager!!.beginTransaction().remove(this@ErrorFragment).commit()
+            parentFragmentManager.beginTransaction().remove(this@ErrorFragment).commit()
         }
     }
 

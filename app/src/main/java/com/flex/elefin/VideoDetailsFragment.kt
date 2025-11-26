@@ -30,13 +30,13 @@ import android.widget.Toast
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.SimpleTarget
 import com.bumptech.glide.request.transition.Transition
-
 import java.util.Collections
 
 /**
  * A wrapper fragment for leanback details screens.
  * It shows a detailed view of video and its metadata plus related videos.
  */
+@Suppress("DEPRECATION")
 class VideoDetailsFragment : DetailsSupportFragment() {
 
     private var mSelectedMovie: Movie? = null
@@ -51,7 +51,8 @@ class VideoDetailsFragment : DetailsSupportFragment() {
 
         mDetailsBackground = DetailsSupportFragmentBackgroundController(this)
 
-        mSelectedMovie = activity!!.intent.getSerializableExtra(DetailsActivity.MOVIE) as Movie
+        @Suppress("DEPRECATION")
+        mSelectedMovie = activity!!.intent.getSerializableExtra(DetailsActivity.MOVIE) as? Movie
         if (mSelectedMovie != null) {
             mPresenterSelector = ClassPresenterSelector()
             mAdapter = ArrayObjectAdapter(mPresenterSelector)
@@ -87,7 +88,7 @@ class VideoDetailsFragment : DetailsSupportFragment() {
 
     private fun setupDetailsOverviewRow() {
         Log.d(TAG, "doInBackground: " + mSelectedMovie?.toString())
-        val row = DetailsOverviewRow(mSelectedMovie)
+        val row = DetailsOverviewRow(mSelectedMovie ?: return)
         row.imageDrawable = ContextCompat.getDrawable(activity!!, R.drawable.default_background)
         val width = convertDpToPixel(activity!!, DETAIL_THUMB_WIDTH)
         val height = convertDpToPixel(activity!!, DETAIL_THUMB_HEIGHT)
@@ -192,13 +193,16 @@ class VideoDetailsFragment : DetailsSupportFragment() {
                 val intent = Intent(activity!!, DetailsActivity::class.java)
                 intent.putExtra(resources.getString(R.string.movie), mSelectedMovie)
 
-                val bundle =
+                val imageView = (itemViewHolder?.view as? ImageCardView)?.mainImageView
+                val bundle = if (imageView != null) {
                     ActivityOptionsCompat.makeSceneTransitionAnimation(
                         activity!!,
-                        (itemViewHolder?.view as ImageCardView).mainImageView,
+                        imageView,
                         DetailsActivity.SHARED_ELEMENT_NAME
-                    )
-                        .toBundle()
+                    ).toBundle()
+                } else {
+                    null
+                }
                 startActivity(intent, bundle)
             }
         }

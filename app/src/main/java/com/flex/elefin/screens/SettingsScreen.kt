@@ -1,5 +1,7 @@
 package com.flex.elefin.screens
 
+import coil.annotation.ExperimentalCoilApi
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,7 +29,7 @@ import androidx.tv.material3.IconButtonDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.tv.material3.Icon
 import com.flex.elefin.jellyfin.AppSettings
 import coil.ImageLoader
@@ -42,6 +44,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import java.io.File
 import android.widget.Toast
 
+@OptIn(coil.annotation.ExperimentalCoilApi::class)
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit
@@ -63,6 +66,7 @@ fun SettingsScreen(
     var autoRefreshEnabled by remember { mutableStateOf(settings.autoRefreshEnabled) }
     var autoRefreshIntervalMinutes by remember { mutableStateOf(settings.autoRefreshIntervalMinutes) }
     var hideShowsWithZeroEpisodesEnabled by remember { mutableStateOf(settings.hideShowsWithZeroEpisodes) }
+    var minimalBuffer4KEnabled by remember { mutableStateOf(settings.minimalBuffer4K) }
 
     Box(
         modifier = Modifier
@@ -90,7 +94,7 @@ fun SettingsScreen(
                     )
                 ) {
                     Icon(
-                        imageVector = Icons.Default.ArrowBack,
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back"
                     )
                 }
@@ -666,6 +670,47 @@ fun SettingsScreen(
                     Text(if (hideShowsWithZeroEpisodesEnabled) "ON" else "OFF")
                 }
             }
+
+            // Minimal Buffer for 4K setting - Hidden for now
+            /*
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "Minimal Buffer for 4K",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Start playing 4K content with minimal buffering (reduces wait time for large files)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                
+                Button(
+                    onClick = {
+                        minimalBuffer4KEnabled = !minimalBuffer4KEnabled
+                        settings.minimalBuffer4K = minimalBuffer4KEnabled
+                    },
+                    colors = ButtonDefaults.colors(
+                        containerColor = if (minimalBuffer4KEnabled) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        }
+                    )
+                ) {
+                    Text(if (minimalBuffer4KEnabled) "ON" else "OFF")
+                }
+            }
+            */
             
             // Clear Cache button
             Row(
@@ -695,7 +740,7 @@ fun SettingsScreen(
                             try {
                                 withContext(Dispatchers.IO) {
                                     // Clear Coil cache
-                                    val imageLoader = context.imageLoader
+                                    val imageLoader: coil.ImageLoader = context.imageLoader
                                     imageLoader.diskCache?.clear()
                                     imageLoader.memoryCache?.clear()
                                     

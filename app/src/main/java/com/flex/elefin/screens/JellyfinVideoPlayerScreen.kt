@@ -30,12 +30,16 @@ import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.common.ParserException
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.ui.PlayerView
 import com.flex.elefin.jellyfin.JellyfinApiService
 import com.flex.elefin.jellyfin.JellyfinItem
@@ -66,6 +70,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.background
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Column
 
 @UnstableApi
 @Composable
@@ -78,8 +85,31 @@ fun JellyfinVideoPlayerScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
+    // Create player with LoadControl configured based on settings
+    // If minimal buffer for 4K is enabled, use minimal buffering (will apply to all content when enabled)
     val player = remember {
+        if (settings.minimalBuffer4K) {
+            // Configure LoadControl with minimal buffering
+            // Note: minBufferMs must be >= bufferForPlaybackMs
+            // Minimal buffer: 1 second to start playback, 1.5 seconds minimum buffer, 2 seconds max for playback
+            val loadControl = DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                    1500,  // minBufferMs - minimum buffered duration before starting playback (1.5 seconds, must be >= bufferForPlaybackMs)
+                    2000,  // maxBufferMs - maximum buffered duration during playback (2 seconds)
+                    1000,  // bufferForPlaybackMs - buffered duration required to start playback (1 second)
+                    1500   // bufferForPlaybackAfterRebufferMs - buffered duration required after rebuffering (1.5 seconds)
+                )
+                .build()
+            
+            ExoPlayer.Builder(context)
+                .setLoadControl(loadControl)
+                .build()
+                .also { Log.d("JellyfinPlayer", "Created player with minimal buffering (for 4K content): start after 1s, min 1.5s, max 2s") }
+        } else {
         ExoPlayer.Builder(context).build()
+                .also { Log.d("JellyfinPlayer", "Created player with default buffering") }
+        }
     }
     val playerViewRef = remember { mutableStateOf<PlayerView?>(null) }
     var mediaUrl by remember { mutableStateOf<String?>(null) }
@@ -92,6 +122,10 @@ fun JellyfinVideoPlayerScreen(
     var hasRetriedWithoutRange by remember { mutableStateOf(false) } // Track if we've retried without range requests for 416 errors
     var hasRetriedWithHls by remember { mutableStateOf(false) } // Track if we've retried with HLS for parser errors
     var currentMediaSource by remember { mutableStateOf<MediaSource?>(null) }
+    var showSettingsMenu by remember { mutableStateOf(false) }
+    var currentSubtitleIndex by remember { mutableStateOf<Int?>(subtitleStreamIndex) }
+    var lastSelectedSubtitleIndex by remember { mutableStateOf<Int?>(subtitleStreamIndex) } // Track last selected subtitle from controller
+    var is4KContent by remember { mutableStateOf(false) } // Track if current content is 4K
 
     // Fetch item details and prepare video URL
     LaunchedEffect(item.Id, apiService, subtitleStreamIndex) {
@@ -105,12 +139,43 @@ fun JellyfinVideoPlayerScreen(
                     val mediaSource = details.MediaSources?.firstOrNull()
                     val mediaSourceId = mediaSource?.Id
 
+                    // Detect if video is HDR/high-quality (HEVC codec and high resolution typically indicates HDR)
+                    val videoStream = mediaSource?.MediaStreams?.firstOrNull { it.Type == "Video" }
+                    val isHEVC = videoStream?.Codec?.contains("hevc", ignoreCase = true) == true ||
+                                 videoStream?.Codec?.contains("h265", ignoreCase = true) == true
+                    val width = videoStream?.Width ?: 0
+                    val height = videoStream?.Height ?: 0
+                    val is4KOrHigher = width >= 3840 || height >= 2160
+                    val isHDROrHighQuality = isHEVC && is4KOrHigher
+                    
+                    // Store 4K status for buffering control
+                    is4KContent = is4KOrHigher
+                    
+                    // Detect if audio codec is unsupported by Android (requires transcoding)
+                    val audioStream = mediaSource?.MediaStreams?.firstOrNull { it.Type == "Audio" }
+                    val audioCodec = audioStream?.Codec?.lowercase() ?: ""
+                    // TrueHD, DTS-HD, and other lossless/high-end audio codecs aren't supported by Android AudioTrack
+                    val isUnsupportedAudio = audioCodec.contains("truehd", ignoreCase = true) ||
+                                            audioCodec.contains("dts-hd", ignoreCase = true) ||
+                                            audioCodec.contains("dtshd", ignoreCase = true) ||
+                                            audioCodec.contains("dtsx", ignoreCase = true) ||
+                                            audioCodec.contains("atmos", ignoreCase = true) && audioCodec.contains("truehd", ignoreCase = true)
+                    
+                    if (isHDROrHighQuality) {
+                        Log.d("JellyfinPlayer", "HDR/high-quality video detected (${videoStream?.Codec}, ${width}x${height}) - requesting full quality")
+                    }
+                    if (isUnsupportedAudio) {
+                        Log.d("JellyfinPlayer", "Unsupported audio codec detected (${audioStream?.Codec}) - will transcode audio while preserving video quality")
+                    }
+
                     // Generate video playback URL WITHOUT subtitle stream index
                     // We'll load subtitles separately via MediaItem.SubtitleConfiguration for better ExoPlayer compatibility
                     val videoUrl = apiService.getVideoPlaybackUrl(
                         itemId = item.Id,
                         mediaSourceId = mediaSourceId,
-                        subtitleStreamIndex = null // Don't include in URL, load separately
+                        subtitleStreamIndex = null, // Don't include in URL, load separately
+                        preserveQuality = isHDROrHighQuality, // Preserve quality for HDR videos
+                        transcodeAudio = isUnsupportedAudio // Transcode unsupported audio codecs
                     )
                     mediaUrl = videoUrl
                     Log.d("JellyfinPlayer", "Video URL: $videoUrl")
@@ -131,6 +196,7 @@ fun JellyfinVideoPlayerScreen(
         if (mediaUrl != null && !playerInitialized) {
             withContext(Dispatchers.Main) {
                 try {
+                    
                     // Get authentication headers
                     val headers = apiService.getVideoRequestHeaders()
 
@@ -148,6 +214,12 @@ fun JellyfinVideoPlayerScreen(
                     // Create data source factory
                     val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
 
+                    // Store mediaUrl in local variable for smart cast
+                    val currentMediaUrl = mediaUrl ?: return@withContext
+                    
+                    // Detect if URL is HLS (ends with .m3u8 or contains master.m3u8)
+                    val isHlsUrl = currentMediaUrl.contains(".m3u8", ignoreCase = true)
+                    
                     // Create MediaItem with subtitle configuration if subtitle is requested
                     // MediaItem.SubtitleConfiguration is the proper Media3 way to load external subtitles
                     val mediaItem = if (subtitleStreamIndex != null && itemDetails != null) {
@@ -168,7 +240,7 @@ fun JellyfinVideoPlayerScreen(
                             // Create MediaItem with subtitle configuration
                             // This loads the subtitle separately from the video stream
                             MediaItem.Builder()
-                                .setUri(Uri.parse(mediaUrl))
+                                .setUri(Uri.parse(currentMediaUrl))
                                 .setSubtitleConfigurations(
                                     listOf(
                                         MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitleUrl))
@@ -180,15 +252,21 @@ fun JellyfinVideoPlayerScreen(
                                 .build()
                         } catch (e: Exception) {
                             Log.w("JellyfinPlayer", "Error creating MediaItem with subtitle, using video only: ${e.message}", e)
-                            MediaItem.fromUri(Uri.parse(mediaUrl))
+                            MediaItem.fromUri(Uri.parse(currentMediaUrl))
                         }
                     } else {
-                        MediaItem.fromUri(Uri.parse(mediaUrl))
+                        MediaItem.fromUri(Uri.parse(currentMediaUrl))
                     }
                     
-                    // Create media source from MediaItem
-                    val mediaSource: MediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
+                    // Create media source from MediaItem - use HLS for .m3u8 URLs, Progressive for others
+                    val mediaSource: MediaSource = if (isHlsUrl) {
+                        Log.d("JellyfinPlayer", "Using HLS media source for progressive playback")
+                        HlsMediaSource.Factory(dataSourceFactory)
                         .createMediaSource(mediaItem)
+                    } else {
+                        ProgressiveMediaSource.Factory(dataSourceFactory)
+                            .createMediaSource(mediaItem)
+                    }
 
                     // Set media source
                     player.setMediaSource(mediaSource)
@@ -404,6 +482,12 @@ fun JellyfinVideoPlayerScreen(
                         }
 
                         override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                            // Log available tracks for debugging
+                            Log.d("JellyfinPlayer", "Tracks changed: ${tracks.groups.size} track groups")
+                            tracks.groups.forEach { group ->
+                                Log.d("JellyfinPlayer", "Track group: type=${group.type}, supported=${group.isSupported}, trackCount=${group.mediaTrackGroup.length}, selected=${group.isSelected}")
+                            }
+                            
                             // When tracks are available, select subtitle track if specified
                             // Handle subtitle selection or disabling
                             val textTrackGroups = tracks.groups.filter { group ->
@@ -411,8 +495,68 @@ fun JellyfinVideoPlayerScreen(
                                 group.isSupported
                             }
                             
-                            if (subtitleStreamIndex != null && itemDetails != null && textTrackGroups.isNotEmpty()) {
-                                // User selected a subtitle track - select it
+                            Log.d("JellyfinPlayer", "Found ${textTrackGroups.size} supported text track groups")
+                            
+                            // Check if user selected a subtitle via ExoPlayer's controller
+                            // When ExoPlayer's controller selects a subtitle, ExoPlayer already handles it
+                            // We just need to save the preference - NO RELOAD needed
+                            val selectedTextTrackGroup = textTrackGroups.firstOrNull { it.isSelected }
+                            if (selectedTextTrackGroup != null && itemDetails != null) {
+                                // User selected a subtitle track via ExoPlayer's controller
+                                // Find the corresponding Jellyfin subtitle stream index
+                                val selectedFormat = selectedTextTrackGroup.mediaTrackGroup.getFormat(0)
+                                val selectedLanguage = selectedFormat.language
+                                
+                                // Try to match by language or MIME type to find the Jellyfin subtitle index
+                                val matchingSubtitleStream = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
+                                    ?.filter { it.Type == "Subtitle" }
+                                    ?.firstOrNull { stream ->
+                                        // Match by language
+                                        stream.Language?.let { lang ->
+                                            lang.equals(selectedLanguage, ignoreCase = true) ||
+                                            lang.startsWith(selectedLanguage?.take(2) ?: "", ignoreCase = true) ||
+                                            selectedLanguage?.startsWith(lang.take(2), ignoreCase = true) == true
+                                        } == true
+                                    }
+                                
+                                val newSubtitleIndex = matchingSubtitleStream?.Index
+                                
+                                if (newSubtitleIndex != null && newSubtitleIndex != lastSelectedSubtitleIndex) {
+                                    Log.d("JellyfinPlayer", "Subtitle selected via ExoPlayer controller: index=$newSubtitleIndex, language=${matchingSubtitleStream.Language}")
+                                    lastSelectedSubtitleIndex = newSubtitleIndex
+                                    currentSubtitleIndex = newSubtitleIndex
+                                    
+                                    // Save preference - ExoPlayer already has the subtitle track active, no reload needed
+                                    settings.setSubtitlePreference(item.Id, newSubtitleIndex)
+                                }
+                            } else if (selectedTextTrackGroup == null && lastSelectedSubtitleIndex != null && textTrackGroups.isNotEmpty()) {
+                                // User deselected subtitles via ExoPlayer's controller
+                                // ExoPlayer already disabled the subtitle - just save preference, no reload needed
+                                Log.d("JellyfinPlayer", "Subtitle deselected via ExoPlayer controller")
+                                lastSelectedSubtitleIndex = null
+                                currentSubtitleIndex = null
+                                
+                                // Save preference
+                                settings.setSubtitlePreference(item.Id, null)
+                            }
+                            
+                            // Ensure subtitle button is visible in controller when tracks are available
+                            playerViewRef.value?.let { view ->
+                                view.post {
+                                    val controller = view.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
+                                    controller?.let { controlView ->
+                                        // The subtitle button should automatically appear when text tracks are available
+                                        // Force a refresh of the controller to ensure button visibility
+                                        controlView.invalidate()
+                                        Log.d("JellyfinPlayer", "Controller invalidated to refresh subtitle button visibility")
+                                    }
+                                }
+                            }
+                            
+                            // Only apply subtitleStreamIndex (from series/movie page) if it's different from current selection
+                            // This prevents clearing subtitles when ExoPlayer's controller selects one
+                            if (subtitleStreamIndex != null && itemDetails != null && textTrackGroups.isNotEmpty() && subtitleStreamIndex != currentSubtitleIndex) {
+                                // User selected a subtitle track from series/movie page - select it
                                 try {
                                     Log.d("JellyfinPlayer", "Found ${textTrackGroups.size} supported subtitle track group(s)")
                                     
@@ -459,12 +603,15 @@ fun JellyfinVideoPlayerScreen(
                                     player.trackSelectionParameters = updatedParameters
                                     
                                     val selectedFormat = groupToSelect.mediaTrackGroup.getFormat(0)
+                                    currentSubtitleIndex = subtitleStreamIndex
+                                    lastSelectedSubtitleIndex = subtitleStreamIndex
                                     Log.d("JellyfinPlayer", "✅ Selected subtitle track: language=${selectedFormat.language}, id=${selectedFormat.id}, index=$subtitleStreamIndex")
                                 } catch (e: Exception) {
                                     Log.w("JellyfinPlayer", "Error selecting subtitle track: ${e.message}", e)
                                 }
-                            } else if (subtitleStreamIndex == null) {
-                                // User selected "None" - explicitly clear any subtitle track selection
+                            } else if (subtitleStreamIndex == null && currentSubtitleIndex == null && textTrackGroups.isNotEmpty() && selectedTextTrackGroup == null) {
+                                // User explicitly selected "None" from series/movie page AND no subtitle is currently selected
+                                // Only clear if no subtitle is selected via ExoPlayer's controller either
                                 try {
                                     // Clear any existing subtitle overrides to ensure no subtitles are selected
                                     val updatedParameters = player.trackSelectionParameters
@@ -484,6 +631,21 @@ fun JellyfinVideoPlayerScreen(
                             when (playbackState) {
                                 Player.STATE_READY -> {
                                     Log.d("JellyfinPlayer", "Player ready")
+                                    // Ensure PlayerView is visible when ready
+                                    playerViewRef.value?.let { view ->
+                                        if (view.visibility != android.view.View.VISIBLE) {
+                                            view.visibility = android.view.View.VISIBLE
+                                            Log.d("JellyfinPlayer", "Made PlayerView visible")
+                                        }
+                                        if (view.alpha != 1f) {
+                                            view.alpha = 1f
+                                        }
+                                        // Force a layout pass to ensure rendering
+                                        view.post {
+                                            view.requestLayout()
+                                            view.invalidate()
+                                        }
+                                    }
                                     // Seek to resume position only once, when player first becomes ready
                                     if (resumePositionMs > 0 && !hasSeekedToResume) {
                                         player.seekTo(resumePositionMs)
@@ -493,6 +655,12 @@ fun JellyfinVideoPlayerScreen(
                                 }
                                 Player.STATE_BUFFERING -> {
                                     Log.d("JellyfinPlayer", "Player buffering")
+                                    // Ensure PlayerView is visible during buffering
+                                    playerViewRef.value?.let { view ->
+                                        if (view.visibility != android.view.View.VISIBLE) {
+                                            view.visibility = android.view.View.VISIBLE
+                                        }
+                                    }
                                 }
                                 Player.STATE_ENDED -> {
                                     Log.d("JellyfinPlayer", "Playback ended")
@@ -678,7 +846,7 @@ fun JellyfinVideoPlayerScreen(
     }
     
     LaunchedEffect(itemDetails?.SeriesId, apiService) {
-        if (itemDetails?.Type == "Episode" && itemDetails?.SeriesId != null && apiService != null) {
+        if (itemDetails?.Type == "Episode" && itemDetails?.SeriesId != null) {
             withContext(Dispatchers.IO) {
                 try {
                     val series = apiService.getItemDetails(itemDetails!!.SeriesId!!)
@@ -713,6 +881,11 @@ fun JellyfinVideoPlayerScreen(
                             false
                         }
                         Key.DirectionLeft -> {
+                            // Check if controller is showing - if so, don't seek (allow navigation)
+                            val controller = playerViewRef.value?.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
+                            val isControllerShowing = controller != null && controller.visibility == android.view.View.VISIBLE && controller.alpha > 0f
+                            
+                            if (!isControllerShowing) {
                             // Seek backward 15 seconds (don't show controller)
                             scope.launch(Dispatchers.Main) {
                                 val currentPos = player.currentPosition
@@ -721,8 +894,16 @@ fun JellyfinVideoPlayerScreen(
                                 Log.d("ExoPlayer", "Left pressed - seeking backward to ${seekTo}ms")
                             }
                             true // Consume event
+                            } else {
+                                false // Don't consume - let controller handle navigation
+                            }
                         }
                         Key.DirectionRight -> {
+                            // Check if controller is showing - if so, don't seek (allow navigation)
+                            val controller = playerViewRef.value?.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
+                            val isControllerShowing = controller != null && controller.visibility == android.view.View.VISIBLE && controller.alpha > 0f
+                            
+                            if (!isControllerShowing) {
                             // Seek forward 15 seconds (don't show controller)
                             scope.launch(Dispatchers.Main) {
                                 val currentPos = player.currentPosition
@@ -736,6 +917,14 @@ fun JellyfinVideoPlayerScreen(
                                 Log.d("ExoPlayer", "Right pressed - seeking forward to ${seekTo}ms")
                             }
                             true // Consume event
+                            } else {
+                                false // Don't consume - let controller handle navigation
+                            }
+                        }
+                        Key.Menu -> {
+                            // Open settings menu when Menu key is pressed
+                            showSettingsMenu = true
+                            true
                         }
                         else -> false
                     }
@@ -757,17 +946,94 @@ fun JellyfinVideoPlayerScreen(
                                 controllerShowTimeoutMs = 5000 // Hide after 5 seconds of inactivity
                                 // Enable subtitle track selection in controller
                                 controllerAutoShow = true
+                                // Explicitly show subtitle button - this is the key!
+                                setShowSubtitleButton(true)
                                 // Make sure controller is focusable for TV
                                 controllerHideOnTouch = false // On TV, don't hide on touch
                                 // Make PlayerView focusable so it can receive key events
                                 isFocusable = true
                                 isFocusableInTouchMode = false // Not needed for TV
+                                
+                                // Ensure view is visible and properly sized
+                                visibility = android.view.View.VISIBLE
+                                alpha = 1f
+                                
                                 playerViewRef.value = this
                                 
-                                // Hide next/previous track buttons
+                                // Hide next/previous track buttons and ensure subtitle button is visible
                                 post {
                                     findViewById<android.view.View>(androidx.media3.ui.R.id.exo_prev)?.visibility = android.view.View.GONE
                                     findViewById<android.view.View>(androidx.media3.ui.R.id.exo_next)?.visibility = android.view.View.GONE
+                                    
+                                    // Ensure the view is properly attached and visible
+                                    visibility = android.view.View.VISIBLE
+                                    alpha = 1f
+                                    
+                                    // Explicitly show subtitle button again after view is attached
+                                    setShowSubtitleButton(true)
+                                    
+                                    // Get the PlayerControlView and ensure subtitle button is visible
+                                    val controller = findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
+                                    controller?.let { controlView ->
+                                        // Customize control button focus color to purple (transparent)
+                                        val transparentPurple = android.graphics.Color.argb(150, 156, 39, 176) // Purple with transparency
+                                        
+                                        // Apply custom focus color to all control buttons and seekbar
+                                        val buttonIds = listOf(
+                                            androidx.media3.ui.R.id.exo_play,
+                                            androidx.media3.ui.R.id.exo_pause,
+                                            androidx.media3.ui.R.id.exo_ffwd,
+                                            androidx.media3.ui.R.id.exo_rew,
+                                            androidx.media3.ui.R.id.exo_subtitle,
+                                            androidx.media3.ui.R.id.exo_settings,
+                                            androidx.media3.ui.R.id.exo_progress,
+                                            androidx.media3.ui.R.id.exo_position,
+                                            androidx.media3.ui.R.id.exo_duration,
+                                            androidx.media3.ui.R.id.exo_repeat_toggle,
+                                            androidx.media3.ui.R.id.exo_shuffle
+                                        )
+                                        
+                                        // Function to apply purple focus styling
+                                        fun applyPurpleFocus(view: android.view.View) {
+                                            view.setOnFocusChangeListener { v, hasFocus ->
+                                                if (hasFocus) {
+                                                    v.setBackgroundColor(transparentPurple)
+                                                } else {
+                                                    v.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                                                }
+                                            }
+                                        }
+                                        
+                                        buttonIds.forEach { buttonId ->
+                                            findViewById<android.view.View>(buttonId)?.let { button ->
+                                                applyPurpleFocus(button)
+                                            }
+                                        }
+                                        
+                                        // Apply to all child views recursively to catch any other buttons
+                                        fun applyToAllChildren(parent: android.view.ViewGroup) {
+                                            for (i in 0 until parent.childCount) {
+                                                val child = parent.getChildAt(i)
+                                                if (child is android.view.ViewGroup) {
+                                                    applyToAllChildren(child)
+                                                } else if (child is android.widget.Button || 
+                                                          child is android.widget.ImageButton ||
+                                                          (child.isFocusable && child.isClickable)) {
+                                                    applyPurpleFocus(child)
+                                                }
+                                            }
+                                        }
+                                        
+                                        // Apply styling to all focusable/clickable children
+                                        applyToAllChildren(controlView)
+                                        
+                                        // Force a refresh to ensure subtitle button is visible
+                                        controlView.invalidate()
+                                        Log.d("ExoPlayer", "PlayerControlView initialized, subtitle button explicitly enabled, focus color set to purple for all controls")
+                                    }
+                                    
+                                    // Request layout to ensure proper rendering
+                                    requestLayout()
                                 }
                             }
                         },
@@ -781,9 +1047,22 @@ fun JellyfinVideoPlayerScreen(
                             if (!view.isFocusable) {
                                 view.isFocusable = true
                             }
+                            // Ensure view is visible
+                            if (view.visibility != android.view.View.VISIBLE) {
+                                view.visibility = android.view.View.VISIBLE
+                            }
+                            if (view.alpha != 1f) {
+                                view.alpha = 1f
+                            }
+                            // Explicitly show subtitle button
+                            view.setShowSubtitleButton(true)
                             // Hide next/previous track buttons whenever controller is shown
                             view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_prev)?.visibility = android.view.View.GONE
                             view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_next)?.visibility = android.view.View.GONE
+                            
+                            // Ensure subtitle button is visible when tracks are available
+                            val controller = view.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
+                            controller?.invalidate() // Refresh controller to show subtitle button if tracks are available
                         }
                     )
                     
@@ -833,6 +1112,346 @@ fun JellyfinVideoPlayerScreen(
             }
             isLoading -> {
                 // Loading indicator could go here
+            }
+        }
+        
+        // Settings menu with subtitle picker
+        if (showSettingsMenu) {
+            ExoPlayerSettingsMenu(
+                item = itemDetails ?: item,
+                apiService = apiService,
+                currentSubtitleIndex = currentSubtitleIndex,
+                onDismiss = { showSettingsMenu = false },
+                player = player,
+                onSubtitleSelected = { subtitleIndex ->
+                    currentSubtitleIndex = subtitleIndex
+                    // Reload player with new subtitle
+                    scope.launch(Dispatchers.Main) {
+                        try {
+                            val currentPos = player.currentPosition
+                            val wasPlaying = player.isPlaying
+                            
+                            // Stop and clear current media
+                            player.stop()
+                            player.clearMediaItems()
+                            
+                            // Recreate MediaItem with new subtitle
+                            val mediaSourceIdForSubtitle = itemDetails?.MediaSources?.firstOrNull()?.Id ?: item.Id
+                            val mediaItem = if (subtitleIndex != null && itemDetails != null) {
+                                try {
+                                    val subtitleUrl = apiService.getSubtitleUrl(item.Id, mediaSourceIdForSubtitle, subtitleIndex)
+                                    val subtitleStream = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
+                                        ?.find { it.Type == "Subtitle" && it.Index == subtitleIndex }
+                                    val subtitleLanguage = subtitleStream?.Language
+                                    val subtitleMimeType = MimeTypes.TEXT_VTT
+                                    
+                                    MediaItem.Builder()
+                                        .setUri(Uri.parse(mediaUrl))
+                                        .setSubtitleConfigurations(
+                                            listOf(
+                                                MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitleUrl))
+                                                    .setMimeType(subtitleMimeType)
+                                                    .setLanguage(subtitleLanguage)
+                                                    .build()
+                                            )
+                                        )
+                                        .build()
+                                } catch (e: Exception) {
+                                    Log.w("JellyfinPlayer", "Error creating MediaItem with subtitle, using video only: ${e.message}", e)
+                                    MediaItem.fromUri(Uri.parse(mediaUrl))
+                                }
+                            } else {
+                                MediaItem.fromUri(Uri.parse(mediaUrl))
+                            }
+                            
+                            // Get headers
+                            val headers = apiService.getVideoRequestHeaders()
+                            val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+                                .setUserAgent("Jellyfin Android TV")
+                                .setAllowCrossProtocolRedirects(true)
+                                .setDefaultRequestProperties(headers.toMutableMap())
+                            val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
+                            
+                            // Create and set new media source
+                            val newMediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
+                                .createMediaSource(mediaItem)
+                            player.setMediaSource(newMediaSource)
+                            player.prepare()
+                            
+                            // Restore position and playing state
+                            player.seekTo(currentPos)
+                            player.playWhenReady = wasPlaying
+                            
+                            showSettingsMenu = false
+                        } catch (e: Exception) {
+                            Log.e("JellyfinPlayer", "Error reloading with new subtitle", e)
+                        }
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun ExoPlayerSettingsMenu(
+    item: JellyfinItem,
+    apiService: JellyfinApiService,
+    currentSubtitleIndex: Int?,
+    onDismiss: () -> Unit,
+    onSubtitleSelected: (Int?) -> Unit,
+    player: ExoPlayer? = null
+) {
+    var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
+    var isLoadingSubtitles by remember { mutableStateOf(true) }
+    
+    // Fetch full item details to get MediaSources with subtitle streams
+    LaunchedEffect(item.Id, apiService) {
+        withContext(Dispatchers.IO) {
+            try {
+                val details = apiService.getItemDetails(item.Id)
+                itemDetails = details
+                isLoadingSubtitles = false
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Normal cancellation when composable leaves composition - don't log as error
+                throw e // Re-throw to respect cancellation
+            } catch (e: Exception) {
+                Log.e("ExoPlayerSettingsMenu", "Error fetching item details", e)
+                isLoadingSubtitles = false
+            }
+        }
+    }
+    
+    // Get subtitle streams from MediaSources
+    val subtitleStreams = remember(itemDetails?.MediaSources) {
+        itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
+            ?.filter { it.Type == "Subtitle" }
+            ?.sortedBy { it.Index ?: 0 } ?: emptyList()
+    }
+    
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.7f)),
+            contentAlignment = Alignment.Center
+        ) {
+            androidx.tv.material3.Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.4f)
+                    .fillMaxHeight(0.6f),
+                shape = RoundedCornerShape(16.dp),
+                colors = androidx.tv.material3.SurfaceDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp)
+                ) {
+                    // Dialog title
+                    Text(
+                        text = "Player Settings",
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.8f
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                    
+                    // Subtitle section - ABOVE speed picker
+                    Text(
+                        text = "Subtitles",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = MaterialTheme.typography.titleMedium.fontSize * 0.8f
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(bottom = 8.dp, top = 8.dp)
+                    )
+                    
+                    // Vertical list of subtitle options
+                    if (isLoadingSubtitles) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Loading subtitles...",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            // "None" option to disable subtitles
+                            item {
+                                ListItem(
+                                    selected = currentSubtitleIndex == null,
+                                    onClick = {
+                                        onSubtitleSelected(null)
+                                    },
+                                    headlineContent = {
+                                        Text(
+                                            text = "None (Off)",
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
+                                            )
+                                        )
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            
+                            // Subtitle stream options
+                            items(subtitleStreams) { stream ->
+                                val subtitleTitle = stream.DisplayTitle
+                                    ?: stream.Language
+                                    ?: "Unknown"
+                                val subtitleInfo = buildString {
+                                    if (stream.IsDefault == true) append("Default")
+                                    if (stream.IsForced == true) {
+                                        if (isNotEmpty()) append(", ")
+                                        append("Forced")
+                                    }
+                                    if (stream.IsExternal == true) {
+                                        if (isNotEmpty()) append(", ")
+                                        append("External")
+                                    }
+                                }
+                                
+                                ListItem(
+                                    selected = stream.Index == currentSubtitleIndex,
+                                    onClick = {
+                                        stream.Index?.let { index ->
+                                            onSubtitleSelected(index)
+                                        }
+                                    },
+                                    headlineContent = {
+                                        Column {
+                                            Text(
+                                                text = subtitleTitle,
+                                                style = MaterialTheme.typography.bodyLarge.copy(
+                                                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
+                                                )
+                                            )
+                                            if (subtitleInfo.isNotEmpty()) {
+                                                Text(
+                                                    text = subtitleInfo,
+                                                    style = MaterialTheme.typography.bodySmall.copy(
+                                                        fontSize = MaterialTheme.typography.bodySmall.fontSize * 0.7f
+                                                    ),
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                                )
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+                    
+                    // Speed section - BELOW subtitles
+                    if (player != null) {
+                        Text(
+                            text = "Playback Speed",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = MaterialTheme.typography.titleMedium.fontSize * 0.8f
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(bottom = 8.dp, top = 16.dp)
+                        )
+                        
+                        val speedOptions = listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
+                        val currentSpeed = player.playbackParameters.speed
+                        val currentSpeedIndex = speedOptions.indexOfFirst { kotlin.math.abs(it - currentSpeed) < 0.01f }.takeIf { it >= 0 } ?: 3
+                        
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            items(speedOptions.size) { index ->
+                                val speed = speedOptions[index]
+                                val speedText = if (speed == 1.0f) "Normal (1.0x)" else "${speed}x"
+                                
+                                ListItem(
+                                    selected = index == currentSpeedIndex,
+                                    onClick = {
+                                        player.playbackParameters = androidx.media3.common.PlaybackParameters(speed)
+                                        Log.d("ExoPlayerSettingsMenu", "Changed playback speed to ${speed}x")
+                                    },
+                                    headlineContent = {
+                                        Text(
+                                            text = speedText,
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
+                                            )
+                                        )
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+                    
+                    // Speed section - BELOW subtitles
+                    if (player != null) {
+                        Text(
+                            text = "Playback Speed",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = MaterialTheme.typography.titleMedium.fontSize * 0.8f
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(bottom = 8.dp, top = 16.dp)
+                        )
+                        
+                        val speedOptions = listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
+                        val currentSpeed = player.playbackParameters.speed
+                        val currentSpeedIndex = speedOptions.indexOfFirst { kotlin.math.abs(it - currentSpeed) < 0.01f }.takeIf { it >= 0 } ?: 3
+                        
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            items(speedOptions.size) { index ->
+                                val speed = speedOptions[index]
+                                val speedText = if (speed == 1.0f) "Normal (1.0x)" else "${speed}x"
+                                
+                                ListItem(
+                                    selected = index == currentSpeedIndex,
+                                    onClick = {
+                                        player.playbackParameters = PlaybackParameters(speed)
+                                        Log.d("ExoPlayerSettingsMenu", "Changed playback speed to ${speed}x")
+                                    },
+                                    headlineContent = {
+                                        Text(
+                                            text = speedText,
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
+                                            )
+                                        )
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }

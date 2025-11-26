@@ -16,8 +16,9 @@ class PlaybackVideoFragment : VideoSupportFragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val (_, title, description, _, _, videoUrl) =
-            activity?.intent?.getSerializableExtra(DetailsActivity.MOVIE) as Movie
+        @Suppress("DEPRECATION")
+        val movie = activity?.intent?.getSerializableExtra(DetailsActivity.MOVIE) as? Movie
+        val (_, title, description, _, _, videoUrl) = movie ?: return
 
         val glueHost = VideoSupportFragmentGlueHost(this@PlaybackVideoFragment)
         val playerAdapter = MediaPlayerAdapter(activity)

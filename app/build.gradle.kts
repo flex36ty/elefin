@@ -85,6 +85,8 @@ dependencies {
     
     // Media3/ExoPlayer for video playback
     implementation(libs.media3.exoplayer)
+    implementation(libs.media3.exoplayer.hls) // HLS streaming support (better subtitle track detection)
+    implementation(libs.media3.exoplayer.dash) // DASH streaming support (better subtitle track detection)
     implementation(libs.media3.ui)
     implementation(libs.media3.ui.compose)
     implementation(libs.media3.common)

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
@@ -105,12 +106,28 @@ fun ItemDetailsSection(
                 Text(
                     text = synopsis,
                     style = MaterialTheme.typography.bodyLarge.copy(
-                        fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
+                        fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f,
+                        lineHeight = MaterialTheme.typography.bodyLarge.fontSize * 0.8f * 1.1f // Reduced line spacing (10% of font size)
                     ),
                     color = Color.White.copy(alpha = 0.9f),
                     maxLines = synopsisMaxLines,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+        }
+        
+        // Director (only for movies)
+        if (item.Type == "Movie") {
+            val directors = item.People?.filter { it.Type == "Director" }?.mapNotNull { it.Name } ?: emptyList()
+            if (directors.isNotEmpty()) {
+                Text(
+                    text = "Director: ${directors.joinToString(", ")}",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
+                    ),
+                    color = Color.White.copy(alpha = 0.9f),
+                    modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
                 )
             }
         }

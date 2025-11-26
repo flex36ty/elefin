@@ -240,6 +240,54 @@ class JellyfinApiService(
             emptyList()
         }
     }
+    
+    suspend fun getRecentlyAddedMoviesFromLibrary(libraryId: String, limit: Int = 20): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("IncludeItemTypes", "Movie")
+                parameters.append("ParentId", libraryId)
+                parameters.append("SortBy", "DateCreated")
+                parameters.append("SortOrder", "Descending")
+                parameters.append("Limit", limit.toString())
+                parameters.append("Recursive", "true")
+                parameters.append("Fields", "ImageTags,DateCreated") // Request ImageTags and DateCreated for image loading and sorting
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            response.Items
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+    
+    suspend fun getRecentlyReleasedMoviesFromLibrary(libraryId: String, limit: Int = 20): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("IncludeItemTypes", "Movie")
+                parameters.append("ParentId", libraryId)
+                parameters.append("SortBy", "PremiereDate")
+                parameters.append("SortOrder", "Descending")
+                parameters.append("Limit", limit.toString())
+                parameters.append("Recursive", "true")
+                parameters.append("Fields", "ImageTags,PremiereDate") // Request ImageTags and PremiereDate for image loading and sorting
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            response.Items
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
 
     suspend fun getRecentlyAddedShows(limit: Int = 20): List<JellyfinItem> {
         return try {
@@ -355,7 +403,9 @@ class JellyfinApiService(
     fun getVideoPlaybackUrl(
         itemId: String,
         mediaSourceId: String? = null,
-        subtitleStreamIndex: Int? = null
+        subtitleStreamIndex: Int? = null,
+        preserveQuality: Boolean = false, // Set to true for HDR videos to preserve quality
+        transcodeAudio: Boolean = false // Set to true to transcode audio (for unsupported codecs like TrueHD)
     ): String {
         val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
         // Jellyfin video playback URL format: /Videos/{itemId}/stream
@@ -377,9 +427,39 @@ class JellyfinApiService(
                 parameters.append("CopyTimestamps", "true")
                 // Don't set static=true when subtitles are needed (allows transcoding)
             } ?: run {
-                // Set static=true for direct play (no transcoding) when no subtitles
-                // Use lowercase "static" for MPV/FFmpeg compatibility
-                parameters.append("static", "true")
+                // For HDR/high-quality videos, try direct play first if audio codec is supported
+                // Only use remuxing/transcoding when audio needs to be transcoded
+                if (preserveQuality && transcodeAudio) {
+                    // Audio needs transcoding - use HLS for progressive playback (avoids long initial buffering)
+                    // HLS allows playback to start while transcoding continues
+                    val hlsUrl = URLBuilder().takeFrom("${base}Videos/$itemId/master.m3u8").apply {
+                        // Set maximum resolution (8K support for future-proofing)
+                        parameters.append("MaxWidth", "7680")
+                        parameters.append("MaxHeight", "4320")
+                        // Set very high bitrate to preserve quality (1 Gbps - effectively no limit)
+                        parameters.append("maxStreamingBitrate", "1000000000")
+                        // Try to preserve video codec when possible (remux instead of transcode)
+                        parameters.append("VideoCodec", "copy")
+                        // Transcode to AAC for maximum compatibility with Android
+                        parameters.append("AudioCodec", "aac")
+                        parameters.append("AudioBitrate", "640000") // 640 kbps for high quality audio
+                        // Copy timestamps to avoid re-encoding
+                        parameters.append("CopyTimestamps", "true")
+                        parameters.append("mediaSourceId", sourceId)
+                        parameters.append("api_key", accessToken)
+                    }.buildString()
+                    android.util.Log.d("JellyfinAPI", "Using HLS for HDR video with audio transcoding (progressive playback): $hlsUrl")
+                    return hlsUrl
+                } else if (preserveQuality && !transcodeAudio) {
+                    // HDR video with supported audio - try direct play first for instant startup
+                    // Use static=true for direct play (fastest startup, no remuxing delay)
+                    parameters.append("static", "true")
+                    android.util.Log.d("JellyfinAPI", "Using direct play for HDR video with supported audio (instant startup)")
+                } else {
+                    // Set static=true for direct play (no transcoding) when no subtitles and not HDR
+                    // Use lowercase "static" for MPV/FFmpeg compatibility
+                    parameters.append("static", "true")
+                }
             }
             // Add mediaSourceId with correct casing (camelCase, not MediaSourceId)
             parameters.append("mediaSourceId", sourceId)

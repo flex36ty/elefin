@@ -17,6 +17,9 @@ class MPVView(context: Context, attrs: AttributeSet?) : BaseMPVView(context, att
     // Callback for playback errors (e.g., 404, network errors)
     var onPlaybackError: (() -> Unit)? = null
     
+    // Store resume position to seek after file loads
+    private var pendingResumePosition: Double = 0.0
+    
     override fun initOptions() {
         // MPV initialization options - MUST be set before init() for proper video output
         // GPU context setup (critical for video rendering and HDR)
@@ -34,8 +37,10 @@ class MPVView(context: Context, attrs: AttributeSet?) : BaseMPVView(context, att
         MPVLib.setOptionString("hdr-peak-percentile", "99") // Better peak detection
         MPVLib.setOptionString("target-colorspace-hint", "yes")
         
-        // Tone mapping - use "auto" for better HDR handling
-        MPVLib.setOptionString("tone-mapping", "auto")
+        // Tone mapping - use bt2390 algorithm (recommended for HDR)
+        // This provides better HDR to SDR tone mapping if needed
+        MPVLib.setOptionString("tone-mapping", "bt2390")
+        MPVLib.setOptionString("target-peak", "100") // Target peak for tone mapping
         
         // 10-bit framebuffer format for HDR output
         // This prevents dithering to 8-bit and enables native 10-bit HDR passthrough
@@ -59,7 +64,7 @@ class MPVView(context: Context, attrs: AttributeSet?) : BaseMPVView(context, att
         // HTTP headers for FFmpeg will be set via stream-lavf-o before playing
         // Format: stream-lavf-o=headers=Header1: Value1\r\nHeader2: Value2\r\n...
         
-        android.util.Log.d(TAG, "✅ MPV initialized with full HDR support: vo=gpu-next, fbo-format=rgb10_a2, gpu-hdr=yes, native-hdr=yes, tone-mapping=auto")
+        android.util.Log.d(TAG, "✅ MPV initialized with full HDR support: vo=gpu-next, fbo-format=rgb10_a2, gpu-hdr=yes, native-hdr=yes, tone-mapping=bt2390")
     }
 
     override fun postInitOptions() {
@@ -137,6 +142,19 @@ class MPVView(context: Context, attrs: AttributeSet?) : BaseMPVView(context, att
                     }
                     MPVLib.MpvEvent.MPV_EVENT_FILE_LOADED -> {
                         Log.d(TAG, "File loaded successfully")
+                        // Seek to resume position after file is loaded
+                        if (pendingResumePosition > 0) {
+                            // Small delay to ensure MPV is ready to seek
+                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                try {
+                                    MPVLib.setPropertyDouble("time-pos", pendingResumePosition)
+                                    Log.d(TAG, "✅ Seeked to resume position: ${pendingResumePosition}s")
+                                    pendingResumePosition = 0.0 // Clear after seeking
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Error seeking to resume position", e)
+                                }
+                            }, 100) // 100ms delay to ensure file is ready
+                        }
                     }
                     MPVLib.MpvEvent.MPV_EVENT_SHUTDOWN -> {
                         Log.d(TAG, "MPV shutdown")
@@ -170,9 +188,12 @@ class MPVView(context: Context, attrs: AttributeSet?) : BaseMPVView(context, att
                 }
             }
             
-            // Set resume position before loading file
-            if (resumePosition > 0) {
-                MPVLib.setPropertyDouble("time-pos", resumePosition)
+            // Store resume position to seek after file loads (don't set time-pos before file loads)
+            pendingResumePosition = if (resumePosition > 0) {
+                android.util.Log.d(TAG, "Resume position stored: ${resumePosition}s (will seek after file loads)")
+                resumePosition
+            } else {
+                0.0
             }
             
             // Use playFile which will handle surface readiness
@@ -249,37 +270,27 @@ class MPVView(context: Context, attrs: AttributeSet?) : BaseMPVView(context, att
 
     fun getCurrentPosition(): Double {
         if (!initialized) {
-            Log.w(TAG, "getCurrentPosition called but MPV not initialized or destroyed")
             return 0.0
         }
         return try {
-            MPVLib.getPropertyDouble("time-pos") ?: 0.0
+            // Check if playback has started by checking if time-pos is available
+            val position = MPVLib.getPropertyDouble("time-pos")
+            position ?: 0.0
         } catch (e: Exception) {
-            // Don't log errors if MPV is being destroyed - this is expected
-            if (initialized) {
-                Log.e(TAG, "Error getting position", e)
-            }
+            // Property unavailable is normal before playback starts - don't log
             0.0
         }
     }
 
     fun getDuration(): Double {
         if (!initialized) {
-            Log.w(TAG, "getDuration called but MPV not initialized or destroyed")
             return 0.0
         }
         return try {
             val duration = MPVLib.getPropertyDouble("duration")
-            if (duration == null) {
-                Log.w(TAG, "getDuration returned null (MPV may be destroyed)")
-                return 0.0
-            }
-            duration
+            duration ?: 0.0
         } catch (e: Exception) {
-            // Don't log if MPV is being destroyed - this is expected
-            if (initialized) {
-                Log.e(TAG, "Error getting duration", e)
-            }
+            // Property unavailable is normal before playback starts - don't log
             0.0
         }
     }
