@@ -1,8 +1,8 @@
-# Changelog
+# Changelog v1.1
 
 All notable changes to Elefin will be documented in this file.
 
-## [Unreleased]
+## Play / Resume buttons are now animated like Plex
 
 ### Added
 - **Collections Support**
