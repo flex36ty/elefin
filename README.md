@@ -71,13 +71,9 @@ Elefin is an Android TV jellyfin client. It's built from the ground up using Jet
 
 ## Screenshots
 
-![carousel](https://github.com/flex36ty/elefin/blob/master/screenshots/carousel.png?raw=true)
-![dark2](https://github.com/flex36ty/elefin/blob/master/screenshots/dark2.png?raw=true)
-![darkmode1](https://github.com/flex36ty/elefin/blob/master/screenshots/darkmode1.png?raw=true)
-![exit](https://github.com/flex36ty/elefin/blob/master/screenshots/exit.png?raw=true)
-![homescreen](https://github.com/flex36ty/elefin/blob/master/screenshots/homescreen.png?raw=true)
-![library](https://github.com/flex36ty/elefin/blob/master/screenshots/library.png?raw=true)
-![movieviewpage](https://github.com/flex36ty/elefin/blob/master/screenshots/moveviewpage.png?raw=true)
+![watched](https://raw.githubusercontent.com/flex36ty/elefin/master/screenshots/watched.png)
+![series](https://raw.githubusercontent.com/flex36ty/elefin/master/screenshots/series.png)
+![home](https://raw.githubusercontent.com/flex36ty/elefin/master/screenshots/home.png)
 
 ## Requirements
 
