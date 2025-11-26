@@ -1,0 +1,924 @@
+package com.flex.elefin.jellyfin
+
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.engine.android.Android
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.delete
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.URLBuilder
+import io.ktor.http.takeFrom
+import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.json.Json
+import okhttp3.Headers
+
+@Serializable
+data class JellyfinItem(
+    val Id: String,
+    val Name: String,
+    val Overview: String? = null,
+    val PremiereDate: String? = null, // ISO date string for premiere date
+    val DateCreated: String? = null, // ISO date string for date created/added
+    val DateScanned: String? = null, // ISO date string for date scanned into library
+    val ProductionYear: Int? = null,
+    val ImageTags: Map<String, String>? = null,
+    val SeriesName: String? = null,
+    val SeriesId: String? = null, // Parent series ID for episodes
+    val Type: String? = null,
+    val UserData: UserData? = null,
+    val MediaSources: List<MediaSource>? = null,
+    val RunTimeTicks: Long? = null,
+    val OfficialRating: String? = null,
+    val CommunityRating: Float? = null,
+    val Genres: List<String>? = null, // Genres is an array of strings in Jellyfin API
+    val ProviderIds: Map<String, String>? = null,
+    val CriticRating: Float? = null, // Critic rating if available
+    val People: List<Person>? = null, // Cast and crew members
+    val IndexNumber: Int? = null, // Episode number for episodes
+    val ParentIndexNumber: Int? = null, // Season number for episodes
+    val ChildCount: Int? = null // Number of child items (e.g., episodes for Series)
+)
+
+@Serializable
+data class Person(
+    val Id: String? = null,
+    val Name: String,
+    val Type: String? = null, // "Actor", "Director", "Writer", etc.
+    val PrimaryImageTag: String? = null // Image tag for person's photo
+)
+
+@Serializable
+data class MediaSource(
+    val Id: String? = null,
+    val Protocol: String? = null,
+    val MediaStreams: List<MediaStream>? = null
+)
+
+@Serializable
+data class MediaStream(
+    val Index: Int? = null,
+    val Type: String? = null, // "Video", "Audio", "Subtitle"
+    val Codec: String? = null,
+    val Language: String? = null,
+    val DisplayTitle: String? = null,
+    val IsExternal: Boolean? = null,
+    val DeliveryUrl: String? = null,
+    val IsDefault: Boolean? = null,
+    val IsForced: Boolean? = null,
+    val Width: Int? = null,
+    val Height: Int? = null
+)
+
+@Serializable
+data class UserData(
+    val PlayedPercentage: Double? = null,
+    @SerialName("PlaybackPositionTicks")
+    val PositionTicks: Long? = null,
+    val Played: Boolean? = null
+)
+
+@Serializable
+data class QuickConnectInitiateResponse(
+    val Secret: String,
+    val Code: String
+)
+
+@Serializable
+data class QuickConnectStateResponse(
+    val Authenticated: Boolean,
+    val Code: String? = null,
+    val Secret: String? = null,
+    val Authentication: QuickConnectAuthentication? = null
+)
+
+@Serializable
+data class QuickConnectAuthentication(
+    val AccessToken: String,
+    val User: QuickConnectUser
+)
+
+@Serializable
+data class QuickConnectUser(
+    val Id: String,
+    val Name: String
+)
+
+@Serializable
+data class QuickConnectAuthenticateRequest(
+    val Secret: String
+)
+
+@Serializable
+data class QuickConnectAuthenticationResponse(
+    val AccessToken: String,
+    val User: QuickConnectUser
+)
+
+@Serializable
+data class ItemsResponse(
+    val Items: List<JellyfinItem> = emptyList(),
+    val TotalRecordCount: Int = 0
+)
+
+@Serializable
+data class JellyfinLibrary(
+    val Id: String,
+    val Name: String,
+    val Type: String? = null,
+    val ImageTags: Map<String, String>? = null
+)
+
+class JellyfinApiService(
+    private val baseUrl: String,
+    private val accessToken: String,
+    private val userId: String,
+    private val config: JellyfinConfig? = null
+) {
+    // Expose baseUrl, accessToken, userId for external use (e.g., MPV URL selector)
+    val serverBaseUrl: String get() = baseUrl
+    val apiKey: String get() = accessToken
+    fun getUserId(): String = userId
+    fun getJellyfinConfig(): JellyfinConfig? = config
+    private val client = HttpClient(Android) {
+        install(ContentNegotiation) {
+            json(Json {
+                ignoreUnknownKeys = true
+                isLenient = true
+            })
+        }
+    }
+
+    suspend fun getContinueWatching(): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items/Resume").apply {
+                parameters.append("Fields", "ImageTags,UserData,SeriesName,SeriesId") // Request ImageTags to get Thumb images
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            response.Items
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun getNextUp(limit: Int = 50): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Shows/NextUp").apply {
+                parameters.append("UserId", userId)
+                parameters.append("Limit", limit.toString())
+                parameters.append("Fields", "ImageTags,UserData,SeriesName,SeriesId") // Request ImageTags to get Thumb images
+                parameters.append("EnableResumable", "false") // Next Up shows episodes you haven't started yet
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            response.Items
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun getRecentlyAddedMovies(limit: Int = 20): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("IncludeItemTypes", "Movie")
+                parameters.append("SortBy", "DateCreated")
+                parameters.append("SortOrder", "Descending")
+                parameters.append("Limit", limit.toString())
+                parameters.append("Recursive", "true")
+                parameters.append("Fields", "ImageTags") // Request ImageTags for image loading
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            response.Items
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun getRecentlyReleasedMovies(limit: Int = 20): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("IncludeItemTypes", "Movie")
+                parameters.append("SortBy", "PremiereDate")
+                parameters.append("SortOrder", "Descending")
+                parameters.append("Limit", limit.toString())
+                parameters.append("Recursive", "true")
+                parameters.append("Fields", "ImageTags") // Request ImageTags for image loading
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            response.Items
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun getRecentlyAddedShows(limit: Int = 20): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("IncludeItemTypes", "Series")
+                parameters.append("SortBy", "DateCreated")
+                parameters.append("SortOrder", "Descending")
+                parameters.append("Limit", limit.toString())
+                parameters.append("Recursive", "true")
+                parameters.append("Fields", "ImageTags,ChildCount") // Request ImageTags and ChildCount
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            // Return all items - filtering based on settings will be done in UI layer
+            response.Items
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun getRecentlyAddedEpisodes(limit: Int = 20): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("IncludeItemTypes", "Episode")
+                parameters.append("SortBy", "DateCreated")
+                parameters.append("SortOrder", "Descending")
+                parameters.append("Limit", limit.toString())
+                parameters.append("Recursive", "true")
+                // Request SeriesId, SeriesName, IndexNumber, ParentIndexNumber, and ImageTags fields for episodes
+                parameters.append("Fields", "SeriesId,SeriesName,IndexNumber,ParentIndexNumber,ImageTags")
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            response.Items
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    fun getImageUrl(itemId: String, imageType: String = "Primary", imageTag: String? = null, maxWidth: Int? = null, maxHeight: Int? = null, quality: Int? = null): String {
+        val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+        // Default to highest resolution for detail views, but allow smaller sizes for thumbnails
+        val defaultMaxWidth = maxWidth ?: 7680
+        val defaultMaxHeight = maxHeight ?: 4320
+        val defaultQuality = quality ?: 100
+        val urlBuilder = URLBuilder().takeFrom("${base}Items/$itemId/Images/$imageType").apply {
+            parameters.append("maxWidth", defaultMaxWidth.toString())
+            parameters.append("maxHeight", defaultMaxHeight.toString())
+            parameters.append("quality", defaultQuality.toString())
+            // Add image tag if provided (for person images)
+            imageTag?.let { tag ->
+                parameters.append("tag", tag)
+            }
+        }
+        return urlBuilder.buildString()
+    }
+    
+    fun getImageRequestHeaders(): Headers {
+        return Headers.Builder()
+            .add("Authorization", "MediaBrowser Token=\"$accessToken\"")
+            .add("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            .build()
+    }
+
+    suspend fun getItemDetails(itemId: String): JellyfinItem? {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            // Request full item details including MediaSources for video playback and UserData for resume functionality
+            val url = URLBuilder().takeFrom("${base}Items/$itemId").apply {
+                parameters.append("UserId", userId)
+                // Request UserData fields to get PositionTicks for resume functionality, and IndexNumber/ParentIndexNumber for episodes
+                parameters.append("Fields", "MediaSources,Genres,Overview,People,ProviderIds,UserData,ImageTags,IndexNumber,ParentIndexNumber")
+            }.buildString()
+            android.util.Log.d("JellyfinAPI", "Fetching item details from: $url")
+            
+            val response = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }
+            val item: JellyfinItem = response.body()
+            android.util.Log.d("JellyfinAPI", "Item details fetched: ${item.Name}, Type: ${item.Type}, MediaSources: ${item.MediaSources?.size ?: 0}")
+            android.util.Log.d("JellyfinAPI", "Genres: ${item.Genres}, CommunityRating: ${item.CommunityRating}, CriticRating: ${item.CriticRating}")
+            android.util.Log.d("JellyfinAPI", "ProviderIds: ${item.ProviderIds}")
+            android.util.Log.d("JellyfinAPI", "ProductionYear: ${item.ProductionYear}, OfficialRating: ${item.OfficialRating}, RunTimeTicks: ${item.RunTimeTicks}")
+            // Log UserData for debugging resume functionality
+            android.util.Log.d("JellyfinAPI", "UserData: PlayedPercentage=${item.UserData?.PlayedPercentage}, PositionTicks=${item.UserData?.PositionTicks}")
+            if (item.UserData == null) {
+                android.util.Log.w("JellyfinAPI", "WARNING: UserData is null for item ${item.Id}. Resume functionality may not work.")
+            } else if (item.UserData?.PositionTicks == null || item.UserData?.PositionTicks == 0L) {
+                android.util.Log.d("JellyfinAPI", "Item ${item.Id} has no resume position (PositionTicks is null or 0)")
+            } else {
+                val seconds = (item.UserData?.PositionTicks ?: 0L) / 10_000_000L
+                android.util.Log.d("JellyfinAPI", "Item ${item.Id} is resumable at position ${item.UserData?.PositionTicks} ticks (${seconds} seconds)")
+            }
+            item
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error fetching item details", e)
+            e.printStackTrace()
+            null
+        }
+    }
+
+    fun getVideoPlaybackUrl(
+        itemId: String,
+        mediaSourceId: String? = null,
+        subtitleStreamIndex: Int? = null
+    ): String {
+        val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+        // Jellyfin video playback URL format: /Videos/{itemId}/stream
+        // Use MediaSourceId if provided, otherwise use itemId
+        val sourceId = mediaSourceId ?: itemId
+        // IMPORTANT: MPV/FFmpeg requires correct parameter casing
+        // - mediaSourceId (camelCase, not MediaSourceId)
+        // - static (lowercase, not Static)
+        // Order: static first, then mediaSourceId, then api_key (conventional order)
+        val url = URLBuilder().takeFrom("${base}Videos/$itemId/stream").apply {
+            subtitleStreamIndex?.let { 
+                // Add subtitle stream index if provided
+                parameters.append("SubtitleStreamIndex", it.toString())
+                // Don't set SubtitleDeliveryMethod - let Jellyfin handle it
+                // We'll add the subtitle URL separately to MediaItem for better compatibility
+                // Set a very high max bitrate to preserve quality if transcoding is needed
+                parameters.append("maxStreamingBitrate", "1000000000") // 1 Gbps - effectively no limit
+                // Copy timestamps to avoid re-encoding when possible
+                parameters.append("CopyTimestamps", "true")
+                // Don't set static=true when subtitles are needed (allows transcoding)
+            } ?: run {
+                // Set static=true for direct play (no transcoding) when no subtitles
+                // Use lowercase "static" for MPV/FFmpeg compatibility
+                parameters.append("static", "true")
+            }
+            // Add mediaSourceId with correct casing (camelCase, not MediaSourceId)
+            parameters.append("mediaSourceId", sourceId)
+            // Add api_key last
+            parameters.append("api_key", accessToken)
+        }.buildString()
+        android.util.Log.d("JellyfinAPI", "Generated video playback URL: $url")
+        return url
+    }
+    
+    /**
+     * Get video playback URL for MPV player.
+     * 
+     * MPV playback strategy (in order of preference):
+     * 1. Direct Play: /original endpoint (bypasses transcoder completely)
+     * 2. Direct Stream: /stream with copy codecs (remux only, no transcode)
+     * 3. MP4 Transcode: /stream.mp4 (more stable than HLS transcoder)
+     * 4. HLS: /master.m3u8 (last resort, can crash Jellyfin's transcoder)
+     * 
+     * This follows best practices to avoid Jellyfin transcoder crashes:
+     * - Direct play/stream is preferred over transcoding
+     * - MP4 transcoding is more stable than HLS transcoding
+     * - HLS is only used when absolutely necessary
+     * 
+     * @param itemId The item ID
+     * @param mediaSourceId Optional media source ID
+     * @param subtitleStreamIndex Optional subtitle stream index
+     * @param preferredMethod Optional preferred playback method (null = auto-detect)
+     * @return URL for MPV playback using the best available method
+     */
+    fun getVideoPlaybackUrlForMpv(
+        itemId: String,
+        mediaSourceId: String? = null,
+        subtitleStreamIndex: Int? = null,
+        preferredMethod: String? = null // "direct", "direct_stream", "mp4", "hls"
+    ): String {
+        val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+        val sourceId = mediaSourceId ?: itemId
+        
+        // Strategy: Try direct play first, then fall back to transcoding if needed
+        when (preferredMethod ?: "direct") {
+            "direct" -> {
+                // Method 1: Direct Play - bypasses transcoder completely
+                // MPV can handle any container natively, so this is the best option
+                val url = URLBuilder().takeFrom("${base}Videos/$itemId/original").apply {
+                    parameters.append("mediaSourceId", sourceId)
+                    parameters.append("api_key", accessToken)
+                    subtitleStreamIndex?.let {
+                        parameters.append("SubtitleStreamIndex", it.toString())
+                    }
+                }.buildString()
+                android.util.Log.d("JellyfinAPI", "Generated MPV video playback URL (Direct Play): $url")
+                return url
+            }
+            "direct_stream" -> {
+                // Method 2: Direct Stream (remux) - copies streams without transcoding
+                // This is more stable than transcoding but requires compatible codecs
+                val url = URLBuilder().takeFrom("${base}Videos/$itemId/stream").apply {
+                    parameters.append("static", "true")
+                    parameters.append("Container", "ts")
+                    parameters.append("VideoCodec", "copy")
+                    parameters.append("AudioCodec", "copy")
+                    parameters.append("mediaSourceId", sourceId)
+                    parameters.append("api_key", accessToken)
+                    subtitleStreamIndex?.let {
+                        parameters.append("SubtitleStreamIndex", it.toString())
+                    }
+                }.buildString()
+                android.util.Log.d("JellyfinAPI", "Generated MPV video playback URL (Direct Stream/Remux): $url")
+                return url
+            }
+            "mp4" -> {
+                // Method 3: MP4 Transcode - more stable than HLS transcoder
+                val url = URLBuilder().takeFrom("${base}Videos/$itemId/stream.mp4").apply {
+                    parameters.append("VideoCodec", "h264")
+                    parameters.append("AudioCodec", "aac")
+                    parameters.append("mediaSourceId", sourceId)
+                    parameters.append("api_key", accessToken)
+                    subtitleStreamIndex?.let {
+                        parameters.append("SubtitleStreamIndex", it.toString())
+                    }
+                }.buildString()
+                android.util.Log.d("JellyfinAPI", "Generated MPV video playback URL (MP4 Transcode): $url")
+                return url
+            }
+            else -> {
+                // Method 4: HLS - last resort, can crash Jellyfin's transcoder
+                val url = URLBuilder().takeFrom("${base}Videos/$itemId/master.m3u8").apply {
+                    parameters.append("mediaSourceId", sourceId)
+                    parameters.append("api_key", accessToken)
+                    subtitleStreamIndex?.let {
+                        parameters.append("SubtitleStreamIndex", it.toString())
+                    }
+                }.buildString()
+                android.util.Log.w("JellyfinAPI", "Generated MPV video playback URL (HLS - last resort): $url")
+                return url
+            }
+        }
+    }
+    
+    fun getSubtitleUrl(itemId: String, mediaSourceId: String, subtitleStreamIndex: Int): String {
+        val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+        // Jellyfin subtitle URL format: /Videos/{itemId}/Subtitles/{subtitleStreamIndex}/Stream
+        // Use correct casing: mediaSourceId (camelCase)
+        val url = URLBuilder().takeFrom("${base}Videos/$itemId/Subtitles/$subtitleStreamIndex/Stream").apply {
+            parameters.append("mediaSourceId", mediaSourceId)
+            parameters.append("api_key", accessToken)
+        }.buildString()
+        android.util.Log.d("JellyfinAPI", "Generated subtitle URL: $url")
+        return url
+    }
+
+    fun getVideoRequestHeaders(): Map<String, String> {
+        // Get DeviceId from config (should be stored during login)
+        // If not available, use fallback (but it should be stored)
+        val deviceId = config?.deviceId?.takeIf { it.isNotEmpty() } 
+            ?: "56be65b97eb43eca" // Fallback DeviceId - should match what's used in authentication
+        
+        // Build X-Emby-Authorization header with Token and DeviceId
+        // Format: MediaBrowser Client="...", Device="...", DeviceId="...", Version="...", Token="..."
+        // CRITICAL: Token MUST be included in X-Emby-Authorization header for MPV/FFmpeg
+        val embyAuthHeader = "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"$deviceId\", Version=\"1.0.0\", Token=\"$accessToken\""
+        
+        return mapOf(
+            "Authorization" to "MediaBrowser Token=\"$accessToken\"",
+            "X-Emby-Authorization" to embyAuthHeader
+        )
+    }
+
+    suspend fun getLibraries(): List<JellyfinLibrary> {
+        return try {
+            val url = if (baseUrl.endsWith("/")) {
+                "${baseUrl}Users/$userId/Views"
+            } else {
+                "$baseUrl/Users/$userId/Views"
+            }
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            
+            // Convert JellyfinItems to JellyfinLibraries
+            response.Items.map { item ->
+                JellyfinLibrary(
+                    Id = item.Id,
+                    Name = item.Name,
+                    Type = item.Type,
+                    ImageTags = item.ImageTags
+                )
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun getLibraryItems(libraryId: String, limit: Int = 100, startIndex: Int = 0): ItemsResponse {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("ParentId", libraryId)
+                parameters.append("Recursive", "false")
+                parameters.append("IncludeItemTypes", "Movie,Series,Episode")
+                parameters.append("Limit", limit.toString())
+                parameters.append("StartIndex", startIndex.toString())
+                parameters.append("Fields", "DateCreated,PremiereDate,Overview,UserData,ImageTags,ChildCount") // Include DateCreated and ChildCount
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            // Return all items - filtering based on settings will be done in UI layer
+            response
+        } catch (e: Exception) {
+            e.printStackTrace()
+            ItemsResponse(Items = emptyList(), TotalRecordCount = 0)
+        }
+    }
+    
+    suspend fun getAllLibraryItems(libraryId: String, limit: Int = 100): List<JellyfinItem> {
+        val allItems = mutableListOf<JellyfinItem>()
+        var startIndex = 0
+        var totalCount = 0
+        
+        do {
+            val response = getLibraryItems(libraryId, limit, startIndex)
+            allItems.addAll(response.Items)
+            
+            // Update total count from first response
+            if (totalCount == 0) {
+                totalCount = response.TotalRecordCount
+            }
+            
+            // Move to next page
+            startIndex += limit
+        } while (allItems.size < totalCount && response.Items.isNotEmpty())
+        
+        // Return all items - filtering based on settings will be done in UI layer
+        return allItems
+    }
+    
+    suspend fun getSeasons(seriesId: String): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Shows/${seriesId}/Seasons").apply {
+                parameters.append("UserId", userId)
+                parameters.append("Fields", "Overview,UserData,ImageTags")
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            response.Items.sortedBy { it.IndexNumber ?: 0 }
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error fetching seasons for series $seriesId", e)
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+    
+    suspend fun getEpisodes(seriesId: String, seasonId: String): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Shows/${seriesId}/Episodes").apply {
+                parameters.append("UserId", userId)
+                parameters.append("SeasonId", seasonId)
+                parameters.append("Fields", "Overview,UserData,SeriesName,SeriesId,ImageTags")
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            response.Items.sortedBy { it.IndexNumber ?: 0 }
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error fetching episodes for season $seasonId", e)
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+    
+    /**
+     * Get the count of unwatched episodes for a TV series
+     * Returns the number of unwatched episodes across all seasons
+     */
+    suspend fun getUnwatchedEpisodeCount(seriesId: String): Int {
+        return try {
+            val seasons = getSeasons(seriesId)
+            var unwatchedCount = 0
+            
+            seasons.forEach { season ->
+                val episodes = getEpisodes(seriesId, season.Id)
+                episodes.forEach { episode ->
+                    val isWatched = episode.UserData?.Played == true || 
+                                   episode.UserData?.PlayedPercentage == 100.0
+                    if (!isWatched) {
+                        unwatchedCount++
+                    }
+                }
+            }
+            
+            unwatchedCount
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error getting unwatched episode count for series $seriesId", e)
+            0
+        }
+    }
+    
+    suspend fun getMoviesByGenre(genre: String, excludeItemId: String? = null, limit: Int = 20): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("IncludeItemTypes", "Movie")
+                parameters.append("Genres", genre)
+                parameters.append("Recursive", "true")
+                parameters.append("Limit", limit.toString())
+                excludeItemId?.let { parameters.append("ExcludeItemIds", it) }
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            response.Items
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error fetching movies by genre", e)
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+    
+    suspend fun getMoviesByPerson(personId: String, excludeItemId: String? = null, limit: Int = 20): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("IncludeItemTypes", "Movie")
+                parameters.append("PersonIds", personId)
+                parameters.append("Recursive", "true")
+                parameters.append("Limit", limit.toString())
+                excludeItemId?.let { parameters.append("ExcludeItemIds", it) }
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            response.Items
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error fetching movies by person", e)
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    /**
+     * Mark an item as watched
+     * POST /Users/{UserId}/PlayedItems/{ItemId}
+     * Reference: https://api.jellyfin.org/
+     */
+    suspend fun markAsWatched(itemId: String): Boolean {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = "${base}Users/$userId/PlayedItems/$itemId"
+            
+            val deviceId = config?.deviceId ?: ""
+            val authHeader = if (deviceId.isNotEmpty()) {
+                "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"$deviceId\", Token=\"$accessToken\", Version=\"1.0.0\""
+            } else {
+                "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\""
+            }
+            
+            client.post(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", authHeader)
+            }
+            android.util.Log.d("JellyfinAPI", "Marked item $itemId as watched")
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error marking item as watched", e)
+            e.printStackTrace()
+            false
+        }
+    }
+    
+    /**
+     * Mark an item as unwatched
+     * DELETE /Users/{UserId}/PlayedItems/{ItemId}
+     * Reference: https://api.jellyfin.org/
+     */
+    suspend fun markAsUnwatched(itemId: String): Boolean {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = "${base}Users/$userId/PlayedItems/$itemId"
+            
+            val deviceId = config?.deviceId ?: ""
+            val authHeader = if (deviceId.isNotEmpty()) {
+                "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"$deviceId\", Token=\"$accessToken\", Version=\"1.0.0\""
+            } else {
+                "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\""
+            }
+            
+            client.delete(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", authHeader)
+            }
+            android.util.Log.d("JellyfinAPI", "Marked item $itemId as unwatched")
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error marking item as unwatched", e)
+            e.printStackTrace()
+            false
+        }
+    }
+
+    /**
+     * Report playback progress to Jellyfin
+     * POST /Sessions/Playing/Progress
+     * Reference: https://api.jellyfin.org/
+     * 
+     * @param itemId The item ID being played
+     * @param positionTicks Current playback position in ticks (100-nanosecond intervals: 10,000,000 ticks = 1 second)
+     * @param isPaused Whether playback is paused
+     * @param isMuted Whether audio is muted
+     * @param volumeLevel Volume level (0-100)
+     * @param playbackRate Playback rate (1.0 = normal speed)
+     */
+    suspend fun reportPlaybackProgress(
+        itemId: String,
+        positionTicks: Long,
+        isPaused: Boolean = false,
+        isMuted: Boolean = false,
+        volumeLevel: Int = 100,
+        playbackRate: Double = 1.0
+    ): Boolean {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = "${base}Sessions/Playing/Progress"
+            
+            val deviceId = config?.deviceId ?: ""
+            val authHeader = if (deviceId.isNotEmpty()) {
+                "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"$deviceId\", Token=\"$accessToken\", Version=\"1.0.0\""
+            } else {
+                "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\""
+            }
+            
+            // Build request body as JSON string
+            val requestBody = buildString {
+                append("{")
+                append("\"ItemId\":\"$itemId\",")
+                append("\"PositionTicks\":$positionTicks,")
+                append("\"IsPaused\":$isPaused,")
+                append("\"IsMuted\":$isMuted,")
+                append("\"VolumeLevel\":$volumeLevel,")
+                append("\"PlayMethod\":\"DirectStream\",")
+                append("\"PlaybackRate\":$playbackRate")
+                append("}")
+            }
+            
+            client.post(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", authHeader)
+                contentType(ContentType.Application.Json)
+                setBody(requestBody)
+            }
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error reporting playback progress", e)
+            e.printStackTrace()
+            false
+        }
+    }
+
+    /**
+     * Report playback stopped
+     * POST /Sessions/Playing/Stopped
+     * Reference: https://api.jellyfin.org/
+     */
+    suspend fun reportPlaybackStopped(
+        itemId: String,
+        positionTicks: Long
+    ): Boolean {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = "${base}Sessions/Playing/Stopped"
+            
+            val deviceId = config?.deviceId ?: ""
+            val authHeader = if (deviceId.isNotEmpty()) {
+                "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"$deviceId\", Token=\"$accessToken\", Version=\"1.0.0\""
+            } else {
+                "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\""
+            }
+            
+            // Build request body as JSON string
+            val requestBody = buildString {
+                append("{")
+                append("\"ItemId\":\"$itemId\",")
+                append("\"PositionTicks\":$positionTicks")
+                append("}")
+            }
+            
+            client.post(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", authHeader)
+                contentType(ContentType.Application.Json)
+                setBody(requestBody)
+            }
+            android.util.Log.d("JellyfinAPI", "Reported playback stopped for item $itemId at position $positionTicks ticks")
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error reporting playback stopped", e)
+            e.printStackTrace()
+            false
+        }
+    }
+
+    /**
+     * Refresh library scan on the Jellyfin server
+     * POST /Library/Refresh
+     * Triggers a library scan to detect new or updated media
+     * Reference: https://api.jellyfin.org/
+     */
+    suspend fun refreshLibrary(libraryId: String? = null): Boolean {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = if (libraryId != null) {
+                URLBuilder().takeFrom("${base}Library/Refresh").apply {
+                    parameters.append("libraryId", libraryId)
+                }.buildString()
+            } else {
+                "${base}Library/Refresh"
+            }
+            
+            android.util.Log.d("JellyfinAPI", "Triggering library refresh${if (libraryId != null) " for library $libraryId" else ""}")
+            
+            client.post(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }
+            android.util.Log.d("JellyfinAPI", "Library refresh triggered successfully")
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error triggering library refresh", e)
+            e.printStackTrace()
+            false
+        }
+    }
+    
+    /**
+     * Search for items (movies, TV shows, episodes) by query
+     * GET /Users/{UserId}/Items?SearchTerm={query}
+     * Reference: https://api.jellyfin.org/
+     */
+    suspend fun searchItems(query: String, limit: Int = 50): List<JellyfinItem> {
+        return try {
+            if (query.isBlank()) return emptyList()
+            
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("SearchTerm", query)
+                parameters.append("Recursive", "true")
+                parameters.append("IncludeItemTypes", "Movie,Series,Episode")
+                parameters.append("Limit", limit.toString())
+                parameters.append("Fields", "ImageTags,UserData,SeriesName,SeriesId,ChildCount")
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            
+            response.Items
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error searching for items", e)
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+}

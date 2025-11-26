@@ -1,0 +1,13 @@
+<resources>
+
+    <!-- Main theme without splash screen - used for all activities except MainActivity -->
+    <style name="Theme.Elefin" parent="@style/Theme.Leanback">
+        <item name="android:windowFullscreen">false</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
+    
+    <!-- Splash theme - only used for MainActivity (app launch) -->
+    <style name="Theme.Elefin.Splash" parent="@style/Theme.Elefin">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+    </style>
+</resources>

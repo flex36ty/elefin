@@ -1,0 +1,119 @@
+package com.flex.elefin.screens
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
+import com.flex.elefin.jellyfin.JellyfinItem
+
+/**
+ * Reusable composable for displaying item title, metadata, and synopsis
+ * Matching the style used on the home screen for uniformity
+ */
+@Composable
+fun ItemDetailsSection(
+    item: JellyfinItem,
+    modifier: Modifier = Modifier,
+    synopsisMaxLines: Int = 3,
+    additionalMetadataContent: @Composable () -> Unit = {}
+) {
+    val runtimeText = formatRuntime(item.RunTimeTicks)
+    val yearText = item.ProductionYear?.toString() ?: ""
+    val genreText = item.Genres?.take(3)?.joinToString(", ") ?: ""
+    
+    Column(
+        modifier = modifier
+    ) {
+        // Title
+        Text(
+            text = item.Name,
+            style = MaterialTheme.typography.headlineMedium.copy(
+                fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+            ),
+            color = Color.White,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        
+        // Metadata: Year, Runtime, Genre + Additional metadata boxes
+        if (yearText.isNotEmpty() || runtimeText.isNotEmpty() || genreText.isNotEmpty()) {
+            Row(
+                modifier = Modifier.padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                if (yearText.isNotEmpty()) {
+                    Text(
+                        text = yearText,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
+                        ),
+                        color = Color.White.copy(alpha = 0.9f)
+                    )
+                }
+                if (runtimeText.isNotEmpty()) {
+                    Text(
+                        text = runtimeText,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
+                        ),
+                        color = Color.White.copy(alpha = 0.9f)
+                    )
+                }
+                if (genreText.isNotEmpty()) {
+                    Text(
+                        text = genreText,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
+                        ),
+                        color = Color.White.copy(alpha = 0.9f)
+                    )
+                }
+                
+                // Add spacing before additional metadata boxes
+                if (yearText.isNotEmpty() || runtimeText.isNotEmpty() || genreText.isNotEmpty()) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                
+                // Additional metadata boxes (from play button row)
+                additionalMetadataContent()
+            }
+        } else {
+            // If no text metadata, still show additional metadata boxes
+            Row(
+                modifier = Modifier.padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                additionalMetadataContent()
+            }
+        }
+        
+        // Synopsis
+        item.Overview?.let { synopsis ->
+            if (synopsis.isNotEmpty()) {
+                Text(
+                    text = synopsis,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
+                    ),
+                    color = Color.White.copy(alpha = 0.9f),
+                    maxLines = synopsisMaxLines,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+        }
+    }
+}
+
