@@ -71,13 +71,13 @@ Elefin is an Android TV jellyfin client. It's built from the ground up using Jet
 
 ## Screenshots
 
-![carousel](https://github.com/flex36ty/elefin/blob/master/screenshots/carousel.png?raw=1)
-![dark2](https://github.com/flex36ty/elefin/blob/master/screenshots/dark2.png?raw=1)
-![darkmode1](https://github.com/flex36ty/elefin/blob/master/screenshots/darkmode1.png?raw=1)
-![exit](https://github.com/flex36ty/elefin/blob/master/screenshots/exit.png?raw=1)
-![homescreen](https://github.com/flex36ty/elefin/blob/master/screenshots/homescreen.png?raw=1)
-![library](https://github.com/flex36ty/elefin/blob/master/screenshots/library.png?raw=1)
-![movieviewpage](https://github.com/flex36ty/elefin/blob/master/screenshots/moveviewpage.png?raw=1)
+<img src="https://github.com/flex36ty/elefin/blob/master/screenshots/carousel.png?raw=1" width="600" />
+<img src="https://github.com/flex36ty/elefin/blob/master/screenshots/dark2.png?raw=1" width="600" />
+<img src="https://github.com/flex36ty/elefin/blob/master/screenshots/darkmode1.png?raw=1" width="600" />
+<img src="https://github.com/flex36ty/elefin/blob/master/screenshots/exit.png?raw=1" width="600" />
+<img src="https://github.com/flex36ty/elefin/blob/master/screenshots/homescreen.png?raw=1" width="600" />
+<img src="https://github.com/flex36ty/elefin/blob/master/screenshots/library.png?raw=1" width="600" />
+<img src="https://github.com/flex36ty/elefin/blob/master/screenshots/moveviewpage.png?raw=1" width="600" />
 
 ## Requirements
 
