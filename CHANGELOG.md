@@ -7,12 +7,16 @@ All notable changes to Elefin will be documented in this file.
 ### Added
 - **Next Up → Autoplay Next Episode**
   - Automatic playback of next episode when current episode finishes
-  - "Up Next" overlay appears in the last 10 seconds of playback
+  - "Up Next" overlay appears in the last 10 seconds of playback (configurable)
   - Overlay shows next episode info (series name, season/episode number, episode name)
   - Countdown timer displays remaining seconds until autoplay
   - User can cancel autoplay by pressing any directional key (UP/DOWN/LEFT/RIGHT)
   - Only works for episodes (not movies)
   - Properly reports playback status to Jellyfin before starting next episode
+  - **Autoplay Settings**
+    - Toggle to enable/disable autoplay (enabled by default)
+    - Configurable countdown duration: 10 seconds to 2 minutes (default: 10 seconds)
+    - Settings available in Settings screen
 
 - **Use Logo for Title Setting**
   - New setting to display logo image instead of title text
@@ -34,6 +38,13 @@ All notable changes to Elefin will be documented in this file.
   - Improved item identification in library browsing
   - Maintains consistent spacing and layout
 
+- **ExoPlayer Controls & Focus**
+  - Play button is now focused by default when controller appears (instead of settings button)
+  - Focus indicator is now round and 10% larger for better visibility
+  - Improved D-pad navigation in player controls
+  - Enter/OK key now reliably brings up controller after it disappears
+  - Fixed focus management to prevent selector from disappearing during navigation
+
 ### Technical Changes
 - Added `NextEpisodeId` field to `JellyfinItem` data class
 - Enhanced `getItemDetails` API to request `NextEpisodeId` field
@@ -41,6 +52,11 @@ All notable changes to Elefin will be documented in this file.
 - Updated `ItemDetailsSection` to support logo display
 - Improved playback position monitoring for autoplay overlay
 - Enhanced ExoPlayer state handling for episode completion detection
+- Added `autoplayNextEpisode` and `autoplayCountdownSeconds` settings in `AppSettings`
+- Implemented continuous controller visibility monitoring for automatic play button focus
+- Enhanced focus styling with round `GradientDrawable` and `LayerDrawable` for 10% larger appearance
+- Improved subtitle button visibility handling in ExoPlayer controller
+- Fixed key event handling to properly show/hide controller and manage focus
 
 ---
 
