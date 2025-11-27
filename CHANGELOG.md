@@ -5,6 +5,24 @@ All notable changes to Elefin will be documented in this file.
 ## Unreleased / Upcoming Release
 
 ### Added
+- **Auto-Updater Using GitHub Releases**
+  - Automatic update checking on app startup (can be disabled in settings)
+  - Manual "Check for Updates" button in Settings screen
+  - Shows update dialog with release notes when new version is available
+  - Opens APK download URL from GitHub releases when "Update Now" is clicked
+  - Version comparison between installed app and latest GitHub release
+  - Auto-update can be toggled on/off in Settings (enabled by default)
+
+- **Enhanced Audio Metadata Display**
+  - Audio metadata now shows language with codec information
+  - Format: "LANGUAGE (CODEC)" (e.g., "ENGLISH (EAC3)")
+  - Displays on movie info page and series/episode info screens
+  - Falls back gracefully if codec or language information is unavailable
+
+- **Channel Layout Support**
+  - Added `ChannelLayout` field to MediaStream data class
+  - Prepares for future channel information display (e.g., "5.1", "7.1")
+
 - **Next Up → Autoplay Next Episode**
   - Automatic playback of next episode when current episode finishes
   - "Up Next" overlay appears in the last 10 seconds of playback (configurable)
@@ -57,6 +75,19 @@ All notable changes to Elefin will be documented in this file.
 - Enhanced focus styling with round `GradientDrawable` and `LayerDrawable` for 10% larger appearance
 - Improved subtitle button visibility handling in ExoPlayer controller
 - Fixed key event handling to properly show/hide controller and manage focus
+- **Auto-Updater Implementation**
+  - Added OkHttp and Gson dependencies for GitHub API requests
+  - Created `UpdateService` to fetch latest release from GitHub Releases API
+  - Created `GitHubRelease` and `GitHubAsset` data models for API response parsing
+  - Implemented version tag parsing (e.g., "v1.1" → version code 10100)
+  - Added `autoUpdateEnabled` setting in `AppSettings`
+  - Created `UpdateDialog` composable for update notifications
+  - Integrated update checker into `MainActivity` with conditional auto-check
+  - Added manual update check functionality in `SettingsScreen`
+- **Audio Metadata Enhancement**
+  - Added `ChannelLayout` field to `MediaStream` data class
+  - Enhanced metadata display logic to combine language and codec information
+  - Updated `MovieDetailsScreen` and `SeriesDetailsScreen` for new metadata format
 
 ---
 
