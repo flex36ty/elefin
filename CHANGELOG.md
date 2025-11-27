@@ -4,6 +4,25 @@ All notable changes to Elefin will be documented in this file.
 
 ## Unreleased / Upcoming Release
 
+### Changed
+- **Text Input Fields - Jellyfin AndroidTV Style**
+  - Completely rewrote `TvTextField` component to match official Jellyfin AndroidTV implementation
+  - Uses `MutableInteractionSource` with `collectIsFocusedAsState()` for focus detection (like Jellyfin)
+  - Uses `decorationBox` for text field decoration (like Jellyfin's SearchTextInput)
+  - BasicTextField is now directly focusable (no wrapper Box) - works like native Android `EditText`
+  - D-pad navigation directly selects text fields without intermediate focus state
+  - Keyboard appears automatically when text field receives focus
+  - IME actions (Next/Done) work properly for field navigation
+  - **Visual Style (Jellyfin AndroidTV colors)**:
+    - Border: `#B3747474` (70% gray) - always visible
+    - Focused background: `#DDDDDD` (light gray)
+    - Unfocused text: `#DDDDDD` (light)
+    - Focused text: `#444444` (dark)
+    - Corner radius: 3dp (Jellyfin style)
+    - Stroke width: 2dp
+  - Updated Search screen to use matching Jellyfin AndroidTV color scheme
+  - Added `TvSearchTextField` component for search-specific styling with pill shape
+
 ### Added
 - **Auto-Updater Using GitHub Releases**
   - Automatic update checking on app startup (can be disabled in settings)
