@@ -657,91 +657,40 @@ fun JellyfinVideoPlayerScreen(
                                         emptyList()
                                     }
                                     
-                                    // First, try to match by the loaded subtitle URL - this is the most reliable way
-                                    // When we load a subtitle via SubtitleConfiguration, ExoPlayer should set the URI in the track format
-                                    val groupToSelect = if (loadedSubtitleUrl != null) {
+                                    // Try to match by language first, then by position in sorted list
+                                    val groupToSelect = if (subtitleLanguage != null) {
+                                        // Find track group with matching language
                                         textTrackGroups.firstOrNull { group ->
                                             val format = group.mediaTrackGroup.getFormat(0)
-                                            val trackUri = format.uri?.toString()
-                                            // Match by URL (exact or contains the subtitle index from URL)
-                                            trackUri?.contains(loadedSubtitleUrl!!) == true ||
-                                            (trackUri != null && loadedSubtitleUrl!!.contains("/Subtitles/$subtitleStreamIndex/"))
+                                            // Match language code (e.g., "eng" matches "en" or "eng")
+                                            format.language?.let { trackLang ->
+                                                trackLang.equals(subtitleLanguage, ignoreCase = true) ||
+                                                trackLang.startsWith(subtitleLanguage.take(2), ignoreCase = true) ||
+                                                subtitleLanguage.startsWith(trackLang.take(2), ignoreCase = true)
+                                            } ?: false
                                         } ?: run {
-                                            // If URL matching fails, try language matching
-                                            if (subtitleLanguage != null) {
-                                                // First, try exact language match
-                                                textTrackGroups.firstOrNull { group ->
-                                                    val format = group.mediaTrackGroup.getFormat(0)
-                                                    format.language?.equals(subtitleLanguage, ignoreCase = true) == true
-                                                } ?: run {
-                                                    // Try matching against language variations
-                                                    textTrackGroups.firstOrNull { group ->
-                                                        val format = group.mediaTrackGroup.getFormat(0)
-                                                        format.language?.let { trackLang ->
-                                                            languageVariations.any { variation ->
-                                                                trackLang.equals(variation, ignoreCase = true) ||
-                                                                trackLang.startsWith(variation.take(2), ignoreCase = true) ||
-                                                                variation.startsWith(trackLang.take(2), ignoreCase = true)
-                                                            }
-                                                        } ?: false
-                                                    } ?: run {
-                                                        // If no language match, try to match by MIME type (VTT) - the one we loaded should be VTT
-                                                        // Prefer VTT tracks if we loaded an external subtitle
-                                                        val vttTracks = textTrackGroups.filter { group ->
-                                                            group.mediaTrackGroup.getFormat(0).sampleMimeType?.contains("vtt", ignoreCase = true) == true
-                                                        }
-                                                        if (vttTracks.isNotEmpty()) {
-                                                            // If we loaded a subtitle, prefer VTT tracks (external subtitles are usually VTT)
-                                                            // But we need to be careful - there might be multiple VTT tracks
-                                                            // Check if any VTT track is already selected (ExoPlayer auto-selects loaded subtitles)
-                                                            val alreadySelectedVtt = vttTracks.firstOrNull { it.isSelected }
-                                                            if (alreadySelectedVtt != null) {
-                                                                Log.d("JellyfinPlayer", "Found already selected VTT track - ExoPlayer auto-selected our loaded subtitle")
-                                                                alreadySelectedVtt
-                                                            } else {
-                                                                Log.d("JellyfinPlayer", "Using first VTT track as match (loaded external subtitle): ${vttTracks.size} VTT track(s) found")
-                                                                vttTracks.firstOrNull()
-                                                            }
-                                                        } else {
-                                                            null
-                                                        }
-                                                    }
-                                                }
+                                            // If no language match, try to match by position in the sorted list
+                                            // Find the position of this subtitle in the sorted Jellyfin subtitle list
+                                            val jellyfinPosition = allJellyfinSubtitleStreams.indexOfFirst { it.Index == subtitleStreamIndex }
+                                            if (jellyfinPosition >= 0 && jellyfinPosition < textTrackGroups.size) {
+                                                Log.d("JellyfinPlayer", "No language match found. Using position-based matching: Jellyfin position=$jellyfinPosition, ExoPlayer groups=${textTrackGroups.size}")
+                                                textTrackGroups[jellyfinPosition]
                                             } else {
-                                                null
-                                            }
-                                        }
-                                    } else if (subtitleLanguage != null) {
-                                        // No loaded URL to match, try language matching
-                                        // First, try exact language match
-                                        textTrackGroups.firstOrNull { group ->
-                                            val format = group.mediaTrackGroup.getFormat(0)
-                                            format.language?.equals(subtitleLanguage, ignoreCase = true) == true
-                                        } ?: run {
-                                            // Try matching against language variations
-                                            textTrackGroups.firstOrNull { group ->
-                                                val format = group.mediaTrackGroup.getFormat(0)
-                                                format.language?.let { trackLang ->
-                                                    languageVariations.any { variation ->
-                                                        trackLang.equals(variation, ignoreCase = true) ||
-                                                        trackLang.startsWith(variation.take(2), ignoreCase = true) ||
-                                                        variation.startsWith(trackLang.take(2), ignoreCase = true)
-                                                    }
-                                                } ?: false
+                                                // Last resort: log and use first available
+                                                Log.w("JellyfinPlayer", "No language match and position out of range. Available track languages: ${textTrackGroups.map { it.mediaTrackGroup.getFormat(0).language }}")
+                                                Log.w("JellyfinPlayer", "Looking for language: $subtitleLanguage, Jellyfin index: $subtitleStreamIndex")
+                                                textTrackGroups.firstOrNull()
                                             }
                                         }
                                     } else {
-                                        null
-                                    } ?: run {
-                                        // Last resort: try position-based matching
+                                        // No language info, try to match by position in sorted list
                                         val jellyfinPosition = allJellyfinSubtitleStreams.indexOfFirst { it.Index == subtitleStreamIndex }
                                         if (jellyfinPosition >= 0 && jellyfinPosition < textTrackGroups.size) {
-                                            Log.d("JellyfinPlayer", "Using position-based matching as fallback: Jellyfin position=$jellyfinPosition (Index=$subtitleStreamIndex), ExoPlayer groups=${textTrackGroups.size}")
+                                            Log.d("JellyfinPlayer", "No language info. Using position-based matching: Jellyfin position=$jellyfinPosition")
                                             textTrackGroups[jellyfinPosition]
                                         } else {
-                                            // Very last resort: use first available
-                                            Log.w("JellyfinPlayer", "All matching attempts failed. Using first available track.")
-                                            Log.w("JellyfinPlayer", "Looking for: Jellyfin index=$subtitleStreamIndex, language=$subtitleLanguage, loaded URL=$loadedSubtitleUrl")
+                                            // Last resort: use first available
+                                            Log.w("JellyfinPlayer", "No language info and position out of range. Using first available track.")
                                             textTrackGroups.firstOrNull()
                                         }
                                     }
