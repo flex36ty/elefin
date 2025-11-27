@@ -16,8 +16,8 @@ android {
         targetSdk = 36
         // Version code: major * 10000 + minor * 100 + patch
         // Examples: v1.0 = 10000, v1.1 = 10100, v1.2.3 = 10203, v2.0.0 = 20000
-        versionCode = 10100  // v1.1 = 1 * 10000 + 1 * 100 + 0 = 10100
-        versionName = "1.1"  // This is just for display - versionCode is used for comparison
+        versionCode = 10102  // v1.1.2 = 1 * 10000 + 1 * 100 + 0 = 10100
+        versionName = "1.1.2"  // This is just for display - versionCode is used for comparison
 
         ndk {
             // Include all ABIs that have native libraries

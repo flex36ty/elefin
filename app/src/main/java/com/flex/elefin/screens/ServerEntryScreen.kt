@@ -50,6 +50,7 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.flex.elefin.components.TvTextField
 import com.flex.elefin.jellyfin.JellyfinAuthService
 import com.flex.elefin.jellyfin.JellyfinConfig
 
@@ -137,84 +138,37 @@ fun ServerEntryScreen(
             Text(
                 text = "Valid server address",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (addressFocused)
+                    Color(0xFF9C27B0) // Purple label when focused for better visibility
+                else
+                    MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 16.dp)
             )
             
-            // Address input field - matching Jellyfin Android TV Input.Default style
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp)
-                    .background(
-                        color = if (addressFocused)
-                            Color(0xFFDDDDDD) // Light background when focused (input_default_highlight_background)
-                        else
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f), // Visible darker background when not focused
-                        shape = RoundedCornerShape(3.dp)
-                    )
-                    .border(
-                        width = if (addressFocused) 3.dp else 2.dp, // Thicker border when focused for better visibility
-                        color = if (addressFocused)
-                            Color(0xFF9C27B0) // Purple border when focused for better visibility
-                        else
-                            Color(0xB3747474), // input_default_stroke color when not focused
-                        shape = RoundedCornerShape(3.dp)
-                    )
-            ) {
-                BasicTextField(
-                    value = serverAddress,
-                    onValueChange = { serverAddress = it },
-                    textStyle = TextStyle(
-                        color = if (addressFocused)
-                            Color(0xFF444444) // Dark text when focused (input_default_highlight_text)
-                        else
-                            Color(0xFFDDDDDD), // Light text when not focused (input_default_normal_text)
-                        fontSize = MaterialTheme.typography.bodyMedium.fontSize
-                    ),
-                    singleLine = true,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxSize()
-                        .focusRequester(addressFocusRequester)
-                        .focusable()
-                        .onFocusChanged { addressFocused = it.isFocused }
-                        .padding(8.dp) // 8dp padding all around (matching Input.Default style)
-                        .onKeyEvent { keyEvent ->
-                            if (keyEvent.type == KeyEventType.KeyUp) {
-                                when (keyEvent.key) {
-                                    Key.Enter -> {
-                                        keyboardController?.show()
-                                        true
-                                    }
-                                    Key.DirectionDown -> {
-                                        connectButtonFocusRequester.requestFocus()
-                                        true
-                                    }
-                                    else -> false
-                                }
-                            } else {
-                                false
-                            }
-                        },
-                    enabled = !isConnecting && prefillAddress == null,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Uri,
-                        imeAction = ImeAction.Done,
-                        autoCorrectEnabled = false
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onDone = {
-                            keyboardController?.hide()
-                            if (serverAddress.isNotBlank()) {
-                                connectButtonFocusRequester.requestFocus()
-                                connect()
-                            }
+            // Address input field
+            TvTextField(
+                value = serverAddress,
+                onValueChange = { serverAddress = it },
+                label = "Server Address",
+                enabled = !isConnecting && prefillAddress == null,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Done,
+                    autoCorrectEnabled = false
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        keyboardController?.hide()
+                        if (serverAddress.isNotBlank()) {
+                            connectButtonFocusRequester.requestFocus()
+                            connect()
                         }
-                    )
-                )
-            }
+                    }
+                ),
+                focusRequester = addressFocusRequester,
+                onFocusChanged = { addressFocused = it },
+                modifier = Modifier.fillMaxWidth()
+            )
             
             // Connect button
             Row(

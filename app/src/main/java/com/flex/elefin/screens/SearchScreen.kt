@@ -226,30 +226,34 @@ fun SearchScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Search text field
+            // Search text field - Jellyfin AndroidTV style using MutableInteractionSource
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .height(56.dp)
             ) {
+                // Jellyfin AndroidTV color scheme
+                val strokeColor = Color(0xB3747474)  // 70% opacity gray - always visible
+                val highlightBackground = Color(0xFFDDDDDD)  // Light gray when focused
+                val normalText = Color(0xFFDDDDDD)  // Light text when unfocused
+                val highlightText = Color(0xFF444444)  // Dark text when focused
+                
+                val backgroundColor = if (searchBoxFocused) highlightBackground else Color.Transparent
+                val textColor = if (searchBoxFocused) highlightText else normalText
+                val iconColor = if (searchBoxFocused) highlightText else normalText
+                
                 // Background
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(
-                            color = if (searchBoxFocused)
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                            else
-                                MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(8.dp)
+                            color = backgroundColor,
+                            shape = RoundedCornerShape(3.dp) // Jellyfin uses 3dp rounding
                         )
                         .border(
-                            width = if (searchBoxFocused) 5.dp else 2.dp,
-                            color = if (searchBoxFocused)
-                                Color.White // Bright white border when focused
-                            else
-                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(8.dp)
+                            width = 2.dp,
+                            color = strokeColor,
+                            shape = RoundedCornerShape(3.dp)
                         )
                 )
                 
@@ -296,7 +300,7 @@ fun SearchScreen(
                             false
                         }
                     }
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     Box(
@@ -310,7 +314,7 @@ fun SearchScreen(
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = iconColor,
                             modifier = Modifier.size(24.dp)
                         )
                         
@@ -320,7 +324,7 @@ fun SearchScreen(
                             modifier = Modifier
                                 .weight(1f),
                             textStyle = TextStyle(
-                                color = MaterialTheme.colorScheme.onSurface,
+                                color = textColor,
                                 fontSize = 18.sp
                             ),
                             keyboardOptions = KeyboardOptions(
@@ -349,7 +353,7 @@ fun SearchScreen(
                             Text(
                                 text = "Search movies and TV shows...",
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                color = textColor.copy(alpha = 0.6f),
                                 modifier = Modifier.padding(start = 40.dp) // Offset for icon + spacing
                             )
                         }

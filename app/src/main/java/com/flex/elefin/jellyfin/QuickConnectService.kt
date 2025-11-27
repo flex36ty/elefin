@@ -98,7 +98,7 @@ class QuickConnectService(
         }
     }
 
-    suspend fun initiateQuickConnect(): QuickConnectInitiateResponse? {
+    suspend fun initiateQuickConnect(): QuickConnectResult<QuickConnectInitiateResponse> {
         return try {
             val normalizedBaseUrl = normalizeBaseUrl(baseUrl)
             val url = if (normalizedBaseUrl.endsWith("/")) {
@@ -130,15 +130,15 @@ class QuickConnectService(
                 HttpStatusCode.OK, HttpStatusCode.Created -> {
                     val result = response.body<QuickConnectInitiateResponse>()
                     android.util.Log.d("QuickConnect", "QuickConnect initiated successfully. Code: ${result.Code}, Secret: ${result.Secret}")
-                    result
+                    QuickConnectResult(result, null)
                 }
                 HttpStatusCode.Unauthorized -> {
                     android.util.Log.w("QuickConnect", "QuickConnect returned 401 - may not be enabled on server")
-                    null
+                    QuickConnectResult(null, QuickConnectError.Unavailable)
                 }
                 HttpStatusCode.NotFound -> {
                     android.util.Log.w("QuickConnect", "QuickConnect endpoint not found (404) - server may not support it")
-                    null
+                    QuickConnectResult(null, QuickConnectError.Unavailable)
                 }
                 else -> {
                     val errorBody = try {
@@ -147,13 +147,23 @@ class QuickConnectService(
                         "Could not read error body: ${e.message}"
                     }
                     android.util.Log.e("QuickConnect", "QuickConnect initiation failed. Status: ${response.status.value}, Error: $errorBody")
-                    null
+                    QuickConnectResult(null, QuickConnectError.ServerError("Server returned error: ${response.status.value}"))
                 }
             }
+        } catch (e: java.net.ConnectException) {
+            android.util.Log.e("QuickConnect", "Connection exception initiating QuickConnect", e)
+            val errorMsg = "Cannot connect to server at $baseUrl. Please check:\n• Server is running\n• IP address is correct\n• TV is on the same network"
+            QuickConnectResult(null, QuickConnectError.ConnectionError(errorMsg))
+        } catch (e: java.net.SocketTimeoutException) {
+            android.util.Log.e("QuickConnect", "Timeout exception initiating QuickConnect", e)
+            QuickConnectResult(null, QuickConnectError.ConnectionError("Connection timeout. Server at $baseUrl is not responding."))
+        } catch (e: java.net.UnknownHostException) {
+            android.util.Log.e("QuickConnect", "Unknown host exception initiating QuickConnect", e)
+            QuickConnectResult(null, QuickConnectError.ConnectionError("Cannot resolve server address. Please check the IP address or hostname."))
         } catch (e: Exception) {
             android.util.Log.e("QuickConnect", "Exception initiating QuickConnect", e)
             e.printStackTrace()
-            null
+            QuickConnectResult(null, QuickConnectError.UnknownError("Error: ${e.message ?: e.javaClass.simpleName}"))
         }
     }
 
@@ -277,4 +287,16 @@ class QuickConnectService(
     }
 
 }
+
+sealed class QuickConnectError {
+    data class ConnectionError(val message: String) : QuickConnectError()
+    data class ServerError(val message: String) : QuickConnectError()
+    object Unavailable : QuickConnectError()
+    data class UnknownError(val message: String) : QuickConnectError()
+}
+
+data class QuickConnectResult<T>(
+    val data: T?,
+    val error: QuickConnectError?
+)
 

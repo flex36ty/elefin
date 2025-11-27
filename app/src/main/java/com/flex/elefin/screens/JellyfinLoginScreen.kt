@@ -54,8 +54,10 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
+import com.flex.elefin.components.TvTextField
 import com.flex.elefin.jellyfin.JellyfinAuthService
 import com.flex.elefin.jellyfin.JellyfinConfig
+import com.flex.elefin.jellyfin.QuickConnectError
 import com.flex.elefin.jellyfin.QuickConnectService
 import kotlinx.coroutines.isActive
 
@@ -293,184 +295,47 @@ private fun CredentialsLoginContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // Username Field
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = "Username",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            // Outer box for border - matching IP address field style
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp)
-                    .background(
-                        color = if (usernameFocused)
-                            Color(0xFFDDDDDD) // Light background when focused (input_default_highlight_background)
-                        else
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f), // Visible darker background when not focused
-                        shape = RoundedCornerShape(3.dp)
-                    )
-                    .border(
-                        width = if (usernameFocused) 3.dp else 2.dp, // Thicker border when focused for better visibility
-                        color = if (usernameFocused)
-                            Color(0xFF9C27B0) // Purple border when focused for better visibility
-                        else
-                            Color(0xB3747474), // input_default_stroke color when not focused
-                        shape = RoundedCornerShape(3.dp)
-                    )
-            ) {
-            // Inner box for content with focus
-            BasicTextField(
-                value = username,
-                onValueChange = onUsernameChange,
-                textStyle = TextStyle(
-                    color = if (usernameFocused)
-                        Color(0xFF444444) // Dark text when focused (input_default_highlight_text)
-                    else
-                        Color(0xFFDDDDDD), // Light text when not focused (input_default_normal_text)
-                    fontSize = MaterialTheme.typography.bodyMedium.fontSize
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxSize()
-                    .focusRequester(usernameFocusRequester)
-                    .focusable() // Always focusable for navigation, even if not editable
-                    .onFocusChanged { usernameFocused = it.isFocused }
-                    .padding(8.dp) // 8dp padding all around (matching Jellyfin style)
-                    .onKeyEvent { keyEvent ->
-                        if (keyEvent.type == KeyEventType.KeyUp) {
-                            when (keyEvent.key) {
-                                Key.Enter -> {
-                                    if (usernameEditable) {
-                                        // Show keyboard when Enter is pressed (only if editable)
-                                        keyboardController?.show()
-                                    } else {
-                                        // If not editable, move to password field
-                                        passwordFocusRequester.requestFocus()
-                                    }
-                                    true
-                                }
-                                Key.DirectionDown -> {
-                                    // Move to password field
-                                    passwordFocusRequester.requestFocus()
-                                    true
-                                }
-                                else -> false
-                            }
-                        } else {
-                            false
-                        }
-                    },
-                enabled = !isAuthenticating && usernameEditable,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Text,
-                    imeAction = ImeAction.Next
-                ),
-                keyboardActions = KeyboardActions(
-                    onNext = { passwordFocusRequester.requestFocus() }
-                )
-            )
-            }
-        }
+        TvTextField(
+            value = username,
+            onValueChange = onUsernameChange,
+            label = "Username",
+            enabled = !isAuthenticating && usernameEditable,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Text,
+                imeAction = ImeAction.Next
+            ),
+            keyboardActions = KeyboardActions(
+                onNext = { passwordFocusRequester.requestFocus() }
+            ),
+            focusRequester = usernameFocusRequester,
+            onFocusChanged = { usernameFocused = it },
+            modifier = Modifier.fillMaxWidth()
+        )
 
         // Password Field
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = "Password",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            // Outer box for border - matching IP address field style
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp)
-                    .background(
-                        color = if (passwordFocused)
-                            Color(0xFFDDDDDD) // Light background when focused (input_default_highlight_background)
-                        else
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f), // Visible darker background when not focused
-                        shape = RoundedCornerShape(3.dp)
-                    )
-                    .border(
-                        width = if (passwordFocused) 3.dp else 2.dp, // Thicker border when focused for better visibility
-                        color = if (passwordFocused)
-                            Color(0xFF9C27B0) // Purple border when focused for better visibility
-                        else
-                            Color(0xB3747474), // input_default_stroke color when not focused
-                        shape = RoundedCornerShape(3.dp)
-                    )
-            ) {
-            // Inner box for content with focus
-            BasicTextField(
-                value = password,
-                onValueChange = onPasswordChange,
-                textStyle = TextStyle(
-                    color = if (passwordFocused)
-                        Color(0xFF444444) // Dark text when focused (input_default_highlight_text)
-                    else
-                        Color(0xFFDDDDDD), // Light text when not focused (input_default_normal_text)
-                    fontSize = MaterialTheme.typography.bodyMedium.fontSize
-                ),
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxSize()
-                    .focusRequester(passwordFocusRequester)
-                    .focusable() // Always focusable
-                    .onFocusChanged { passwordFocused = it.isFocused }
-                    .padding(8.dp) // 8dp padding all around (matching Jellyfin style)
-                    .onKeyEvent { keyEvent ->
-                        if (keyEvent.type == KeyEventType.KeyUp) {
-                            when (keyEvent.key) {
-                                Key.Enter -> {
-                                    if (!isAuthenticating) {
-                                        // Show keyboard when Enter is pressed
-                                        keyboardController?.show()
-                                    }
-                                    true
-                                }
-                                Key.DirectionDown -> {
-                                    // Move to login button
-                                    loginButtonFocusRequester.requestFocus()
-                                    true
-                                }
-                                Key.DirectionUp -> {
-                                    // Move back to username field (if editable) or skip to login button
-                                    if (usernameEditable) {
-                                        usernameFocusRequester.requestFocus()
-                                    } else {
-                                        // If username not editable, move directly to login button
-                                        loginButtonFocusRequester.requestFocus()
-                                    }
-                                    true
-                                }
-                                else -> false
-                            }
-                        } else {
-                            false
-                        }
-                    },
-                enabled = !isAuthenticating, // Always enabled (not disabled when not authenticating)
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    imeAction = ImeAction.Done
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = {
-                        if (username.isNotBlank() && password.isNotBlank()) {
-                            keyboardController?.hide()
-                            loginButtonFocusRequester.requestFocus()
-                            onLogin()
-                        }
+        TvTextField(
+            value = password,
+            onValueChange = onPasswordChange,
+            label = "Password",
+            enabled = !isAuthenticating,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    if (username.isNotBlank() && password.isNotBlank()) {
+                        keyboardController?.hide()
+                        loginButtonFocusRequester.requestFocus()
+                        onLogin()
                     }
-                )
-            )
-            }
-        }
+                }
+            ),
+            visualTransformation = PasswordVisualTransformation(),
+            focusRequester = passwordFocusRequester,
+            onFocusChanged = { passwordFocused = it },
+            modifier = Modifier.fillMaxWidth()
+        )
 
         // Login Button and Error
         Row(
@@ -565,25 +430,46 @@ private fun QuickConnectLoginContent(
                 val trimmedUrl = serverUrl.trim().removeSuffix("/")
                 android.util.Log.d("QuickConnectLogin", "Attempting QuickConnect with server: $trimmedUrl")
                 val quickConnectService = QuickConnectService(trimmedUrl, context)
-                val response = quickConnectService.initiateQuickConnect()
+                val result = quickConnectService.initiateQuickConnect()
                 
-                if (response != null) {
-                    android.util.Log.d("QuickConnectLogin", "QuickConnect initiated successfully")
-                    quickConnectSecret = response.Secret
-                    onQuickConnectSecretChange(response.Secret)
-                    onQuickConnectCodeChange(response.Code.formatCode())
-                    onIsPollingChange(true)
-                    onAuthenticatingChange(false)
-                } else {
-                    android.util.Log.w("QuickConnectLogin", "QuickConnect initiation returned null - may be unavailable")
-                    onIsUnavailableChange(true)
-                    onError("QuickConnect is not available on this server. Please ensure QuickConnect is enabled in server settings.")
-                    onAuthenticatingChange(false)
+                when {
+                    result.data != null -> {
+                        android.util.Log.d("QuickConnectLogin", "QuickConnect initiated successfully")
+                        quickConnectSecret = result.data.Secret
+                        onQuickConnectSecretChange(result.data.Secret)
+                        onQuickConnectCodeChange(result.data.Code.formatCode())
+                        onIsPollingChange(true)
+                        onAuthenticatingChange(false)
+                    }
+                    result.error != null -> {
+                        val errorMsg = when (result.error) {
+                            is QuickConnectError.ConnectionError -> result.error.message
+                            is QuickConnectError.ServerError -> result.error.message
+                            is QuickConnectError.UnknownError -> result.error.message
+                            is QuickConnectError.Unavailable -> "QuickConnect is not available on this server. Please ensure QuickConnect is enabled in server settings."
+                        }
+                        android.util.Log.w("QuickConnectLogin", "QuickConnect error: $errorMsg")
+                        onIsUnavailableChange(true)
+                        onError(errorMsg)
+                        onAuthenticatingChange(false)
+                    }
+                    else -> {
+                        android.util.Log.w("QuickConnectLogin", "QuickConnect error: Unknown error")
+                        onIsUnavailableChange(true)
+                        onError("Failed to connect. Please check your server address and network connection.")
+                        onAuthenticatingChange(false)
+                    }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("QuickConnectLogin", "Exception during QuickConnect initiation", e)
                 onIsUnavailableChange(true)
-                onError("Error: ${e.message ?: e.javaClass.simpleName}. Please check server settings and ensure QuickConnect is enabled.")
+                val errorMsg = when {
+                    e is java.net.ConnectException -> "Cannot connect to server. Please check:\n• Server is running\n• IP address is correct\n• TV is on the same network"
+                    e is java.net.SocketTimeoutException -> "Connection timeout. Server is not responding."
+                    e is java.net.UnknownHostException -> "Cannot resolve server address. Please check the IP address."
+                    else -> "Error: ${e.message ?: e.javaClass.simpleName}"
+                }
+                onError(errorMsg)
                 onAuthenticatingChange(false)
             }
         }
