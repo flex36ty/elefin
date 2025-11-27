@@ -29,6 +29,7 @@ class AppSettings(context: Context) {
         private const val KEY_USE_LOGO_FOR_TITLE = "use_logo_for_title"
         private const val KEY_AUTOPLAY_NEXT_EPISODE = "autoplay_next_episode"
         private const val KEY_AUTOPLAY_COUNTDOWN_SECONDS = "autoplay_countdown_seconds"
+        private const val KEY_AUTO_UPDATE_ENABLED = "auto_update_enabled"
     }
 
     var isMpvEnabled: Boolean
@@ -157,5 +158,9 @@ class AppSettings(context: Context) {
     var autoplayCountdownSeconds: Int
         get() = prefs.getInt(KEY_AUTOPLAY_COUNTDOWN_SECONDS, 10).coerceIn(10, 120) // Default 10 seconds, range 10-120
         set(value) = prefs.edit().putInt(KEY_AUTOPLAY_COUNTDOWN_SECONDS, value.coerceIn(10, 120)).apply()
+    
+    var autoUpdateEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_UPDATE_ENABLED, true) // Enabled by default
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_UPDATE_ENABLED, value).apply()
 }
 

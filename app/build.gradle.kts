@@ -14,8 +14,10 @@ android {
         applicationId = "com.flex.elefin"
         minSdk = 21
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        // Version code: major * 10000 + minor * 100 + patch
+        // Examples: v1.0 = 10000, v1.1 = 10100, v1.2.3 = 10203, v2.0.0 = 20000
+        versionCode = 10100  // v1.1 = 1 * 10000 + 1 * 100 + 0 = 10100
+        versionName = "1.1"  // This is just for display - versionCode is used for comparison
 
         ndk {
             // Include all ABIs that have native libraries
@@ -32,6 +34,18 @@ android {
             )
         }
     }
+
+    androidComponents {
+        onVariants { variant ->
+            if (variant.buildType == "release") {
+                variant.outputs.forEach { output ->
+                    val outputImpl = output as com.android.build.api.variant.impl.VariantOutputImpl
+                    outputImpl.outputFileName.set("elefin-release.apk")
+                }
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -97,4 +111,10 @@ dependencies {
     
     // Lottie for animations
     implementation(libs.lottieCompose)
+    
+    // OkHttp for GitHub Releases API
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    
+    // Gson for JSON parsing
+    implementation("com.google.code.gson:gson:2.11.0")
 }

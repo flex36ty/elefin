@@ -75,7 +75,8 @@ data class MediaStream(
     val IsDefault: Boolean? = null,
     val IsForced: Boolean? = null,
     val Width: Int? = null,
-    val Height: Int? = null
+    val Height: Int? = null,
+    val ChannelLayout: String? = null // Audio channel layout (e.g., "5.1", "7.1", "stereo")
 )
 
 @Serializable

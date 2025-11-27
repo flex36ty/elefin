@@ -41,8 +41,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
 import java.io.File
 import android.widget.Toast
+import com.flex.elefin.updater.GitHubRelease
+import com.flex.elefin.updater.UpdateService
+import android.content.pm.PackageManager
 
 @OptIn(coil.annotation.ExperimentalCoilApi::class)
 @Composable
@@ -71,6 +75,11 @@ fun SettingsScreen(
     var useLogoForTitleEnabled by remember { mutableStateOf(settings.useLogoForTitle) }
     var autoplayNextEpisodeEnabled by remember { mutableStateOf(settings.autoplayNextEpisode) }
     var autoplayCountdownSeconds by remember { mutableStateOf(settings.autoplayCountdownSeconds) }
+    var autoUpdateEnabled by remember { mutableStateOf(settings.autoUpdateEnabled) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    var latestRelease by remember { mutableStateOf<com.flex.elefin.updater.GitHubRelease?>(null) }
+    var checkingForUpdates by remember { mutableStateOf(false) }
+    var updateCheckMessage by remember { mutableStateOf<String?>(null) }
 
     Box(
         modifier = Modifier
@@ -884,6 +893,45 @@ fun SettingsScreen(
                 }
             }
             
+            // Auto-Update setting
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "Auto-Check for Updates",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Automatically check for updates when the app starts",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                
+                Button(
+                    onClick = {
+                        autoUpdateEnabled = !autoUpdateEnabled
+                        settings.autoUpdateEnabled = autoUpdateEnabled
+                    },
+                    colors = ButtonDefaults.colors(
+                        containerColor = if (autoUpdateEnabled) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        }
+                    )
+                ) {
+                    Text(if (autoUpdateEnabled) "ON" else "OFF")
+                }
+            }
+            
             // Clear Cache button
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -951,6 +999,105 @@ fun SettingsScreen(
                 ) {
                     Text("Clear")
                 }
+            }
+            
+            // Check for Updates button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "Check for Updates",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (checkingForUpdates) {
+                            "Checking for updates..."
+                        } else if (updateCheckMessage != null) {
+                            updateCheckMessage!!
+                        } else {
+                            "Manually check for app updates from GitHub"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                
+                Button(
+                    onClick = {
+                        scope.launch {
+                            checkingForUpdates = true
+                            updateCheckMessage = null
+                            
+                            try {
+                                // Get current version code
+                                val versionCode = try {
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                                        context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode.toInt()
+                                    } else {
+                                        @Suppress("DEPRECATION")
+                                        context.packageManager.getPackageInfo(context.packageName, 0).versionCode
+                                    }
+                                } catch (e: Exception) {
+                                    1
+                                }
+                                
+                                // Check for updates
+                                val release = withContext(Dispatchers.IO) {
+                                    UpdateService.getLatestRelease()
+                                }
+                                
+                                if (release != null) {
+                                    val remoteVersionCode = UpdateService.parseVersion(release.tagName)
+                                    
+                                    if (UpdateService.updateAvailable(remoteVersionCode, versionCode)) {
+                                        latestRelease = release
+                                        showUpdateDialog = true
+                                        updateCheckMessage = "Update available: ${release.name}"
+                                    } else {
+                                        updateCheckMessage = "You're on the latest version (${release.name})"
+                                    }
+                                } else {
+                                    updateCheckMessage = "Failed to check for updates. Please try again later."
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.e("SettingsScreen", "Error checking for updates", e)
+                                updateCheckMessage = "Error checking for updates: ${e.message}"
+                            } finally {
+                                checkingForUpdates = false
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.colors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    ),
+                    enabled = !checkingForUpdates
+                ) {
+                    Text(if (checkingForUpdates) "Checking..." else "Check")
+                }
+            }
+        }
+        
+        // Show update dialog if update is found
+        latestRelease?.let { release ->
+            if (showUpdateDialog) {
+                UpdateDialog(
+                    release = release,
+                    onDismiss = {
+                        showUpdateDialog = false
+                        latestRelease = null
+                    },
+                    onUpdate = {
+                        showUpdateDialog = false
+                        latestRelease = null
+                    }
+                )
             }
         }
     }

@@ -403,9 +403,29 @@ fun TopContainer(
                             MetadataBox(text = hdrStatus)
                         }
                         
-                        // Language
-                        audioStream?.Language?.let { lang ->
-                            MetadataBox(text = lang.uppercase())
+                        // Language with Audio Codec and Channel Layout
+                        audioStream?.let { stream ->
+                            val language = stream.Language?.uppercase() ?: ""
+                            val codec = stream.Codec?.uppercase() ?: ""
+                            val channelLayout = stream.ChannelLayout ?: ""
+                            
+                            // Format as "Language (CODEC CHANNEL)" or "Language (CODEC)" or just "Language"
+                            val audioText = when {
+                                codec.isNotEmpty() && channelLayout.isNotEmpty() && language.isNotEmpty() -> {
+                                    "$language ($codec $channelLayout)"
+                                }
+                                codec.isNotEmpty() && language.isNotEmpty() -> {
+                                    "$language ($codec)"
+                                }
+                                language.isNotEmpty() -> language
+                                codec.isNotEmpty() && channelLayout.isNotEmpty() -> "$codec $channelLayout"
+                                codec.isNotEmpty() -> codec
+                                else -> null
+                            }
+                            
+                            audioText?.let {
+                                MetadataBox(text = it)
+                            }
                         }
                         
                         // Watched indicator

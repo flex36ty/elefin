@@ -5,14 +5,22 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.tv.material3.Surface
 import com.flex.elefin.jellyfin.JellyfinItem
 import com.flex.elefin.jellyfin.AppSettings
 import com.flex.elefin.screens.JellyfinHomeScreen
+import com.flex.elefin.screens.UpdateDialog
 import com.flex.elefin.MovieDetailsActivity
 import com.flex.elefin.SeriesDetailsActivity
 import com.flex.elefin.JellyfinVideoPlayerActivity
+import com.flex.elefin.updater.GitHubRelease
+import com.flex.elefin.updater.UpdateService
 
 /**
  * Main entry point that loads the Jellyfin home screen.
@@ -47,8 +55,24 @@ class MainActivity : ComponentActivity() {
         
         val appSettings = AppSettings(this)
         
+        // Get version code from package manager
+        val versionCode = try {
+            packageManager.getPackageInfo(packageName, 0).longVersionCode.toInt()
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Error getting version code", e)
+            1 // Fallback to 1
+        }
+        
         setContent {
             JellyfinAppTheme {
+                // Update checker (only if auto-update is enabled)
+                val settings = AppSettings(this)
+                if (settings.autoUpdateEnabled) {
+                    UpdateChecker(
+                        localVersionCode = versionCode
+                    )
+                }
+                
                 Surface(
                     modifier = Modifier.fillMaxSize()
                 ) {
@@ -104,6 +128,45 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Composable that checks for app updates on startup
+ */
+@Composable
+private fun UpdateChecker(localVersionCode: Int) {
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    var latestRelease by remember { mutableStateOf<GitHubRelease?>(null) }
+    
+    LaunchedEffect(Unit) {
+        // Check for updates in the background
+        try {
+            val release = UpdateService.getLatestRelease() ?: return@LaunchedEffect
+            val remoteVersionCode = UpdateService.parseVersion(release.tagName)
+            
+            if (UpdateService.updateAvailable(remoteVersionCode, localVersionCode)) {
+                android.util.Log.d("UpdateChecker", "Update available: ${release.name} (remote: $remoteVersionCode, local: $localVersionCode)")
+                latestRelease = release
+                showUpdateDialog = true
+            } else {
+                android.util.Log.d("UpdateChecker", "No update available (remote: $remoteVersionCode, local: $localVersionCode)")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("UpdateChecker", "Error checking for updates", e)
+            // Silently fail - don't interrupt user experience
+        }
+    }
+    
+    // Show update dialog if update is available
+    latestRelease?.let { release ->
+        if (showUpdateDialog) {
+            UpdateDialog(
+                release = release,
+                onDismiss = { showUpdateDialog = false },
+                onUpdate = { showUpdateDialog = false }
+            )
         }
     }
 }
