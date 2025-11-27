@@ -175,6 +175,7 @@ fun JellyfinVideoPlayerScreen(
     var currentAudioIndex by remember { mutableStateOf<Int?>(storedAudioPreference) }
     var lastSelectedAudioIndex by remember { mutableStateOf<Int?>(storedAudioPreference) } // Track last selected audio from controller
     var is4KContent by remember { mutableStateOf(false) } // Track if current content is 4K
+    var shouldFocusPlayButton by remember { mutableStateOf(false) } // Track when to focus play button after controller is shown
 
     // Fetch item details and prepare video URL
     LaunchedEffect(item.Id, apiService, subtitleStreamIndex) {
@@ -1132,6 +1133,8 @@ fun JellyfinVideoPlayerScreen(
                                 // This ensures it comes back after being hidden
                                 playerView.showController()
                                 Log.d("ExoPlayer", "Enter/OK pressed - showing controller")
+                                // Set flag to focus play button after controller is shown
+                                shouldFocusPlayButton = true
                             }
                             // Don't consume the event - let it pass through so buttons can still receive clicks
                             false
@@ -1321,6 +1324,38 @@ fun JellyfinVideoPlayerScreen(
                             controller?.invalidate() // Refresh controller to show subtitle button if tracks are available
                         }
                     )
+                    
+                    // Watch for controller visibility and focus play button when Enter/OK was pressed
+                    LaunchedEffect(shouldFocusPlayButton) {
+                        if (shouldFocusPlayButton) {
+                            // Wait for controller to be fully rendered
+                            kotlinx.coroutines.delay(200)
+                            
+                            val playerView = playerViewRef.value
+                            val controller = playerView?.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
+                            
+                            if (controller != null && controller.visibility == android.view.View.VISIBLE && controller.alpha > 0f) {
+                                // Focus on play/pause button instead of settings
+                                val playButton = controller.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_play)
+                                val pauseButton = controller.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_pause)
+                                val buttonToFocus = if (player.isPlaying && pauseButton != null) pauseButton else playButton
+                                
+                                buttonToFocus?.let { button ->
+                                    try {
+                                        if (button.isFocusable) {
+                                            button.requestFocus()
+                                            Log.d("ExoPlayer", "Focused on play/pause button when controls shown")
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.w("ExoPlayer", "Failed to focus play button: ${e.message}")
+                                    }
+                                }
+                            }
+                            
+                            // Reset flag
+                            shouldFocusPlayButton = false
+                        }
+                    }
                     
                     // Title overlay at the top - disappears after 10 seconds or when controller is visible
                     val displayName = itemDetails?.Name ?: item.Name

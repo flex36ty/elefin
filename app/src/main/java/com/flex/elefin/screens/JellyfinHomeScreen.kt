@@ -590,7 +590,8 @@ fun JellyfinHomeScreen(
                     )
                 }
                 
-                // Manual Refresh button - to the right of search button
+                // Refresh/Sort button - to the right of search button
+                // Shows refresh button on home screen, sort button when library is selected
                 val infiniteTransition = rememberInfiniteTransition(label = "refresh_rotation")
                 val rotationAngle by infiniteTransition.animateFloat(
                     initialValue = 0f,
@@ -602,28 +603,36 @@ fun JellyfinHomeScreen(
                     label = "refresh_rotation_angle"
                 )
                 
+                val isLibrarySelected = selectedLibraryId != null
+                
                 IconButton(
                     onClick = {
-                        if (!isRefreshing && repository != null) {
-                            isRefreshing = true
-                            scope.launch {
-                                try {
-                                    // Trigger server-side library scan and refresh all media rows
-                                    repository.triggerLibraryScanAndRefresh()
-                                    
-                                    // Also refresh libraries in case new ones were added
-                                    repository.fetchLibraries()
-                                    
-                                    Log.d("JellyfinHomeScreen", "Manual refresh completed")
-                                } catch (e: Exception) {
-                                    Log.e("JellyfinHomeScreen", "Manual refresh error", e)
-                                } finally {
-                                    isRefreshing = false
+                        if (isLibrarySelected) {
+                            // Show sort dialog when library is selected
+                            showSortDialog = true
+                        } else {
+                            // Refresh when on home screen
+                            if (!isRefreshing && repository != null) {
+                                isRefreshing = true
+                                scope.launch {
+                                    try {
+                                        // Trigger server-side library scan and refresh all media rows
+                                        repository.triggerLibraryScanAndRefresh()
+                                        
+                                        // Also refresh libraries in case new ones were added
+                                        repository.fetchLibraries()
+                                        
+                                        Log.d("JellyfinHomeScreen", "Manual refresh completed")
+                                    } catch (e: Exception) {
+                                        Log.e("JellyfinHomeScreen", "Manual refresh error", e)
+                                    } finally {
+                                        isRefreshing = false
+                                    }
                                 }
                             }
                         }
                     },
-                    enabled = !isRefreshing,
+                    enabled = !isRefreshing || isLibrarySelected,
                     colors = IconButtonDefaults.colors(
                         containerColor = MaterialTheme.colorScheme.surface,
                         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -634,19 +643,29 @@ fun JellyfinHomeScreen(
                         .padding(end = 20.dp)
                         .size(48.dp) // Same size as settings button
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = if (isRefreshing) "Refreshing..." else "Refresh",
-                        modifier = Modifier
-                            .size(20.dp)
-                            .then(
-                                if (isRefreshing) {
-                                    Modifier.rotate(rotationAngle)
-                                } else {
-                                    Modifier
-                                }
-                            )
-                    )
+                    if (isLibrarySelected) {
+                        // Show sort icon when library is selected
+                        Icon(
+                            imageVector = Icons.Default.SwapVert,
+                            contentDescription = "Sort",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    } else {
+                        // Show refresh icon on home screen
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = if (isRefreshing) "Refreshing..." else "Refresh",
+                            modifier = Modifier
+                                .size(20.dp)
+                                .then(
+                                    if (isRefreshing) {
+                                        Modifier.rotate(rotationAngle)
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                        )
+                    }
                 }
                 
                 // Home button - styled like tab row items with underline
@@ -816,30 +835,6 @@ fun JellyfinHomeScreen(
                         }
                     }
                 }
-                }
-                
-                // Sort button - on the far right, same vertical position as settings button
-                // Only shown when a library is selected (not for collections view)
-                if (selectedLibraryId != null) {
-                    IconButton(
-                        onClick = {
-                            showSortDialog = true
-                        },
-                        colors = IconButtonDefaults.colors(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            contentColor = MaterialTheme.colorScheme.onSurface
-                        ),
-                        modifier = Modifier
-                            .padding(start = 20.dp, end = 54.dp)
-                            .size(48.dp) // Same size as settings button
-                    ) {
-                        // Use SwapVert icon for sort (vertical arrows - common sort indicator)
-                        Icon(
-                            imageVector = Icons.Default.SwapVert,
-                            contentDescription = "Sort",
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
                 }
             }
         }
