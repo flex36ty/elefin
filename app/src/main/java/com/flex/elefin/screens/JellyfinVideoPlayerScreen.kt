@@ -176,6 +176,12 @@ fun JellyfinVideoPlayerScreen(
     var lastSelectedAudioIndex by remember { mutableStateOf<Int?>(storedAudioPreference) } // Track last selected audio from controller
     var is4KContent by remember { mutableStateOf(false) } // Track if current content is 4K
     var shouldFocusPlayButton by remember { mutableStateOf(false) } // Track when to focus play button after controller is shown
+    var nextEpisodeId by remember { mutableStateOf<String?>(null) } // Next episode ID for autoplay
+    var nextEpisodeDetails by remember { mutableStateOf<JellyfinItem?>(null) } // Next episode details
+    var showNextUpOverlay by remember { mutableStateOf(false) } // Show next up overlay
+    var autoplayCountdown by remember { mutableStateOf(settings.autoplayCountdownSeconds) } // Countdown timer for autoplay
+    var autoplayCancelled by remember { mutableStateOf(false) } // Track if user cancelled autoplay
+    var hasFocusedPlayButtonOnStart by remember { mutableStateOf(false) } // Track if we've focused play button on initial start
 
     // Fetch item details and prepare video URL
     LaunchedEffect(item.Id, apiService, subtitleStreamIndex) {
@@ -238,6 +244,79 @@ fun JellyfinVideoPlayerScreen(
                     )
                     mediaUrl = videoUrl
                     Log.d("JellyfinPlayer", "Video URL: $videoUrl")
+                    
+                    // Check for next episode if this is an episode
+                    // Use the simpler StartIndex approach: /Shows/{seriesId}/Episodes?StartIndex={currentIndex + 1}&Limit=1
+                    if (details.Type == "Episode") {
+                        Log.d("JellyfinPlayer", "Episode detected. NextEpisodeId from API: ${details.NextEpisodeId}")
+                        Log.d("JellyfinPlayer", "Episode info: SeriesId=${details.SeriesId}, Season=${details.ParentIndexNumber}, Episode=${details.IndexNumber}")
+                        
+                        // Try to get next episode ID from API response first
+                        var foundNextEpisode: JellyfinItem? = null
+                        
+                        if (details.NextEpisodeId != null) {
+                            // API provided NextEpisodeId, fetch the episode
+                            val nextDetails = apiService.getItemDetails(details.NextEpisodeId)
+                            if (nextDetails != null) {
+                                foundNextEpisode = nextDetails
+                                Log.d("JellyfinPlayer", "✅ Found next episode via NextEpisodeId: ${nextDetails.Name}")
+                            }
+                        }
+                        
+                        // If NextEpisodeId is not available, use the simpler StartIndex approach
+                        if (foundNextEpisode == null && details.SeriesId != null && details.IndexNumber != null) {
+                            Log.d("JellyfinPlayer", "NextEpisodeId not available, using StartIndex approach...")
+                            try {
+                                // Use the simpler approach: /Shows/{seriesId}/Episodes?StartIndex={currentIndex}&Limit=1
+                                // This gets the episode at StartIndex (which should be the next one)
+                                foundNextEpisode = apiService.getNextEpisode(details.SeriesId, details.IndexNumber)
+                                
+                                if (foundNextEpisode == null) {
+                                    // Try next season's first episode
+                                    Log.d("JellyfinPlayer", "No next episode in current season, checking next season...")
+                                    val seasons = apiService.getSeasons(details.SeriesId)
+                                    val currentSeason = seasons.firstOrNull { it.IndexNumber == details.ParentIndexNumber }
+                                    val nextSeason = seasons.firstOrNull { 
+                                        currentSeason != null && it.IndexNumber == currentSeason.IndexNumber!! + 1 
+                                    }
+                                    
+                                    if (nextSeason != null) {
+                                        // Get first episode of next season
+                                        foundNextEpisode = apiService.getNextEpisode(details.SeriesId, 1)?.let { episode ->
+                                            // Check if this episode is in the next season
+                                            if (episode.ParentIndexNumber == nextSeason.IndexNumber) {
+                                                episode
+                                            } else {
+                                                // Get episodes from next season directly
+                                                val nextSeasonEpisodes = apiService.getEpisodes(details.SeriesId, nextSeason.Id)
+                                                nextSeasonEpisodes.firstOrNull()
+                                            }
+                                        } ?: run {
+                                            val nextSeasonEpisodes = apiService.getEpisodes(details.SeriesId, nextSeason.Id)
+                                            nextSeasonEpisodes.firstOrNull()
+                                        }
+                                        
+                                        if (foundNextEpisode != null) {
+                                            Log.d("JellyfinPlayer", "✅ Found next episode in next season: ${foundNextEpisode.Name}")
+                                        }
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.e("JellyfinPlayer", "Error finding next episode", e)
+                                e.printStackTrace()
+                            }
+                        }
+                        
+                        if (foundNextEpisode != null) {
+                            nextEpisodeId = foundNextEpisode.Id
+                            nextEpisodeDetails = foundNextEpisode
+                            Log.d("JellyfinPlayer", "✅✅✅ Next episode resolved: ${foundNextEpisode.Name}, ID: ${foundNextEpisode.Id}")
+                            Log.d("JellyfinPlayer", "✅ Next episode IndexNumber: ${foundNextEpisode.IndexNumber}, Season: ${foundNextEpisode.ParentIndexNumber}")
+                        } else {
+                            Log.d("JellyfinPlayer", "No next episode found (this might be the last episode)")
+                        }
+                    }
+                    
                     isLoading = false
                 } else {
                     Log.e("JellyfinPlayer", "Failed to fetch item details")
@@ -602,12 +681,22 @@ fun JellyfinVideoPlayerScreen(
                             // Ensure subtitle button is visible in controller when tracks are available
                             playerViewRef.value?.let { view ->
                                 view.post {
+                                    // Explicitly show subtitle button when tracks are available
+                                    view.setShowSubtitleButton(textTrackGroups.isNotEmpty())
+                                    
                                     val controller = view.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
                                     controller?.let { controlView ->
                                         // The subtitle button should automatically appear when text tracks are available
                                         // Force a refresh of the controller to ensure button visibility
                                         controlView.invalidate()
-                                        Log.d("JellyfinPlayer", "Controller invalidated to refresh subtitle button visibility")
+                                        
+                                        // Also ensure the subtitle button view itself is visible
+                                        val subtitleButton = controlView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_subtitle)
+                                        subtitleButton?.let { button ->
+                                            button.visibility = if (textTrackGroups.isNotEmpty()) android.view.View.VISIBLE else android.view.View.GONE
+                                        }
+                                        
+                                        Log.d("JellyfinPlayer", "Controller invalidated to refresh subtitle button visibility. Text tracks: ${textTrackGroups.size}, Subtitle button visible: ${subtitleButton?.visibility == android.view.View.VISIBLE}")
                                     }
                                 }
                             }
@@ -696,19 +785,19 @@ fun JellyfinVideoPlayerScreen(
                                     }
                                     
                                     if (groupToSelect != null) {
-                                        val trackSelectionOverride = androidx.media3.common.TrackSelectionOverride(
-                                            groupToSelect.mediaTrackGroup,
-                                            0 // Select first track in the group
-                                        )
-                                        
-                                        val updatedParameters = player.trackSelectionParameters
-                                            .buildUpon()
-                                            .addOverride(trackSelectionOverride)
-                                            .build()
-                                        
-                                        player.trackSelectionParameters = updatedParameters
-                                        
-                                        val selectedFormat = groupToSelect.mediaTrackGroup.getFormat(0)
+                                    val trackSelectionOverride = androidx.media3.common.TrackSelectionOverride(
+                                        groupToSelect.mediaTrackGroup,
+                                        0 // Select first track in the group
+                                    )
+                                    
+                                    val updatedParameters = player.trackSelectionParameters
+                                        .buildUpon()
+                                        .addOverride(trackSelectionOverride)
+                                        .build()
+                                    
+                                    player.trackSelectionParameters = updatedParameters
+                                    
+                                    val selectedFormat = groupToSelect.mediaTrackGroup.getFormat(0)
                                         currentSubtitleIndex = subtitleStreamIndex
                                         lastSelectedSubtitleIndex = subtitleStreamIndex
                                         Log.d("JellyfinPlayer", "✅ Selected subtitle track: language=${selectedFormat.language}, id=${selectedFormat.id}, Jellyfin index=$subtitleStreamIndex")
@@ -970,12 +1059,15 @@ fun JellyfinVideoPlayerScreen(
                                     }
                                 }
                                 Player.STATE_ENDED -> {
-                                    Log.d("JellyfinPlayer", "Playback ended")
+                                    Log.d("JellyfinPlayer", "🎬 STATE_ENDED - Playback ended")
                                     progressReportingJob?.cancel()
                                     progressReportingJob = null
+                                    showNextUpOverlay = false
+                                    
                                     // Only mark as watched if video was actually completed (watched until near the end)
                                     scope.launch {
                                         try {
+                                            Log.d("JellyfinPlayer", "🎬 STATE_ENDED - Getting playback position...")
                                             // Access player on main thread
                                             val currentPositionMs = withContext(Dispatchers.Main) {
                                                 player.currentPosition
@@ -985,11 +1077,16 @@ fun JellyfinVideoPlayerScreen(
                                             }
                                             val positionTicks = currentPositionMs * 10_000L // Convert ms to ticks
                                             
+                                            Log.d("JellyfinPlayer", "🎬 STATE_ENDED - Position: ${currentPositionMs}ms / ${durationMs}ms")
+                                            
                                             // Check if video was actually completed (watched at least 90% or within last 5 seconds)
                                             val isComplete = durationMs > 0 && (
                                                 currentPositionMs >= durationMs - 5000 || // Within last 5 seconds
                                                 currentPositionMs >= durationMs * 0.90    // Or watched 90% of video
                                             )
+                                            
+                                            Log.d("JellyfinPlayer", "🎬 STATE_ENDED - isComplete=$isComplete")
+                                            Log.d("JellyfinPlayer", "🎬 STATE_ENDED - nextEpisodeId=$nextEpisodeId, autoplayCancelled=$autoplayCancelled, nextEpisodeDetails=${nextEpisodeDetails != null}")
                                             
                                             // Report on background thread
                                             withContext(Dispatchers.IO) {
@@ -997,16 +1094,75 @@ fun JellyfinVideoPlayerScreen(
                                                 // Only mark as watched if video was actually completed
                                                 if (isComplete) {
                                                     apiService.markAsWatched(item.Id)
-                                                    Log.d("JellyfinPlayer", "Marked item as watched (completed ${(currentPositionMs * 100 / durationMs).toInt()}%)")
+                                                    Log.d("JellyfinPlayer", "✅ Marked item as watched (completed ${(currentPositionMs * 100 / durationMs).toInt()}%)")
                                                 } else {
-                                                    Log.d("JellyfinPlayer", "Playback stopped early (${(currentPositionMs * 100 / durationMs).toInt()}%), not marking as watched")
+                                                    Log.d("JellyfinPlayer", "⚠️ Playback stopped early (${(currentPositionMs * 100 / durationMs).toInt()}%), not marking as watched")
+                                                }
+                                                
+                                                // Check if there's a next episode and autoplay wasn't cancelled
+                                                Log.d("JellyfinPlayer", "🎬 Checking autoplay conditions:")
+                                                Log.d("JellyfinPlayer", "  - nextEpisodeId != null: ${nextEpisodeId != null}")
+                                                Log.d("JellyfinPlayer", "  - !autoplayCancelled: ${!autoplayCancelled}")
+                                                Log.d("JellyfinPlayer", "  - isComplete: $isComplete")
+                                                Log.d("JellyfinPlayer", "  - nextEpisodeDetails != null: ${nextEpisodeDetails != null}")
+                                                Log.d("JellyfinPlayer", "  - autoplayNextEpisode setting: ${settings.autoplayNextEpisode}")
+                                                
+                                                if (nextEpisodeId != null && !autoplayCancelled && isComplete && nextEpisodeDetails != null && settings.autoplayNextEpisode) {
+                                                    Log.d("JellyfinPlayer", "✅✅✅ ALL CONDITIONS MET - Starting autoplay for next episode: $nextEpisodeId")
+                                                    Log.d("JellyfinPlayer", "✅ Next episode details: ${nextEpisodeDetails!!.Name}, ID: ${nextEpisodeDetails!!.Id}")
+                                                    
+                                                    // IMPORTANT: Stop and release current player before starting next episode
+                                                    withContext(Dispatchers.Main) {
+                                                        try {
+                                                            Log.d("JellyfinPlayer", "✅ Stopping and releasing current player...")
+                                                            player.stop()
+                                                            player.release()
+                                                            Log.d("JellyfinPlayer", "✅ Player stopped and released")
+                                                        } catch (e: Exception) {
+                                                            Log.w("JellyfinPlayer", "Error stopping player", e)
+                                                        }
+                                                    }
+                                                    
+                                                    // Start next episode in new Activity
+                                                    withContext(Dispatchers.Main) {
+                                                        try {
+                                                            Log.d("JellyfinPlayer", "✅ Creating intent for next episode...")
+                                                            val intent = com.flex.elefin.JellyfinVideoPlayerActivity.createIntent(
+                                                                context = context,
+                                                                itemId = nextEpisodeDetails!!.Id,
+                                                                resumePositionMs = 0L,
+                                                                subtitleStreamIndex = null,
+                                                                audioStreamIndex = null
+                                                            )
+                                                            Log.d("JellyfinPlayer", "✅ Starting activity for next episode...")
+                                                            context.startActivity(intent)
+                                                            // Finish current activity
+                                                            Log.d("JellyfinPlayer", "✅ Calling onBack() to finish current activity")
+                                                            onBack()
+                                                        } catch (e: Exception) {
+                                                            Log.e("JellyfinPlayer", "❌ ERROR starting next episode", e)
+                                                            e.printStackTrace()
+                                                            onBack()
+                                                        }
+                                                    }
+                                                } else {
+                                                    // No next episode or autoplay cancelled, go back
+                                                    Log.d("JellyfinPlayer", "❌ NOT autoplaying - conditions not met:")
+                                                    Log.d("JellyfinPlayer", "  - nextEpisodeId=$nextEpisodeId")
+                                                    Log.d("JellyfinPlayer", "  - autoplayCancelled=$autoplayCancelled")
+                                                    Log.d("JellyfinPlayer", "  - isComplete=$isComplete")
+                                                    Log.d("JellyfinPlayer", "  - nextEpisodeDetails=${nextEpisodeDetails?.Name ?: "null"}")
+                                                    withContext(Dispatchers.Main) {
+                                                        onBack()
+                                                    }
                                                 }
                                             }
                                         } catch (e: Exception) {
-                                            Log.e("JellyfinPlayer", "Error handling playback end", e)
+                                            Log.e("JellyfinPlayer", "❌ ERROR handling playback end", e)
+                                            e.printStackTrace()
+                                            onBack()
                                         }
                                     }
-                                    onBack()
                                 }
                             }
                         }
@@ -1028,6 +1184,161 @@ fun JellyfinVideoPlayerScreen(
         }
     }
 
+    // Monitor playback position to show Next Up overlay
+    LaunchedEffect(nextEpisodeId, playerInitialized) {
+        if (nextEpisodeId != null && playerInitialized && !autoplayCancelled && settings.autoplayNextEpisode) {
+            Log.d("JellyfinPlayer", "Starting Next Up overlay monitoring. nextEpisodeId=$nextEpisodeId, playerInitialized=$playerInitialized, autoplayEnabled=${settings.autoplayNextEpisode}")
+            while (true) {
+                delay(1000) // Check every second
+                if (!playerInitialized || autoplayCancelled) {
+                    Log.d("JellyfinPlayer", "Stopping overlay monitoring: playerInitialized=$playerInitialized, autoplayCancelled=$autoplayCancelled")
+                    break
+                }
+                try {
+                    val currentPositionMs = withContext(Dispatchers.Main) {
+                        player.currentPosition
+                    }
+                    val durationMs = withContext(Dispatchers.Main) {
+                        player.duration
+                    }
+                    if (durationMs > 0) {
+                        val timeElapsed = currentPositionMs
+                        val timeRemaining = durationMs - currentPositionMs
+                        val countdownDurationMs = settings.autoplayCountdownSeconds * 1000L
+                        
+                        Log.d("JellyfinPlayer", "Position check: current=${currentPositionMs}ms, duration=${durationMs}ms, elapsed=${timeElapsed}ms, remaining=${timeRemaining}ms, showOverlay=$showNextUpOverlay, countdownDuration=${settings.autoplayCountdownSeconds}s")
+                        
+                        // Show overlay in last N seconds of episode (based on setting)
+                        if (timeRemaining <= countdownDurationMs && timeRemaining >= 0 && !showNextUpOverlay) {
+                            showNextUpOverlay = true
+                            autoplayCountdown = (timeRemaining / 1000).toInt().coerceAtMost(settings.autoplayCountdownSeconds).coerceAtLeast(0)
+                            Log.d("JellyfinPlayer", "✅ Showing Next Up overlay (last ${settings.autoplayCountdownSeconds} seconds, ${timeRemaining}ms remaining, countdown: $autoplayCountdown)")
+                        }
+                        
+                        // Update countdown (count down from remaining time)
+                        if (showNextUpOverlay && timeRemaining <= countdownDurationMs) {
+                            val newCountdown = (timeRemaining / 1000).toInt().coerceAtMost(settings.autoplayCountdownSeconds).coerceAtLeast(0)
+                            val countdownChanged = newCountdown != autoplayCountdown
+                            val previousCountdown = autoplayCountdown
+                            autoplayCountdown = newCountdown
+                            
+                            if (countdownChanged) {
+                                Log.d("JellyfinPlayer", "⏱️ Countdown updated: $previousCountdown -> $autoplayCountdown (remaining: ${timeRemaining}ms)")
+                            }
+                        } else if (showNextUpOverlay && timeRemaining > countdownDurationMs) {
+                            // If we somehow got past the countdown duration, hide overlay
+                            showNextUpOverlay = false
+                            Log.d("JellyfinPlayer", "Hiding overlay (remaining: ${timeRemaining}ms > ${countdownDurationMs}ms)")
+                        }
+                        
+                        // Check for countdown == 0 to trigger autoplay
+                        if (showNextUpOverlay && autoplayCountdown == 0 && nextEpisodeDetails != null && !autoplayCancelled && settings.autoplayNextEpisode) {
+                            Log.d("JellyfinPlayer", "✅✅✅ COUNTDOWN REACHED 0 - Triggering autoplay")
+                            Log.d("JellyfinPlayer", "✅ Next episode: ${nextEpisodeDetails!!.Name}, ID: ${nextEpisodeDetails!!.Id}")
+                            Log.d("JellyfinPlayer", "✅ Conditions: nextEpisodeDetails != null: ${nextEpisodeDetails != null}, autoplayCancelled: $autoplayCancelled, autoplayEnabled: ${settings.autoplayNextEpisode}, timeRemaining: ${timeRemaining}ms")
+                            showNextUpOverlay = false
+                            
+                            // Trigger autoplay in a separate coroutine
+                            scope.launch {
+                                // IMPORTANT: Stop and release current player before starting next episode
+                                withContext(Dispatchers.Main) {
+                                    try {
+                                        Log.d("JellyfinPlayer", "✅✅✅ STOPPING AND RELEASING CURRENT PLAYER (from countdown)...")
+                                        player.stop()
+                                        player.release()
+                                        Log.d("JellyfinPlayer", "✅✅✅ Player stopped and released")
+                                    } catch (e: Exception) {
+                                        Log.e("JellyfinPlayer", "❌ ERROR stopping player", e)
+                                        e.printStackTrace()
+                                    }
+                                }
+                                
+                                withContext(Dispatchers.Main) {
+                                    try {
+                                        Log.d("JellyfinPlayer", "✅ Creating intent for next episode (from countdown)...")
+                                        val intent = com.flex.elefin.JellyfinVideoPlayerActivity.createIntent(
+                                            context = context,
+                                            itemId = nextEpisodeDetails!!.Id,
+                                            resumePositionMs = 0L,
+                                            subtitleStreamIndex = null,
+                                            audioStreamIndex = null
+                                        )
+                                        Log.d("JellyfinPlayer", "✅ Starting activity for next episode (from countdown)...")
+                                        context.startActivity(intent)
+                                        // Finish current activity
+                                        Log.d("JellyfinPlayer", "✅ Calling onBack() to finish current activity (from countdown)")
+                                        onBack()
+                                    } catch (e: Exception) {
+                                        Log.e("JellyfinPlayer", "❌ ERROR starting next episode from countdown", e)
+                                        e.printStackTrace()
+                                    }
+                                }
+                            }
+                            
+                            // Exit the monitoring loop after launching the coroutine
+                            break
+                        }
+                    } else {
+                        Log.d("JellyfinPlayer", "Duration not available yet: durationMs=$durationMs")
+                    }
+                } catch (e: Exception) {
+                    Log.w("JellyfinPlayer", "Error monitoring playback position", e)
+                }
+            }
+        } else {
+            Log.d("JellyfinPlayer", "Overlay monitoring not started: nextEpisodeId=$nextEpisodeId, playerInitialized=$playerInitialized, autoplayCancelled=$autoplayCancelled")
+        }
+    }
+    
+    // Handle autoplay when episode ends
+    LaunchedEffect(nextEpisodeId, autoplayCancelled) {
+        if (nextEpisodeId != null && !autoplayCancelled && nextEpisodeDetails != null) {
+            // Wait for STATE_ENDED to trigger this
+            // This effect will be triggered when nextEpisodeId is set and autoplay is not cancelled
+        }
+    }
+    
+    // Monitor controller visibility and focus play button when it first appears after playback starts
+    LaunchedEffect(playerInitialized, isPlaying) {
+        if (playerInitialized && isPlaying && !hasFocusedPlayButtonOnStart) {
+            // Check periodically for controller visibility
+            var attempts = 0
+            while (attempts < 20 && !hasFocusedPlayButtonOnStart) { // Try for up to 2 seconds
+                kotlinx.coroutines.delay(100)
+                attempts++
+                
+                val playerView = playerViewRef.value
+                val controller = playerView?.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
+                
+                if (controller != null && controller.visibility == android.view.View.VISIBLE && controller.alpha > 0f) {
+                    // Focus on play/pause button (pause button when playing)
+                    val pauseButton = controller.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_pause)
+                    val playButton = controller.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_play)
+                    val buttonToFocus = if (pauseButton != null && isPlaying) pauseButton else playButton
+                    
+                    buttonToFocus?.let { button ->
+                        try {
+                            if (button.isFocusable) {
+                                button.requestFocus()
+                                hasFocusedPlayButtonOnStart = true
+                                Log.d("ExoPlayer", "Focused on play/pause button when controller appeared after playback started")
+                            }
+                        } catch (e: Exception) {
+                            Log.w("ExoPlayer", "Failed to focus play button when controller appeared: ${e.message}")
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Reset the flag when playback stops or player is reinitialized
+    LaunchedEffect(playerInitialized) {
+        if (!playerInitialized) {
+            hasFocusedPlayButtonOnStart = false
+        }
+    }
+    
     // Report playback progress periodically when playing OR paused (to save position)
     LaunchedEffect(isPlaying, playerInitialized) {
         if (playerInitialized) {
@@ -1179,55 +1490,94 @@ fun JellyfinVideoPlayerScreen(
                         Key.NumPadEnter -> {
                             val playerView = playerViewRef.value
                             if (playerView != null) {
-                                // Always show controller when Enter/OK is pressed
-                                // This ensures it comes back after being hidden
-                                playerView.showController()
-                                Log.d("ExoPlayer", "Enter/OK pressed - showing controller")
-                                // Set flag to focus play button after controller is shown
-                                shouldFocusPlayButton = true
+                                // Check if controller is currently visible
+                                val controller = playerView.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
+                                val isControllerShowing = controller != null && controller.visibility == android.view.View.VISIBLE && controller.alpha > 0f
+                                
+                                if (!isControllerShowing) {
+                                    // Controller is hidden, show it
+                                    playerView.showController()
+                                    Log.d("ExoPlayer", "Enter/OK pressed - showing controller")
+                                    // Set flag to focus play button after controller is shown
+                                    shouldFocusPlayButton = true
+                                    // Ensure PlayerView has focus so it can receive further key events
+                                    playerView.requestFocus()
+                                    // Consume the event to prevent it from being handled elsewhere
+                                    true
+                                } else {
+                                    // Controller is already showing, let it handle the event (for play/pause)
+                                    false
+                                }
+                            } else {
+                                false
                             }
-                            // Don't consume the event - let it pass through so buttons can still receive clicks
-                            false
                         }
                         Key.DirectionLeft -> {
-                            // Check if controller is showing - if so, don't seek (allow navigation)
-                            val controller = playerViewRef.value?.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
-                            val isControllerShowing = controller != null && controller.visibility == android.view.View.VISIBLE && controller.alpha > 0f
-                            
-                            if (!isControllerShowing) {
-                            // Seek backward 15 seconds (don't show controller)
-                            scope.launch(Dispatchers.Main) {
-                                val currentPos = player.currentPosition
-                                val seekTo = (currentPos - 15000).coerceAtLeast(0)
-                                player.seekTo(seekTo)
-                                Log.d("ExoPlayer", "Left pressed - seeking backward to ${seekTo}ms")
-                            }
-                            true // Consume event
+                            // Cancel autoplay if overlay is showing
+                            if (showNextUpOverlay) {
+                                autoplayCancelled = true
+                                showNextUpOverlay = false
+                                Log.d("JellyfinPlayer", "Autoplay cancelled by user (Left key)")
+                                true
                             } else {
-                                false // Don't consume - let controller handle navigation
+                                // Check if controller is showing - if so, don't seek (allow navigation)
+                                val controller = playerViewRef.value?.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
+                                val isControllerShowing = controller != null && controller.visibility == android.view.View.VISIBLE && controller.alpha > 0f
+                                
+                                if (!isControllerShowing) {
+                                // Seek backward 15 seconds (don't show controller)
+                                scope.launch(Dispatchers.Main) {
+                                    val currentPos = player.currentPosition
+                                    val seekTo = (currentPos - 15000).coerceAtLeast(0)
+                                    player.seekTo(seekTo)
+                                    Log.d("ExoPlayer", "Left pressed - seeking backward to ${seekTo}ms")
+                                }
+                                true // Consume event
+                                } else {
+                                    false // Don't consume - let controller handle navigation
+                                }
                             }
                         }
                         Key.DirectionRight -> {
-                            // Check if controller is showing - if so, don't seek (allow navigation)
-                            val controller = playerViewRef.value?.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
-                            val isControllerShowing = controller != null && controller.visibility == android.view.View.VISIBLE && controller.alpha > 0f
-                            
-                            if (!isControllerShowing) {
-                            // Seek forward 15 seconds (don't show controller)
-                            scope.launch(Dispatchers.Main) {
-                                val currentPos = player.currentPosition
-                                val duration = player.duration
-                                val seekTo = if (duration > 0) {
-                                    (currentPos + 15000).coerceAtMost(duration)
-                                } else {
-                                    currentPos + 15000
-                                }
-                                player.seekTo(seekTo)
-                                Log.d("ExoPlayer", "Right pressed - seeking forward to ${seekTo}ms")
-                            }
-                            true // Consume event
+                            // Cancel autoplay if overlay is showing
+                            if (showNextUpOverlay) {
+                                autoplayCancelled = true
+                                showNextUpOverlay = false
+                                Log.d("JellyfinPlayer", "Autoplay cancelled by user (Right key)")
+                                true
                             } else {
-                                false // Don't consume - let controller handle navigation
+                                // Check if controller is showing - if so, don't seek (allow navigation)
+                                val controller = playerViewRef.value?.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
+                                val isControllerShowing = controller != null && controller.visibility == android.view.View.VISIBLE && controller.alpha > 0f
+                                
+                                if (!isControllerShowing) {
+                                // Seek forward 15 seconds (don't show controller)
+                                scope.launch(Dispatchers.Main) {
+                                    val currentPos = player.currentPosition
+                                    val duration = player.duration
+                                    val seekTo = if (duration > 0) {
+                                        (currentPos + 15000).coerceAtMost(duration)
+                                    } else {
+                                        currentPos + 15000
+                                    }
+                                    player.seekTo(seekTo)
+                                    Log.d("ExoPlayer", "Right pressed - seeking forward to ${seekTo}ms")
+                                }
+                                true // Consume event
+                                } else {
+                                    false // Don't consume - let controller handle navigation
+                                }
+                            }
+                        }
+                        Key.DirectionUp, Key.DirectionDown -> {
+                            // Cancel autoplay if overlay is showing
+                            if (showNextUpOverlay) {
+                                autoplayCancelled = true
+                                showNextUpOverlay = false
+                                Log.d("JellyfinPlayer", "Autoplay cancelled by user (Up/Down key)")
+                                true
+                            } else {
+                                false
                             }
                         }
                         Key.Menu -> {
@@ -1302,13 +1652,43 @@ fun JellyfinVideoPlayerScreen(
                                             androidx.media3.ui.R.id.exo_shuffle
                                         )
                                         
-                                        // Function to apply purple focus styling
+                                        // Function to apply purple focus styling with round shape and 10% larger size
                                         fun applyPurpleFocus(view: android.view.View) {
+                                            // Store original background
+                                            val originalBackground = view.background
+                                            
                                             view.setOnFocusChangeListener { v, hasFocus ->
                                                 if (hasFocus) {
-                                                    v.setBackgroundColor(transparentPurple)
+                                                    // Use post to ensure dimensions are available and avoid interfering with focus navigation
+                                                    v.post {
+                                                        val width = v.width
+                                                        val height = v.height
+                                                        
+                                                        if (width > 0 && height > 0) {
+                                                            // Create a round drawable
+                                                            val drawable = android.graphics.drawable.GradientDrawable().apply {
+                                                                setColor(transparentPurple)
+                                                                // Make it round by setting corner radius to half of larger dimension
+                                                                val maxDimension = maxOf(width, height)
+                                                                val cornerRadius = maxDimension * 0.5f
+                                                                setCornerRadius(cornerRadius)
+                                                            }
+                                                            
+                                                            // Create a LayerDrawable with the round drawable and add padding to make it appear larger
+                                                            val padding = (maxOf(width, height) * 0.05f).toInt()
+                                                            val layerDrawable = android.graphics.drawable.LayerDrawable(arrayOf(drawable))
+                                                            layerDrawable.setLayerInset(0, -padding, -padding, -padding, -padding)
+                                                            
+                                                            // Set the drawable as background
+                                                            v.background = layerDrawable
+                                                        } else {
+                                                            // Fallback: just set color if dimensions not available
+                                                            v.setBackgroundColor(transparentPurple)
+                                                        }
+                                                    }
                                                 } else {
-                                                    v.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                                                    // Reset to original background immediately (don't use post)
+                                                    v.background = originalBackground
                                                 }
                                             }
                                         }
@@ -1363,23 +1743,43 @@ fun JellyfinVideoPlayerScreen(
                             if (view.alpha != 1f) {
                                 view.alpha = 1f
                             }
-                            // Explicitly show subtitle button
+                            // Explicitly show subtitle button - this ensures it's visible when tracks are available
                             view.setShowSubtitleButton(true)
+                            
                             // Hide next/previous track buttons whenever controller is shown
                             view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_prev)?.visibility = android.view.View.GONE
                             view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_next)?.visibility = android.view.View.GONE
                             
                             // Ensure subtitle button is visible when tracks are available
                             val controller = view.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
-                            controller?.invalidate() // Refresh controller to show subtitle button if tracks are available
+                            controller?.let { controlView ->
+                                // Force refresh to show subtitle button
+                                controlView.invalidate()
+                                
+                                // Explicitly make subtitle button visible if it exists
+                                val subtitleButton = controlView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_subtitle)
+                                subtitleButton?.visibility = android.view.View.VISIBLE
+                            }
                         }
                     )
                     
-                    // Watch for controller visibility and focus play button when Enter/OK was pressed
-                    LaunchedEffect(shouldFocusPlayButton) {
-                        if (shouldFocusPlayButton) {
+                    // Next Up Overlay
+                    if (showNextUpOverlay && nextEpisodeDetails != null) {
+                        NextUpOverlay(
+                            nextEpisode = nextEpisodeDetails!!,
+                            countdown = autoplayCountdown,
+                            onCancel = {
+                                autoplayCancelled = true
+                                showNextUpOverlay = false
+                            }
+                        )
+                    }
+                    
+                    // Watch for controller visibility and focus play button whenever it appears
+                    LaunchedEffect(shouldFocusPlayButton, playerInitialized) {
+                        if (shouldFocusPlayButton && playerInitialized) {
                             // Wait for controller to be fully rendered
-                            kotlinx.coroutines.delay(200)
+                            kotlinx.coroutines.delay(300)
                             
                             val playerView = playerViewRef.value
                             val controller = playerView?.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
@@ -1395,6 +1795,13 @@ fun JellyfinVideoPlayerScreen(
                                         if (button.isFocusable) {
                                             button.requestFocus()
                                             Log.d("ExoPlayer", "Focused on play/pause button when controls shown")
+                                        } else {
+                                            // If not focusable, make it focusable and try again
+                                            button.isFocusable = true
+                                            button.isFocusableInTouchMode = false
+                                            kotlinx.coroutines.delay(50)
+                                            button.requestFocus()
+                                            Log.d("ExoPlayer", "Made button focusable and focused on play/pause button")
                                         }
                                     } catch (e: Exception) {
                                         Log.w("ExoPlayer", "Failed to focus play button: ${e.message}")
@@ -1404,6 +1811,51 @@ fun JellyfinVideoPlayerScreen(
                             
                             // Reset flag
                             shouldFocusPlayButton = false
+                        }
+                    }
+                    
+                    // Monitor controller visibility continuously and focus play button when it appears
+                    LaunchedEffect(playerInitialized) {
+                        if (!playerInitialized) return@LaunchedEffect
+                        
+                        var wasControllerVisible = false
+                        while (true) {
+                            kotlinx.coroutines.delay(100) // Check every 100ms
+                            
+                            val playerView = playerViewRef.value
+                            val controller = playerView?.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
+                            val isControllerVisible = controller != null && controller.visibility == android.view.View.VISIBLE && controller.alpha > 0f
+                            
+                            // If controller just became visible, focus play button
+                            if (isControllerVisible && !wasControllerVisible) {
+                                kotlinx.coroutines.delay(200) // Wait for controller to be fully rendered
+                                
+                                val playButton = controller?.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_play)
+                                val pauseButton = controller?.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_pause)
+                                val buttonToFocus = if (player.isPlaying && pauseButton != null) pauseButton else playButton
+                                
+                                buttonToFocus?.let { button ->
+                                    try {
+                                        // Clear any existing focus first
+                                        val currentFocused = controller.findFocus()
+                                        currentFocused?.clearFocus()
+                                        
+                                        // Make button focusable if needed
+                                        if (!button.isFocusable) {
+                                            button.isFocusable = true
+                                            button.isFocusableInTouchMode = false
+                                        }
+                                        
+                                        // Request focus on play/pause button
+                                        button.requestFocus()
+                                        Log.d("ExoPlayer", "Focused on play/pause button when controller appeared (monitored)")
+                                    } catch (e: Exception) {
+                                        Log.w("ExoPlayer", "Failed to focus play button when controller appeared: ${e.message}")
+                                    }
+                                }
+                            }
+                            
+                            wasControllerVisible = isControllerVisible
                         }
                     }
                     
@@ -1896,6 +2348,84 @@ fun ExoPlayerSettingsMenu(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun NextUpOverlay(
+    nextEpisode: JellyfinItem,
+    countdown: Int,
+    onCancel: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.0f)), // Transparent background
+        contentAlignment = Alignment.BottomEnd
+    ) {
+        androidx.tv.material3.Surface(
+            modifier = Modifier
+                .padding(32.dp)
+                .widthIn(max = 400.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = androidx.tv.material3.SurfaceDefaults.colors(
+                containerColor = Color.Black.copy(alpha = 0.8f),
+                contentColor = Color.White
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Title
+                Text(
+                    text = "Up Next",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+                
+                // Episode info
+                nextEpisode.SeriesName?.let { seriesName ->
+                    Text(
+                        text = seriesName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.8f)
+                    )
+                }
+                
+                // Episode number and name
+                val episodeInfo = buildString {
+                    nextEpisode.ParentIndexNumber?.let { seasonNum ->
+                        append("S$seasonNum")
+                    }
+                    nextEpisode.IndexNumber?.let { episodeNum ->
+                        if (isNotEmpty()) append(" • ")
+                        append("E$episodeNum")
+                    }
+                    if (isNotEmpty() && nextEpisode.Name.isNotEmpty()) {
+                        append(" — ")
+                    }
+                    append(nextEpisode.Name)
+                }
+                
+                Text(
+                    text = episodeInfo,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color.White,
+                    maxLines = 2
+                )
+                
+                // Countdown
+                Text(
+                    text = "Autoplay in $countdown…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(top = 8.dp)
+                )
             }
         }
     }

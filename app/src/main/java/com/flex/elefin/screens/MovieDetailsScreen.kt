@@ -359,6 +359,7 @@ fun TopContainer(
                 
                 ItemDetailsSection(
                     item = item,
+                    apiService = apiService,
                     modifier = Modifier.fillMaxWidth(),
                     synopsisMaxLines = Int.MAX_VALUE, // Allow full synopsis on detail screen
                     additionalMetadataContent = {

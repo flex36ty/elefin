@@ -877,9 +877,10 @@ fun JellyfinHomeScreen(
                     .padding(start = 54.dp, top = 77.dp, end = 38.dp) // Increased by 10% (70 * 1.1 = 77)
                     .fillMaxWidth(0.75f) // Increased by 50%: 0.5 * 1.5 = 0.75 (50% wider horizontally)
             ) {
-                // Title (Series name for episodes, item name for others)
-                Text(
-                    text = details.Name,
+                // Title (Series name for episodes, item name for others) or Logo
+                TitleOrLogo(
+                    item = details,
+                    apiService = apiService,
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f // Reduced by 20% (0.8 * 0.8 = 0.64)
                     ),
@@ -1218,39 +1219,58 @@ fun JellyfinHomeScreen(
                                     if (index > 0) {
                                         Spacer(modifier = Modifier.width(20.dp))
                                     }
-                                    JellyfinHorizontalCard(
-                                        item = item,
-                                        apiService = apiService,
-                                        onClick = {
-                                            // Library item click - pass fromLibrary flag
-                                            val intent = when (item.Type) {
-                                                "Series" -> {
-                                                    com.flex.elefin.SeriesDetailsActivity.createIntent(
-                                                        context = context,
-                                                        item = item,
-                                                        fromLibrary = true
-                                                    )
+                                    Column(
+                                        modifier = Modifier.width(105.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        JellyfinHorizontalCard(
+                                            item = item,
+                                            apiService = apiService,
+                                            onClick = {
+                                                // Library item click - pass fromLibrary flag
+                                                val intent = when (item.Type) {
+                                                    "Series" -> {
+                                                        com.flex.elefin.SeriesDetailsActivity.createIntent(
+                                                            context = context,
+                                                            item = item,
+                                                            fromLibrary = true
+                                                        )
+                                                    }
+                                                    else -> {
+                                                        // Movies and other types
+                                                        com.flex.elefin.MovieDetailsActivity.createIntent(
+                                                            context = context,
+                                                            item = item,
+                                                            fromLibrary = true
+                                                        )
+                                                    }
                                                 }
-                                                else -> {
-                                                    // Movies and other types
-                                                    com.flex.elefin.MovieDetailsActivity.createIntent(
-                                                        context = context,
-                                                        item = item,
-                                                        fromLibrary = true
-                                                    )
+                                                context.startActivity(intent)
+                                            },
+                                            onFocusChanged = { isFocused ->
+                                                if (isFocused) {
+                                                    highlightedItem = item
                                                 }
-                                            }
-                                            context.startActivity(intent)
-                                        },
-                                        onFocusChanged = { isFocused ->
-                                            if (isFocused) {
-                                                highlightedItem = item
-                                            }
-                                        },
-                                        enableCaching = cacheLibraryImages,
-                                        reducePosterResolution = reducePosterResolution,
-                                        unwatchedEpisodeCount = if (item.Type == "Series") unwatchedEpisodeCounts[item.Id] else null
-                                    )
+                                            },
+                                            enableCaching = cacheLibraryImages,
+                                            reducePosterResolution = reducePosterResolution,
+                                            unwatchedEpisodeCount = if (item.Type == "Series") unwatchedEpisodeCounts[item.Id] else null
+                                        )
+                                        // Item name below the card
+                                        Text(
+                                            text = item.Name ?: "",
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.85f
+                                            ),
+                                            color = Color.White,
+                                            maxLines = 2,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                            modifier = Modifier
+                                                .padding(top = 8.dp)
+                                                .fillMaxWidth()
+                                        )
+                                    }
                                 }
                                 
                                 // Fill remaining space if row has fewer than columns items

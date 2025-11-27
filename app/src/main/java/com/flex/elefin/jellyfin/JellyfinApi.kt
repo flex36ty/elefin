@@ -44,7 +44,8 @@ data class JellyfinItem(
     val People: List<Person>? = null, // Cast and crew members
     val IndexNumber: Int? = null, // Episode number for episodes
     val ParentIndexNumber: Int? = null, // Season number for episodes
-    val ChildCount: Int? = null // Number of child items (e.g., episodes for Series)
+    val ChildCount: Int? = null, // Number of child items (e.g., episodes for Series)
+    val NextEpisodeId: String? = null // ID of the next episode for autoplay
 )
 
 @Serializable
@@ -417,7 +418,7 @@ class JellyfinApiService(
             val url = URLBuilder().takeFrom("${base}Items/$itemId").apply {
                 parameters.append("UserId", userId)
                 // Request UserData fields to get PositionTicks for resume functionality, and IndexNumber/ParentIndexNumber for episodes
-                parameters.append("Fields", "MediaSources,Genres,Overview,People,ProviderIds,UserData,ImageTags,IndexNumber,ParentIndexNumber")
+                parameters.append("Fields", "MediaSources,Genres,Overview,People,ProviderIds,UserData,ImageTags,IndexNumber,ParentIndexNumber,NextEpisodeId")
             }.buildString()
             android.util.Log.d("JellyfinAPI", "Fetching item details from: $url")
             
@@ -797,6 +798,87 @@ class JellyfinApiService(
             android.util.Log.e("JellyfinAPI", "Error fetching episodes for season $seasonId", e)
             e.printStackTrace()
             emptyList()
+        }
+    }
+    
+    /**
+     * Get next episodes starting from a specific episode index in a season
+     * This is similar to the official Jellyfin Android TV app's createNextEpisodesRequest
+     * @param seasonId The season ID
+     * @param startIndex The episode index number to start from (1-based, but API uses 0-based for startIndex)
+     * @param limit Maximum number of episodes to return
+     */
+    suspend fun getNextEpisodes(seasonId: String, startIndex: Int, limit: Int = 20): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            // Use Users/{userId}/Items endpoint with parentId=seasonId and startIndex
+            // Note: startIndex in API is 0-based, but episode IndexNumber is 1-based
+            // We need to convert: if episode IndexNumber is 5, we want episodes starting from index 4 (0-based)
+            val apiStartIndex = (startIndex - 1).coerceAtLeast(0) // Convert 1-based to 0-based
+            
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("ParentId", seasonId)
+                parameters.append("IncludeItemTypes", "Episode")
+                parameters.append("StartIndex", apiStartIndex.toString())
+                parameters.append("Limit", limit.toString())
+                parameters.append("Fields", "Overview,UserData,SeriesName,SeriesId,ImageTags,IndexNumber,ParentIndexNumber")
+            }.buildString()
+            
+            android.util.Log.d("JellyfinAPI", "Fetching next episodes: seasonId=$seasonId, startIndex=$startIndex (API: $apiStartIndex)")
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            
+            android.util.Log.d("JellyfinAPI", "Found ${response.Items.size} episodes starting from index $startIndex")
+            response.Items.sortedBy { it.IndexNumber ?: 0 }
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error fetching next episodes for season $seasonId", e)
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+    
+    /**
+     * Get the next episode directly using the simpler StartIndex approach
+     * This is the recommended approach: /Shows/{seriesId}/Episodes?StartIndex={currentIndex + 1}&Limit=1
+     * @param seriesId The series ID
+     * @param currentEpisodeIndex The current episode's IndexNumber (1-based)
+     * @return The next episode, or null if not found
+     */
+    suspend fun getNextEpisode(seriesId: String, currentEpisodeIndex: Int): JellyfinItem? {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            // Use StartIndex = currentIndex + 1 (API uses 0-based, but IndexNumber is 1-based)
+            // If current episode is IndexNumber 5, we want StartIndex=5 (which is index 5 in 0-based, meaning episode 6)
+            val startIndex = currentEpisodeIndex // API StartIndex matches 1-based IndexNumber for episodes
+            
+            val url = URLBuilder().takeFrom("${base}Shows/$seriesId/Episodes").apply {
+                parameters.append("UserId", userId)
+                parameters.append("StartIndex", startIndex.toString())
+                parameters.append("Limit", "1")
+                parameters.append("Fields", "MediaSources,Overview,UserData,SeriesName,SeriesId,ImageTags,IndexNumber,ParentIndexNumber")
+            }.buildString()
+            
+            android.util.Log.d("JellyfinAPI", "Fetching next episode: seriesId=$seriesId, StartIndex=$startIndex (current episode index=$currentEpisodeIndex)")
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            
+            val nextEpisode = response.Items.firstOrNull()
+            if (nextEpisode != null) {
+                android.util.Log.d("JellyfinAPI", "✅ Found next episode: ${nextEpisode.Name} (IndexNumber=${nextEpisode.IndexNumber})")
+            } else {
+                android.util.Log.d("JellyfinAPI", "No next episode found (this might be the last episode)")
+            }
+            nextEpisode
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error fetching next episode", e)
+            e.printStackTrace()
+            null
         }
     }
     

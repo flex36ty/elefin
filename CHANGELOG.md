@@ -2,6 +2,48 @@
 
 All notable changes to Elefin will be documented in this file.
 
+## Unreleased / Upcoming Release
+
+### Added
+- **Next Up → Autoplay Next Episode**
+  - Automatic playback of next episode when current episode finishes
+  - "Up Next" overlay appears in the last 10 seconds of playback
+  - Overlay shows next episode info (series name, season/episode number, episode name)
+  - Countdown timer displays remaining seconds until autoplay
+  - User can cancel autoplay by pressing any directional key (UP/DOWN/LEFT/RIGHT)
+  - Only works for episodes (not movies)
+  - Properly reports playback status to Jellyfin before starting next episode
+
+- **Use Logo for Title Setting**
+  - New setting to display logo image instead of title text
+  - Works on movie info page, season info screen, and home screen
+  - Logo maintains same size as title text to preserve layout
+  - Falls back to title text if logo is not available
+  - Setting can be toggled in Settings screen
+  - Logo is left-aligned to match title text alignment
+
+- **Item Names in Library Screens**
+  - Library grid now displays item names below each card
+  - Names are centered below cards with proper text styling
+  - Supports up to 2 lines with ellipsis for long names
+  - Consistent with collections view layout
+
+### Changed
+- **Library Screen Display**
+  - Library grid cards now show item names below them
+  - Improved item identification in library browsing
+  - Maintains consistent spacing and layout
+
+### Technical Changes
+- Added `NextEpisodeId` field to `JellyfinItem` data class
+- Enhanced `getItemDetails` API to request `NextEpisodeId` field
+- Created `TitleOrLogo` composable helper for conditional title/logo display
+- Updated `ItemDetailsSection` to support logo display
+- Improved playback position monitoring for autoplay overlay
+- Enhanced ExoPlayer state handling for episode completion detection
+
+---
+
 ### More animations!!
 - Play / Resume buttons are now animated like Plex
 

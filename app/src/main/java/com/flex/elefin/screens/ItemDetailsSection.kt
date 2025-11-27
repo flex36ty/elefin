@@ -1,6 +1,7 @@
 package com.flex.elefin.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,15 +9,74 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.flex.elefin.jellyfin.JellyfinItem
+import com.flex.elefin.jellyfin.JellyfinApiService
+import com.flex.elefin.jellyfin.AppSettings
+
+/**
+ * Composable that displays either the title text or logo image based on settings
+ */
+@Composable
+fun TitleOrLogo(
+    item: JellyfinItem,
+    apiService: JellyfinApiService?,
+    style: androidx.compose.ui.text.TextStyle,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val settings = remember { AppSettings(context) }
+    val useLogo = settings.useLogoForTitle
+    val logoTag = item.ImageTags?.get("Logo")
+    
+    if (useLogo && logoTag != null && apiService != null) {
+        // Show logo image - maintain same height as text would be, left-aligned
+        // Calculate approximate text height: fontSize * line height multiplier (typically 1.2)
+        val fontSizeValue = style.fontSize.value
+        val logoHeight = (fontSizeValue * 1.2f).dp // Slightly taller than text for better visibility
+        
+        Box(
+            modifier = modifier.fillMaxWidth(),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(apiService.getImageUrl(item.Id, "Logo", logoTag))
+                    .headers(apiService.getImageRequestHeaders())
+                    .build(),
+                contentDescription = item.Name,
+                modifier = Modifier
+                    .height(logoHeight)
+                    .wrapContentWidth(),
+                contentScale = ContentScale.Fit
+            )
+        }
+    } else {
+        // Show title text
+        Text(
+            text = item.Name,
+            style = style,
+            color = color,
+            modifier = modifier
+        )
+    }
+}
 
 /**
  * Reusable composable for displaying item title, metadata, and synopsis
@@ -25,6 +85,7 @@ import com.flex.elefin.jellyfin.JellyfinItem
 @Composable
 fun ItemDetailsSection(
     item: JellyfinItem,
+    apiService: JellyfinApiService? = null,
     modifier: Modifier = Modifier,
     synopsisMaxLines: Int = 3,
     additionalMetadataContent: @Composable () -> Unit = {}
@@ -36,9 +97,10 @@ fun ItemDetailsSection(
     Column(
         modifier = modifier
     ) {
-        // Title
-        Text(
-            text = item.Name,
+        // Title or Logo
+        TitleOrLogo(
+            item = item,
+            apiService = apiService,
             style = MaterialTheme.typography.headlineMedium.copy(
                 fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
             ),

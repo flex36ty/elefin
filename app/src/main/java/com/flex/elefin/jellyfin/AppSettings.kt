@@ -26,6 +26,9 @@ class AppSettings(context: Context) {
         private const val KEY_HIDE_SHOWS_WITH_ZERO_EPISODES = "hide_shows_with_zero_episodes"
         private const val KEY_MINIMAL_BUFFER_4K = "minimal_buffer_4k"
         private const val KEY_TRANSCODE_AAC_TO_AC3 = "transcode_aac_to_ac3"
+        private const val KEY_USE_LOGO_FOR_TITLE = "use_logo_for_title"
+        private const val KEY_AUTOPLAY_NEXT_EPISODE = "autoplay_next_episode"
+        private const val KEY_AUTOPLAY_COUNTDOWN_SECONDS = "autoplay_countdown_seconds"
     }
 
     var isMpvEnabled: Boolean
@@ -141,5 +144,18 @@ class AppSettings(context: Context) {
     var transcodeAacToAc3: Boolean
         get() = prefs.getBoolean(KEY_TRANSCODE_AAC_TO_AC3, true) // Enabled by default
         set(value) = prefs.edit().putBoolean(KEY_TRANSCODE_AAC_TO_AC3, value).apply()
+    
+    var useLogoForTitle: Boolean
+        get() = prefs.getBoolean(KEY_USE_LOGO_FOR_TITLE, false) // Disabled by default
+        set(value) = prefs.edit().putBoolean(KEY_USE_LOGO_FOR_TITLE, value).apply()
+    
+    var autoplayNextEpisode: Boolean
+        get() = prefs.getBoolean(KEY_AUTOPLAY_NEXT_EPISODE, true) // Enabled by default
+        set(value) = prefs.edit().putBoolean(KEY_AUTOPLAY_NEXT_EPISODE, value).apply()
+    
+    // Autoplay countdown duration in seconds (10-120 seconds, default: 10)
+    var autoplayCountdownSeconds: Int
+        get() = prefs.getInt(KEY_AUTOPLAY_COUNTDOWN_SECONDS, 10).coerceIn(10, 120) // Default 10 seconds, range 10-120
+        set(value) = prefs.edit().putInt(KEY_AUTOPLAY_COUNTDOWN_SECONDS, value.coerceIn(10, 120)).apply()
 }
 

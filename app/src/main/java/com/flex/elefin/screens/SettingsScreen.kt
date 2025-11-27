@@ -68,6 +68,9 @@ fun SettingsScreen(
     var hideShowsWithZeroEpisodesEnabled by remember { mutableStateOf(settings.hideShowsWithZeroEpisodes) }
     var minimalBuffer4KEnabled by remember { mutableStateOf(settings.minimalBuffer4K) }
     var transcodeAacToAc3Enabled by remember { mutableStateOf(settings.transcodeAacToAc3) }
+    var useLogoForTitleEnabled by remember { mutableStateOf(settings.useLogoForTitle) }
+    var autoplayNextEpisodeEnabled by remember { mutableStateOf(settings.autoplayNextEpisode) }
+    var autoplayCountdownSeconds by remember { mutableStateOf(settings.autoplayCountdownSeconds) }
 
     Box(
         modifier = Modifier
@@ -749,6 +752,135 @@ fun SettingsScreen(
                     )
                 ) {
                     Text(if (transcodeAacToAc3Enabled) "ON" else "OFF")
+                }
+            }
+            
+            // Use Logo for Title setting
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "Use Logo for Title",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Display logo image instead of title text on movie info, season info, and home screen",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                
+                Button(
+                    onClick = {
+                        useLogoForTitleEnabled = !useLogoForTitleEnabled
+                        settings.useLogoForTitle = useLogoForTitleEnabled
+                    },
+                    colors = ButtonDefaults.colors(
+                        containerColor = if (useLogoForTitleEnabled) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        }
+                    )
+                ) {
+                    Text(if (useLogoForTitleEnabled) "ON" else "OFF")
+                }
+            }
+            
+            // Autoplay Next Episode setting
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "Autoplay Next Episode",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Automatically play the next episode when the current one ends",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                
+                Button(
+                    onClick = {
+                        autoplayNextEpisodeEnabled = !autoplayNextEpisodeEnabled
+                        settings.autoplayNextEpisode = autoplayNextEpisodeEnabled
+                    },
+                    colors = ButtonDefaults.colors(
+                        containerColor = if (autoplayNextEpisodeEnabled) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        }
+                    )
+                ) {
+                    Text(if (autoplayNextEpisodeEnabled) "ON" else "OFF")
+                }
+            }
+            
+            // Autoplay Countdown Duration setting (only show if autoplay is enabled)
+            if (autoplayNextEpisodeEnabled) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "Autoplay Countdown Duration",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "How long before episode ends to show countdown overlay (${autoplayCountdownSeconds}s)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Cycle through options: 10, 15, 30, 45, 60, 90, 120 seconds
+                        Button(
+                            onClick = {
+                                autoplayCountdownSeconds = when (autoplayCountdownSeconds) {
+                                    10 -> 15
+                                    15 -> 30
+                                    30 -> 45
+                                    45 -> 60
+                                    60 -> 90
+                                    90 -> 120
+                                    120 -> 10
+                                    else -> 10
+                                }
+                                settings.autoplayCountdownSeconds = autoplayCountdownSeconds
+                            },
+                            colors = ButtonDefaults.colors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            )
+                        ) {
+                            Text("${autoplayCountdownSeconds}s")
+                        }
+                    }
                 }
             }
             

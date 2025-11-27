@@ -534,9 +534,10 @@ fun SeriesTopContainer(
             
             if (focusedEpisode != null) {
                 // Episode-focused layout: Series Title, Episode Name, S1 E1 metadata, Synopsis
-                // Title (Series name)
-                Text(
-                    text = item.Name,
+                // Title (Series name) or Logo
+                TitleOrLogo(
+                    item = item,
+                    apiService = apiService,
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
                     ),
@@ -621,9 +622,10 @@ fun SeriesTopContainer(
                 }
             } else {
                 // Series-focused layout: Series Title, Series metadata, Synopsis
-                // Title
-                Text(
-                    text = displayItem.Name,
+                // Title or Logo
+                TitleOrLogo(
+                    item = displayItem,
+                    apiService = apiService,
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
                     ),
