@@ -21,7 +21,7 @@ All notable changes to Elefin will be documented in this file.
     - Corner radius: 3dp (Jellyfin style)
     - Stroke width: 2dp
   - Updated Search screen to use matching Jellyfin AndroidTV color scheme
-  - Added `TvSearchTextField` component for search-specific styling with pill shape
+  - Added `TvSearchTextField` component for search-specific styling with pill shape 
 
 ### Added
 - **Auto-Updater Using GitHub Releases**
