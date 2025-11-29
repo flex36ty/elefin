@@ -44,8 +44,11 @@ class MpvUrlSelector(
      *  ---------------------------- */
     fun buildDirectPlayOriginal(itemId: String, mediaSourceId: String? = null): MpvUrlResult {
         val msId = mediaSourceId ?: itemId
-        val url = "$server/Videos/$itemId/original" +
-                "?mediaSourceId=$msId" +
+        // ⭐ CRITICAL: Use lowercase "static" - MPV lowercases query params, must match Jellyfin's expectation
+        // Using capital "Static=false" causes MPV to rewrite to "static=false" which Jellyfin treats differently
+        val url = "$server/Videos/$itemId/stream" +
+                "?static=false" +
+                "&mediaSourceId=$msId" +
                 "&api_key=$accessToken"
 
         return MpvUrlResult(url = url, headers = buildHeaders())

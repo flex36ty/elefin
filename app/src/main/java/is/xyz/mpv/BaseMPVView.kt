@@ -11,16 +11,36 @@ import android.view.SurfaceView
 // Contains only the essential code needed to get a picture on the screen
 
 abstract class BaseMPVView(context: Context, attrs: AttributeSet?) : SurfaceView(context, attrs), SurfaceHolder.Callback {
+    
+    companion object {
+        private const val TAG = "BaseMPVView"
+        
+        // ⭐ CRITICAL: Global flags to track MPVLib singleton initialization
+        // MPVLib is a singleton - create() and init() can only be called ONCE per process lifetime
+        @Volatile
+        private var mpvLibCreated = false
+        
+        @Volatile
+        private var mpvLibInitialized = false
+    }
+    
     /**
      * Initialize libmpv.
      *
      * Call this once before the view is shown.
      */
+    
     fun initialize(configDir: String, cacheDir: String): Boolean {
         if (!MPVLib.isAvailable()) {
             Log.e(TAG, "MPV libraries not available, cannot initialize")
             initialized = false
             return false
+        }
+        
+        // ⭐ CRITICAL: Don't initialize the same view instance twice
+        if (initialized) {
+            Log.d(TAG, "This MPVView instance already initialized, skipping")
+            return true
         }
         
         try {
@@ -29,16 +49,32 @@ abstract class BaseMPVView(context: Context, attrs: AttributeSet?) : SurfaceView
             holder.addCallback(this)
             Log.d(TAG, "Surface callback added to holder")
             
-            MPVLib.create(context)
+            // ⭐ MPVLib is a singleton - only create() and init() once globally
+            if (!mpvLibCreated) {
+                Log.d(TAG, "First MPVView - calling MPVLib.create()")
+                MPVLib.create(context)
+                mpvLibCreated = true
+            } else {
+                Log.d(TAG, "MPVLib already created, reusing")
+            }
 
-            /* set normal options (user-supplied config can override) */
-            MPVLib.setOptionString("config", "yes")
-            MPVLib.setOptionString("config-dir", configDir)
-            for (opt in arrayOf("gpu-shader-cache-dir", "icc-cache-dir"))
-                MPVLib.setOptionString(opt, cacheDir)
-            initOptions()
+            // ⭐ Options must be set BEFORE init(), and only once
+            if (!mpvLibInitialized) {
+                Log.d(TAG, "Setting MPVLib options and calling init()")
+                
+                /* set normal options (user-supplied config can override) */
+                MPVLib.setOptionString("config", "yes")
+                MPVLib.setOptionString("config-dir", configDir)
+                for (opt in arrayOf("gpu-shader-cache-dir", "icc-cache-dir"))
+                    MPVLib.setOptionString(opt, cacheDir)
+                initOptions()
 
-            MPVLib.init()
+                MPVLib.init()
+                mpvLibInitialized = true
+                Log.d(TAG, "✅ MPVLib.init() completed")
+            } else {
+                Log.d(TAG, "MPVLib already initialized, skipping init()")
+            }
 
             /* set hardcoded options */
             postInitOptions()
@@ -128,19 +164,23 @@ abstract class BaseMPVView(context: Context, attrs: AttributeSet?) : SurfaceView
     var surfaceReady: Boolean = false
         private set
     
+    // ⭐ CRITICAL: Prevent double load - MPV will crash if loadfile() is called twice
+    @Volatile
+    private var hasLoadedOnce: Boolean = false
+    
     // Pending URL to load once surface is ready
+    // NOTE: This is set by playFile(), don't load from here - let playFile() handle it
     @Volatile
     var pendingUrl: String? = null
-        set(value) {
-            field = value
-            // If surface is already ready and we have a URL, load it immediately
-            if (value != null && surfaceReady && initialized) {
-                Log.d(TAG, "Pending URL set and surface is ready, loading immediately")
-                loadFileIfReady(value)
-                field = null
-            }
-        }
 
+    /**
+     * Reset for next video - call this before loading a new file
+     */
+    fun resetForNextVideo() {
+        hasLoadedOnce = false
+        Log.d(TAG, "✅ Reset for next video (hasLoadedOnce = false)")
+    }
+    
     /**
      * Set the first file to be played once the player is ready.
      * This will wait for surface to be created and VO to be configured.
@@ -152,10 +192,17 @@ abstract class BaseMPVView(context: Context, attrs: AttributeSet?) : SurfaceView
     }
     
     private fun loadFileIfReady(url: String) {
+        // ⭐ CRITICAL: Only load ONCE per video - double load causes MPV to crash
+        if (hasLoadedOnce) {
+            Log.d(TAG, "⚠️ File already loaded once, ignoring duplicate load request")
+            return
+        }
+        
         // Only load file if surface is ready and VO is configured
         if (initialized && surfaceReady && holder.surface != null && holder.surface.isValid) {
-            Log.d(TAG, "Surface ready, loading file: $url")
+            Log.d(TAG, "✅ Surface ready, loading file (ONCE): $url")
             MPVLib.command(arrayOf("loadfile", url))
+            hasLoadedOnce = true  // Mark as loaded
             this.filePath = null
             this.pendingUrl = null
         } else {
@@ -265,34 +312,27 @@ abstract class BaseMPVView(context: Context, attrs: AttributeSet?) : SurfaceView
             Log.w(TAG, "Could not show VO test text", e)
         }
 
-        // Now that surface is ready and VO is configured, load file if queued
-        // Check both filePath and pendingUrl
-        val urlToLoad = pendingUrl ?: filePath
-        if (urlToLoad != null) {
-            Log.d(TAG, "Loading queued file now that surface is ready: $urlToLoad")
-            MPVLib.command(arrayOf("loadfile", urlToLoad))
-            filePath = null
-            pendingUrl = null
-        } else {
-            Log.d(TAG, "No pending file to load")
-        }
+        // ⭐ REMOVED: Don't load file here - let playFile() handle it
+        // This was causing double-load issues where file was loaded before play() was called
+        // The pendingUrl will be processed by playFile() -> loadFileIfReady()
+        Log.d(TAG, "Surface ready - file will be loaded by playFile() when called")
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         if (!initialized) return
-        Log.w(TAG, "detaching surface")
+        Log.w(TAG, "⚠️ Surface destroyed - this should NOT happen during video playback!")
+        Log.w(TAG, "   If this happens between videos, you'll get crashes!")
+        
+        // ⭐ CRITICAL: DO NOT detach surface or set vo=null during normal operation!
+        // This breaks MPV's VO pipeline and causes "current-vo=null" + crashes
+        // Surface should only be destroyed when:
+        // 1. App is backgrounded
+        // 2. Activity is finishing
+        // NOT between video loads!
+        
         surfaceReady = false
-        MPVLib.setPropertyString("vo", "null")
-        MPVLib.setOptionString("force-window", "no")
-        // Note that before calling detachSurface() we need to be sure that libmpv
-        // is done using the surface.
-        // FIXME: There could be a race condition here, because I don't think
-        // setting a property will wait for VO deinit.
-        MPVLib.detachSurface()
-    }
-
-    companion object {
-        private const val TAG = "BaseMPVView"
+        // DO NOT set vo=null or detach surface - MPV needs the surface to stay alive!
+        // The only exception is in destroy() when we're truly shutting down
     }
 }
 

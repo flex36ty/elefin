@@ -241,8 +241,8 @@ fun JellyfinHomeScreen(
     val collectionItemsState = repository?.collectionItems?.collectAsState(initial = emptyMap())
     val collectionItems = collectionItemsState?.value ?: emptyMap()
     
-    // Track unwatched episode counts for TV shows (series ID -> count)
-    var unwatchedEpisodeCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    // Note: Unwatched episode counts are now provided directly by Jellyfin API via UserData.UnplayedItemCount
+    // No need to manually track them - just use item.UserData?.UnplayedItemCount
     
     var selectedLibraryId by remember { mutableStateOf<String?>(null) }
     var selectedCollectionId by remember { mutableStateOf<String?>(null) }
@@ -288,46 +288,6 @@ fun JellyfinHomeScreen(
             repository.fetchRecentlyAddedShows()
             repository.fetchRecentlyAddedEpisodes()
             repository.fetchLibraries()
-        }
-    }
-    
-    // Fetch unwatched episode counts for recently added shows
-    // Fetch unwatched episode counts for shows in all libraries
-    LaunchedEffect(recentlyAddedShowsByLibrary, apiService) {
-        if (apiService != null && recentlyAddedShowsByLibrary.isNotEmpty()) {
-            val countsMap = unwatchedEpisodeCounts.toMutableMap()
-            recentlyAddedShowsByLibrary.values.flatten().filter { it.Type == "Series" }.forEach { show ->
-                try {
-                    val count = apiService.getUnwatchedEpisodeCount(show.Id)
-                    countsMap[show.Id] = count
-                } catch (e: Exception) {
-                    Log.e("JellyfinHomeScreen", "Error fetching unwatched count for ${show.Name}", e)
-                }
-            }
-            unwatchedEpisodeCounts = countsMap
-        }
-    }
-    
-    // Fetch unwatched episode counts for library TV shows
-    LaunchedEffect(libraryItems, selectedLibraryId, apiService) {
-        if (apiService != null && selectedLibraryId != null) {
-            val libraryItemsList = libraryItems[selectedLibraryId] ?: emptyList()
-            val tvShows = libraryItemsList.filter { it.Type == "Series" }
-            if (tvShows.isNotEmpty()) {
-                val countsMap = unwatchedEpisodeCounts.toMutableMap()
-                tvShows.forEach { show ->
-                    // Only fetch if not already in the map to avoid unnecessary API calls
-                    if (!countsMap.containsKey(show.Id)) {
-                        try {
-                            val count = apiService.getUnwatchedEpisodeCount(show.Id)
-                            countsMap[show.Id] = count
-                        } catch (e: Exception) {
-                            Log.e("JellyfinHomeScreen", "Error fetching unwatched count for ${show.Name}", e)
-                        }
-                    }
-                }
-                unwatchedEpisodeCounts = countsMap
-            }
         }
     }
     
@@ -1254,7 +1214,7 @@ fun JellyfinHomeScreen(
                                             },
                                             enableCaching = cacheLibraryImages,
                                             reducePosterResolution = reducePosterResolution,
-                                            unwatchedEpisodeCount = if (item.Type == "Series") unwatchedEpisodeCounts[item.Id] else null
+                                            unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null
                                         )
                                         // Item name below the card
                                         Text(
@@ -1568,7 +1528,7 @@ fun JellyfinHomeScreen(
                                                 onFocusChanged = { },
                                                 enableCaching = cacheLibraryImages,
                                                 reducePosterResolution = reducePosterResolution,
-                                                unwatchedEpisodeCount = if (item.Type == "Series") unwatchedEpisodeCounts[item.Id] else null
+                                                unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null
                                             )
                                             // Item name below the card
                                             Text(
@@ -1885,7 +1845,7 @@ fun JellyfinHomeScreen(
                                                 },
                                                 enableCaching = cacheLibraryImages,
                                                 reducePosterResolution = reducePosterResolution,
-                                                unwatchedEpisodeCount = if (item.Type == "Series") unwatchedEpisodeCounts[item.Id] else null
+                                                unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null
                                             )
                                         }
                                     }

@@ -141,19 +141,41 @@ class MPVView(context: Context, attrs: AttributeSet?) : BaseMPVView(context, att
                         }
                     }
                     MPVLib.MpvEvent.MPV_EVENT_FILE_LOADED -> {
-                        Log.d(TAG, "File loaded successfully")
-                        // Seek to resume position after file is loaded
-                        if (pendingResumePosition > 0) {
-                            // Small delay to ensure MPV is ready to seek
-                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                                try {
+                        Log.d(TAG, "✅ MPV_EVENT_FILE_LOADED - MPV is now ready for property queries")
+                        
+                        // Notify MPVHolder that MPV is ready
+                        try {
+                            com.flex.elefin.player.mpv.MPVHolder.onFileLoaded()
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Error notifying MPVHolder of file loaded", e)
+                        }
+                        
+                        // ⭐ CRITICAL FIX: Always unpause after loading new file
+                        // This ensures playback starts automatically after switching videos
+                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                            try {
+                                // Unpause first (in case previous video was paused)
+                                MPVLib.setPropertyBoolean("pause", false)
+                                Log.d(TAG, "✅ Auto-resumed playback after file loaded")
+                                
+                                // Then seek to resume position if needed
+                                if (pendingResumePosition > 0) {
                                     MPVLib.setPropertyDouble("time-pos", pendingResumePosition)
                                     Log.d(TAG, "✅ Seeked to resume position: ${pendingResumePosition}s")
                                     pendingResumePosition = 0.0 // Clear after seeking
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Error seeking to resume position", e)
                                 }
-                            }, 100) // 100ms delay to ensure file is ready
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error auto-resuming playback", e)
+                            }
+                        }, 100) // 100ms delay to ensure file is ready
+                    }
+                    MPVLib.MpvEvent.MPV_EVENT_PLAYBACK_RESTART -> {
+                        Log.d(TAG, "✅ MPV_EVENT_PLAYBACK_RESTART - Playback has started")
+                        // Also notify on playback restart (this fires after seeking/resume)
+                        try {
+                            com.flex.elefin.player.mpv.MPVHolder.onFileLoaded()
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Error notifying MPVHolder of playback restart", e)
                         }
                     }
                     MPVLib.MpvEvent.MPV_EVENT_SHUTDOWN -> {
@@ -238,16 +260,26 @@ class MPVView(context: Context, attrs: AttributeSet?) : BaseMPVView(context, att
 
     fun setSubtitleUrl(url: String, title: String? = null) {
         try {
-            // MPV's sub-add command loads external subtitle files
-            // MPV uses the same HTTP client settings (stream-lavf-o headers) for subtitle fetches
-            // Since we set ffmpegHeaders before play(), they apply to subtitle URLs automatically
+            // ⚠️ MPV BUG: http-header-fields does NOT apply to sub-add commands!
+            // This is a known MPV limitation on all platforms including Android.
+            // MPV only sends headers for the main playback file, not for secondary loads like sub-add.
+            // 
+            // WORKAROUND: Download subtitle locally first, then load from cache.
+            // This is done in MPVVideoPlayerScreen.kt before calling this function.
+            // This function now expects a LOCAL FILE PATH, not an HTTP URL.
+            
+            // Check if this is a local file path or HTTP URL
+            val isLocalFile = url.startsWith("/") || url.startsWith("file://")
+            
+            if (!isLocalFile) {
+                Log.w(TAG, "⚠️ WARNING: sub-add called with HTTP URL - MPV will NOT send auth headers!")
+                Log.w(TAG, "   Subtitle may fail to load. Download to local cache first!")
+            }
             
             // Add subtitle file to MPV
-            // Format: sub-add <url> [flags] [title]
+            // Format: sub-add <path> [flags] [title]
             // The "select" flag makes MPV automatically select and display the subtitle
-            // We can call this before or after playback starts - MPV will load it when ready
             val command = if (title != null) {
-                // Include title for better identification in MPV's subtitle list
                 arrayOf("sub-add", url, "select", title)
             } else {
                 arrayOf("sub-add", url, "select")

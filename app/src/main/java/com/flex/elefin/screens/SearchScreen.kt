@@ -7,9 +7,7 @@ import android.os.Build
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,11 +20,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
@@ -38,35 +33,29 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Search
 import androidx.core.content.ContextCompat
 import androidx.tv.material3.Icon
 import androidx.tv.material3.IconButton
 import androidx.tv.material3.IconButtonDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import androidx.tv.material3.Surface
-import androidx.tv.material3.SurfaceDefaults
+import com.flex.elefin.components.TvTextField
 import com.flex.elefin.jellyfin.JellyfinApiService
 import com.flex.elefin.jellyfin.JellyfinItem
 import kotlinx.coroutines.Dispatchers
@@ -226,139 +215,35 @@ fun SearchScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Search text field - Jellyfin AndroidTV style using MutableInteractionSource
+            // Search text field - using TvTextField for consistency with login screen
             Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(56.dp)
+                modifier = Modifier.weight(1f)
             ) {
-                // Jellyfin AndroidTV color scheme
-                val strokeColor = Color(0xB3747474)  // 70% opacity gray - always visible
-                val highlightBackground = Color(0xFFDDDDDD)  // Light gray when focused
-                val normalText = Color(0xFFDDDDDD)  // Light text when unfocused
-                val highlightText = Color(0xFF444444)  // Dark text when focused
-                
-                val backgroundColor = if (searchBoxFocused) highlightBackground else Color.Transparent
-                val textColor = if (searchBoxFocused) highlightText else normalText
-                val iconColor = if (searchBoxFocused) highlightText else normalText
-                
-                // Background
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            color = backgroundColor,
-                            shape = RoundedCornerShape(3.dp) // Jellyfin uses 3dp rounding
-                        )
-                        .border(
-                            width = 2.dp,
-                            color = strokeColor,
-                            shape = RoundedCornerShape(3.dp)
-                        )
-                )
-                
-                // Content
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .focusRequester(searchFocusRequester)
-                        .focusable()
-                        .onFocusChanged { focusState ->
-                            searchBoxFocused = focusState.isFocused
-                        }
-                    .onKeyEvent { keyEvent ->
-                        if (keyEvent.type == KeyEventType.KeyUp) {
-                            if (keyEvent.key == Key.DirectionDown) {
-                                // Move focus to results grid or voice button if results are available
-                                if (searchResults.isNotEmpty() && !isLoading) {
-                                    focusManager.clearFocus()
-                                    // Focus will move to first item in grid automatically
-                                } else {
-                                    voiceButtonFocusRequester.requestFocus()
-                                }
-                                true
-                            } else if (keyEvent.key == Key.DirectionRight) {
-                                // Move focus to voice button
-                                voiceButtonFocusRequester.requestFocus()
-                                true
-                            } else if (keyEvent.key == Key.Enter) {
-                                // Trigger search if query is not blank
-                                if (searchQuery.isNotBlank()) {
-                                    scope.launch {
-                                        isLoading = true
-                                        performSearch(searchQuery, apiService) { results ->
-                                            searchResults = results
-                                            isLoading = false
-                                        }
+                TvTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = "Search movies and TV shows...",
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Search
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            if (searchQuery.isNotBlank()) {
+                                scope.launch {
+                                    isLoading = true
+                                    performSearch(searchQuery, apiService) { results ->
+                                        searchResults = results
+                                        isLoading = false
                                     }
                                 }
-                                true
-                            } else {
-                                false
                             }
-                        } else {
-                            false
                         }
-                    }
-                    .padding(horizontal = 12.dp, vertical = 12.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    Box(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = null,
-                            tint = iconColor,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        
-                        BasicTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            modifier = Modifier
-                                .weight(1f),
-                            textStyle = TextStyle(
-                                color = textColor,
-                                fontSize = 18.sp
-                            ),
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Text,
-                                imeAction = ImeAction.Search
-                            ),
-                            keyboardActions = KeyboardActions(
-                                onSearch = {
-                                    if (searchQuery.isNotBlank()) {
-                                        scope.launch {
-                                            isLoading = true
-                                            performSearch(searchQuery, apiService) { results ->
-                                                searchResults = results
-                                                isLoading = false
-                                            }
-                                        }
-                                    }
-                                }
-                            ),
-                            singleLine = true
-                        )
-                    }
-                    
-                        // Placeholder when empty (overlay)
-                        if (searchQuery.isEmpty()) {
-                            Text(
-                                text = "Search movies and TV shows...",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = textColor.copy(alpha = 0.6f),
-                                modifier = Modifier.padding(start = 40.dp) // Offset for icon + spacing
-                            )
-                        }
-                    }
-                }
+                    ),
+                    focusRequester = searchFocusRequester,
+                    onFocusChanged = { searchBoxFocused = it },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
             
             // Voice search button
@@ -463,11 +348,11 @@ fun SearchScreen(
                 )
             }
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 200.dp),
+            // Grid layout matching home screen card sizes (105.dp width, 6 columns)
+            val columns = 6
+            LazyColumn(
                 contentPadding = PaddingValues(vertical = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
@@ -479,17 +364,66 @@ fun SearchScreen(
                         }
                     )
             ) {
-                items(searchResults) { item ->
-                    JellyfinHorizontalCard(
-                        item = item,
-                        apiService = apiService,
-                        onClick = {
-                            onItemClick(item)
-                        },
-                        onFocusChanged = { },
-                        enableCaching = true,
-                        reducePosterResolution = false
-                    )
+                items(
+                    items = searchResults.chunked(columns),
+                    key = { rowItems -> rowItems.firstOrNull()?.Id ?: "" }
+                ) { rowItems ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 10.dp),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        // Add spacer at the start for equal spacing
+                        Spacer(modifier = Modifier.weight(1f))
+                        
+                        // Cards with spacing between them (same as home screen)
+                        rowItems.forEachIndexed { index, item ->
+                            if (index > 0) {
+                                Spacer(modifier = Modifier.width(20.dp))
+                            }
+                            Column(
+                                modifier = Modifier.width(105.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                JellyfinHorizontalCard(
+                                    item = item,
+                                    apiService = apiService,
+                                    onClick = {
+                                        onItemClick(item)
+                                    },
+                                    onFocusChanged = { },
+                                    enableCaching = true,
+                                    reducePosterResolution = false,
+                                    unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null
+                                )
+                                // Item name below the card (same style as home screen)
+                                Text(
+                                    text = item.Name ?: "",
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.85f
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 2,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    modifier = Modifier
+                                        .padding(top = 8.dp)
+                                        .fillMaxWidth()
+                                )
+                            }
+                        }
+                        
+                        // Fill remaining space if row has fewer than columns items
+                        if (rowItems.size < columns) {
+                            repeat(columns - rowItems.size) {
+                                Spacer(modifier = Modifier.width(105.dp + 20.dp)) // Width of card + spacing
+                            }
+                        }
+                        
+                        // Add spacer at the end for equal spacing
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }

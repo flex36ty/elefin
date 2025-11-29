@@ -175,6 +175,8 @@ fun JellyfinVideoPlayerScreen(
     var currentAudioIndex by remember { mutableStateOf<Int?>(storedAudioPreference) }
     var lastSelectedAudioIndex by remember { mutableStateOf<Int?>(storedAudioPreference) } // Track last selected audio from controller
     var is4KContent by remember { mutableStateOf(false) } // Track if current content is 4K
+    // Store subtitle streams list for composite key registration in onTracksChanged
+    var jellyfinSubtitleStreams by remember { mutableStateOf<List<MediaStream>>(emptyList()) }
     var shouldFocusPlayButton by remember { mutableStateOf(false) } // Track when to focus play button after controller is shown
     var nextEpisodeId by remember { mutableStateOf<String?>(null) } // Next episode ID for autoplay
     var nextEpisodeDetails by remember { mutableStateOf<JellyfinItem?>(null) } // Next episode details
@@ -231,16 +233,54 @@ fun JellyfinVideoPlayerScreen(
                     if (shouldTranscodeAacToAc3) {
                         Log.d("JellyfinPlayer", "AAC to AC3 transcoding enabled - transcoding audio from AAC to AC3 for universal device compatibility")
                     }
+                    
+                    // USER SELECTED SUBTITLE OVERRIDE
+                    // Check if user explicitly selected a subtitle (from series/movie page or Jellyfin UI)
+                    val selectedSubtitleStream = if (subtitleStreamIndex != null) {
+                        details?.MediaSources?.firstOrNull()?.MediaStreams
+                            ?.find { it.Type == "Subtitle" && it.Index == subtitleStreamIndex }
+                    } else {
+                        // Check if Jellyfin marked a subtitle as default/selected
+                        details?.MediaSources?.firstOrNull()?.MediaStreams
+                            ?.find { it.Type == "Subtitle" && (it.IsDefault == true) }
+                    }
+                    
+                    // HLS (master.m3u8) does NOT support external subtitles via SubtitleConfiguration!
+                    // This is a known Media3 limitation - ExoPlayer ignores SubtitleConfiguration for HLS streams
+                    // Solution: If user selected an EXTERNAL subtitle, force direct streaming (no HLS)
+                    val userSelectedExternalSubtitle = selectedSubtitleStream?.IsExternal == true
+                    val forceDirectStreamForSubtitles = userSelectedExternalSubtitle && needsAudioTranscoding
+                    
+                    if (userSelectedExternalSubtitle) {
+                        Log.d("JellyfinPlayer", "📌 USER SELECTED EXTERNAL SUBTITLE")
+                        Log.d("JellyfinPlayer", "   Selected: ${selectedSubtitleStream?.DisplayTitle ?: selectedSubtitleStream?.Language}")
+                        Log.d("JellyfinPlayer", "   Index: ${selectedSubtitleStream?.Index}, IsExternal: ${selectedSubtitleStream?.IsExternal}")
+                        
+                        if (needsAudioTranscoding) {
+                            Log.w("JellyfinPlayer", "⚠️ SUBTITLE PRIORITY MODE ACTIVATED")
+                            Log.w("JellyfinPlayer", "   External subtitle selected + audio transcoding needed")
+                            Log.w("JellyfinPlayer", "   Disabling HLS transcoding to use direct streaming")
+                            Log.w("JellyfinPlayer", "   WHY: HLS playlists do NOT include external subtitles")
+                            Log.w("JellyfinPlayer", "   WHY: ExoPlayer ignores SubtitleConfiguration for HLS (Media3 limitation)")
+                            Log.w("JellyfinPlayer", "   RESULT: Selected subtitle will work, audio codec may not be optimal")
+                            Log.w("JellyfinPlayer", "   ALTERNATIVE: Use MPV player for both subtitle + audio transcoding support")
+                        } else {
+                            Log.d("JellyfinPlayer", "   ✅ Direct streaming - external subtitle will load successfully")
+                        }
+                    }
 
-                    // Generate video playback URL WITHOUT subtitle stream index
-                    // We'll load subtitles separately via MediaItem.SubtitleConfiguration for better ExoPlayer compatibility
+                    // Generate video playback URL
+                    // If user selected external subtitle, disable HLS transcoding to force direct streaming
+                    val effectiveNeedsTranscoding = if (forceDirectStreamForSubtitles) false else needsAudioTranscoding
+                    val effectiveAudioCodec = if (forceDirectStreamForSubtitles) null else targetAudioCodec
+                    
                     val videoUrl = apiService.getVideoPlaybackUrl(
                         itemId = item.Id,
                         mediaSourceId = mediaSourceId,
-                        subtitleStreamIndex = null, // Don't include in URL, load separately
-                        preserveQuality = isHDROrHighQuality, // Preserve quality for HDR videos
-                        transcodeAudio = needsAudioTranscoding, // Transcode unsupported audio codecs or AAC to AC3
-                        audioCodec = targetAudioCodec // Target audio codec (AC3 when AAC to AC3 transcoding is enabled)
+                        subtitleStreamIndex = null,
+                        preserveQuality = isHDROrHighQuality,
+                        transcodeAudio = effectiveNeedsTranscoding, // Disabled if subtitles exist
+                        audioCodec = effectiveAudioCodec
                     )
                     mediaUrl = videoUrl
                     Log.d("JellyfinPlayer", "Video URL: $videoUrl")
@@ -358,41 +398,72 @@ fun JellyfinVideoPlayerScreen(
                     // Detect if URL is HLS (ends with .m3u8 or contains master.m3u8)
                     val isHlsUrl = currentMediaUrl.contains(".m3u8", ignoreCase = true)
 
-                    // Create MediaItem with subtitle configuration if subtitle is requested
-                    // MediaItem.SubtitleConfiguration is the proper Media3 way to load external subtitles
-                    val mediaItem = if (subtitleStreamIndex != null && itemDetails != null) {
+                    // Load ALL external subtitles into MediaItem (Jellyfin AndroidTV approach)
+                    // This allows ExoPlayer to show the subtitle button and let users switch between them
+                    val mediaItem = if (itemDetails != null) {
                         try {
                             val mediaSourceIdForSubtitle = itemDetails?.MediaSources?.firstOrNull()?.Id ?: item.Id
-                            val subtitleUrl = apiService.getSubtitleUrl(item.Id, mediaSourceIdForSubtitle, subtitleStreamIndex!!)
                             
-                            // Get subtitle stream info for language detection
-                            val subtitleStream = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
-                                ?.find { it.Type == "Subtitle" && it.Index == subtitleStreamIndex }
-                            val subtitleLanguage = subtitleStream?.Language
+                            // Get ALL subtitle streams from Jellyfin
+                            val allSubtitleStreams = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
+                                ?.filter { it.Type == "Subtitle" && it.Index != null }
+                                ?: emptyList()
                             
-                            // Jellyfin serves subtitles as VTT format
-                            val subtitleMimeType = MimeTypes.TEXT_VTT
+                            Log.d("JellyfinPlayer", "Found ${allSubtitleStreams.size} subtitle stream(s) from Jellyfin")
                             
-                            Log.d("JellyfinPlayer", "Adding external subtitle to MediaItem: $subtitleUrl (format: $subtitleMimeType, language: $subtitleLanguage)")
+                            // Store subtitle streams for composite key registration in onTracksChanged
+                            jellyfinSubtitleStreams = allSubtitleStreams
                             
-                            // Create MediaItem with subtitle configuration
-                            // This loads the subtitle separately from the video stream
-                            MediaItem.Builder()
-                                .setUri(Uri.parse(currentMediaUrl))
-                                .setSubtitleConfigurations(
-                                    listOf(
-                                        MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitleUrl))
-                                            .setMimeType(subtitleMimeType)
-                                            .setLanguage(subtitleLanguage)
-                                            .build()
+                            // Reset SubtitleMapper for new playback session
+                            com.flex.elefin.player.SubtitleMapper.reset()
+                            
+                            // Create SubtitleConfiguration for each subtitle using SubtitleMapper
+                            // Uses COMPOSITE KEY approach (production-safe, used by Plex/Emby/Jellyfin TV)
+                            val subtitleConfigurations = allSubtitleStreams.mapIndexed { positionIndex, stream ->
+                                try {
+                                    val subtitleIndex = stream.Index ?: return@mapIndexed null
+                                    val subtitleUrl = apiService.getSubtitleUrl(item.Id, mediaSourceIdForSubtitle, subtitleIndex)
+                                    
+                                    Log.d("JellyfinPlayer", "Adding subtitle ${stream.Index}: ${stream.DisplayTitle ?: stream.Language} (${stream.Codec}) - IsExternal=${stream.IsExternal}")
+                                    
+                                    // Use SubtitleMapper to create configuration with position tracking
+                                    // This prevents "Turkish → Spanish" type mismatches using composite keys
+                                    com.flex.elefin.player.SubtitleMapper.buildSubtitleConfiguration(
+                                        stream = stream,
+                                        subtitleUrl = subtitleUrl,
+                                        positionIndex = positionIndex
                                     )
-                                )
-                                .build()
+                                } catch (e: Exception) {
+                                    Log.w("JellyfinPlayer", "Failed to create subtitle config for index ${stream.Index}: ${e.message}")
+                                    null
+                                }
+                            }.filterNotNull()
+                            
+                            Log.d("JellyfinPlayer", "Successfully created ${subtitleConfigurations.size} subtitle configuration(s)")
+                            subtitleConfigurations.forEachIndexed { index, config ->
+                                Log.d("JellyfinPlayer", "  [$index] ${config.uri}")
+                                Log.d("JellyfinPlayer", "       Lang: ${config.language}, MIME: ${config.mimeType}, Label: ${config.label}")
+                            }
+                            
+                            // Create MediaItem with ALL subtitle configurations
+                            if (subtitleConfigurations.isNotEmpty()) {
+                                MediaItem.Builder()
+                                    .setUri(Uri.parse(currentMediaUrl))
+                                    .setSubtitleConfigurations(subtitleConfigurations)
+                                    .build().also {
+                                        Log.d("JellyfinPlayer", "✅ MediaItem created with ${subtitleConfigurations.size} subtitle configuration(s)")
+                                    }
+                            } else {
+                                Log.d("JellyfinPlayer", "No valid subtitle configurations - creating MediaItem without subtitles")
+                                MediaItem.fromUri(Uri.parse(currentMediaUrl))
+                            }
                         } catch (e: Exception) {
-                            Log.w("JellyfinPlayer", "Error creating MediaItem with subtitle, using video only: ${e.message}", e)
+                            Log.e("JellyfinPlayer", "❌ Error creating MediaItem with subtitles: ${e.message}", e)
+                            Log.e("JellyfinPlayer", "   Playing video without subtitles")
                             MediaItem.fromUri(Uri.parse(currentMediaUrl))
                         }
                     } else {
+                        Log.d("JellyfinPlayer", "No item details - creating MediaItem without subtitles")
                         MediaItem.fromUri(Uri.parse(currentMediaUrl))
                     }
                     
@@ -416,6 +487,13 @@ fun JellyfinVideoPlayerScreen(
                     player.addListener(object : Player.Listener {
                         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                             Log.e("JellyfinPlayer", "Player error: ${error.message}", error)
+                            Log.e("JellyfinPlayer", "Error type: ${error.errorCode}, Cause: ${error.cause?.javaClass?.simpleName}")
+                            
+                            // Check for subtitle-specific errors
+                            if (error.cause is ParserException || error.message?.contains("subtitle", ignoreCase = true) == true) {
+                                Log.e("JellyfinPlayer", "❌ SUBTITLE LOAD ERROR: This might be why external subtitles aren't appearing!")
+                                Log.e("JellyfinPlayer", "   Error details: ${error.cause?.message ?: "Unknown"}")
+                            }
                             
                             // Check if it's an HTTP 416 error (Range Not Satisfiable)
                             if (error.cause is HttpDataSource.InvalidResponseCodeException) {
@@ -634,47 +712,111 @@ fun JellyfinVideoPlayerScreen(
                             }
                             
                             Log.d("JellyfinPlayer", "Found ${textTrackGroups.size} supported text track groups")
+                            Log.d("JellyfinPlayer", "Jellyfin subtitle streams available for matching: ${jellyfinSubtitleStreams.size}")
                             
-                            // Check if user selected a subtitle via ExoPlayer's controller
-                            // When ExoPlayer's controller selects a subtitle, ExoPlayer already handles it
-                            // We just need to save the preference - NO RELOAD needed
-                            val selectedTextTrackGroup = textTrackGroups.firstOrNull { it.isSelected }
-                            if (selectedTextTrackGroup != null && itemDetails != null) {
-                                // User selected a subtitle track via ExoPlayer's controller
-                                // Find the corresponding Jellyfin subtitle stream index
-                                val selectedFormat = selectedTextTrackGroup.mediaTrackGroup.getFormat(0)
-                                val selectedLanguage = selectedFormat.language
+                            // ⭐ STEP 1: REGISTER ALL EXOPLAYER TRACKS WITH COMPOSITE KEYS (Production-Safe!)
+                            // This must happen BEFORE selection logic so composite keys are available
+                            Log.d("JellyfinPlayer", "⭐ STARTING TRACK REGISTRATION PHASE")
+                            textTrackGroups.forEachIndexed { groupIndex, group ->
+                                val format = group.mediaTrackGroup.getFormat(0)
+                                val trackIndex = 0 // First track in group
                                 
-                                // Try to match by language or MIME type to find the Jellyfin subtitle index
-                                val matchingSubtitleStream = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
-                                    ?.filter { it.Type == "Subtitle" }
-                                    ?.firstOrNull { stream ->
-                                        // Match by language
-                                        stream.Language?.let { lang ->
-                                            lang.equals(selectedLanguage, ignoreCase = true) ||
-                                            lang.startsWith(selectedLanguage?.take(2) ?: "", ignoreCase = true) ||
-                                            selectedLanguage?.startsWith(lang.take(2), ignoreCase = true) == true
-                                        } == true
-                                    }
+                                Log.d("JellyfinPlayer", "  Registering ExoPlayer subtitle track group $groupIndex:")
+                                Log.d("JellyfinPlayer", "    Language: '${format.language}', Label: '${format.label}'")
+                                Log.d("JellyfinPlayer", "    MIME: ${format.sampleMimeType}, ID: ${format.id}")
                                 
-                                val newSubtitleIndex = matchingSubtitleStream?.Index
+                                // Match this ExoPlayer track to a Jellyfin subtitle by language + flags
+                                // ⚠️ DO NOT match by MIME - ExoPlayer transforms it to x-media3-cues!
                                 
-                                if (newSubtitleIndex != null && newSubtitleIndex != lastSelectedSubtitleIndex) {
-                                    Log.d("JellyfinPlayer", "Subtitle selected via ExoPlayer controller: index=$newSubtitleIndex, language=${matchingSubtitleStream.Language}")
-                                    lastSelectedSubtitleIndex = newSubtitleIndex
-                                    currentSubtitleIndex = newSubtitleIndex
+                                // Extract flags from ExoPlayer format
+                                val isForced = format.label?.contains("forced", ignoreCase = true) == true
+                                val isCC = format.label?.contains("cc", ignoreCase = true) == true || 
+                                          format.label?.contains("sdh", ignoreCase = true) == true ||
+                                          format.label?.contains("hearing impaired", ignoreCase = true) == true
+                                val isExternal = format.label?.contains("external", ignoreCase = true) == true
+                                
+                                Log.d("JellyfinPlayer", "    Detected flags: forced=$isForced, cc=$isCC, external=$isExternal")
+                                
+                                val matchingStream = jellyfinSubtitleStreams.firstOrNull { stream ->
+                                    // Match by language (handle ISO 639-1 vs ISO 639-2 codes)
+                                    // ExoPlayer uses 2-letter (es, en, fr), Jellyfin may use 3-letter (spa, eng, fra)
+                                    val langMatch = stream.Language == format.language || 
+                                                   stream.Language?.take(2) == format.language?.take(2) ||
+                                                   normalizeLanguageCode(stream.Language) == normalizeLanguageCode(format.language)
                                     
-                                    // Save preference - ExoPlayer already has the subtitle track active, no reload needed
-                                    settings.setSubtitlePreference(item.Id, newSubtitleIndex)
+                                    // Match by flags (must be exact)
+                                    val forcedMatch = (stream.IsForced == true) == isForced
+                                    val ccMatch = (stream.IsHearingImpaired == true) == isCC
+                                    val externalMatch = (stream.IsExternal == true) == isExternal
+                                    
+                                    val matches = langMatch && forcedMatch && ccMatch && externalMatch
+                                    
+                                    if (langMatch) {
+                                        Log.d("JellyfinPlayer", "      Testing JF index=${stream.Index} (${stream.Language}): lang=$langMatch, forced=$forcedMatch, cc=$ccMatch, ext=$externalMatch → $matches")
+                                    }
+                                    
+                                    matches
                                 }
-                            } else if (selectedTextTrackGroup == null && lastSelectedSubtitleIndex != null && textTrackGroups.isNotEmpty()) {
-                                // User deselected subtitles via ExoPlayer's controller
-                                // ExoPlayer already disabled the subtitle - just save preference, no reload needed
+                                
+                                if (matchingStream?.Index != null) {
+                                    // Register track with composite key
+                                    com.flex.elefin.player.SubtitleMapper.registerExoPlayerTrack(
+                                        format = format,
+                                        groupIndex = groupIndex,
+                                        trackIndex = trackIndex,
+                                        jellyfinIndex = matchingStream.Index,
+                                        metadata = matchingStream
+                                    )
+                                    Log.d("JellyfinPlayer", "    ✅ Registered: Group=$groupIndex → JF index=${matchingStream.Index}")
+                                } else {
+                                    Log.w("JellyfinPlayer", "    ⚠️ Could NOT match to Jellyfin subtitle (CEA-608/internal?)")
+                                }
+                            }
+                            Log.d("JellyfinPlayer", "⭐ TRACK REGISTRATION COMPLETE")
+                            
+                            // ⭐ STEP 2: CHECK IF USER SELECTED A SUBTITLE
+                            // Find the selected track and its group index using composite key resolution
+                            val selectedGroupIndex = textTrackGroups.indexOfFirst { it.isSelected }
+                            
+                            if (selectedGroupIndex >= 0) {
+                                val selectedTextTrackGroup = textTrackGroups[selectedGroupIndex]
+                                val selectedFormat = selectedTextTrackGroup.mediaTrackGroup.getFormat(0)
+                                val trackIndex = 0 // First track in group
+                                
+                                // ⭐ RESOLVE USING COMPOSITE KEY (100% RELIABLE!)
+                                // Uses stable ExoPlayer attributes: groupIndex + trackIndex + MIME + language + flags
+                                val (jellyfinIndex, metadata) = com.flex.elefin.player.SubtitleMapper.resolveJellyfinIndexFromFormat(
+                                    format = selectedFormat,
+                                    groupIndex = selectedGroupIndex,
+                                    trackIndex = trackIndex
+                                )
+                                
+                                Log.d("JellyfinPlayer", "Subtitle selected via ExoPlayer controller:")
+                                Log.d("JellyfinPlayer", "  Group=$selectedGroupIndex, Track=$trackIndex")
+                                Log.d("JellyfinPlayer", "  Format.id = '${selectedFormat.id}' (ExoPlayer internal)")
+                                Log.d("JellyfinPlayer", "  Language = ${selectedFormat.language}, MIME = ${selectedFormat.sampleMimeType}")
+                                
+                                if (jellyfinIndex != null) {
+                                    Log.d("JellyfinPlayer", "🔥 Composite key resolved: Jellyfin index=$jellyfinIndex")
+                                    Log.d("JellyfinPlayer", "   Metadata: ${metadata?.DisplayTitle ?: metadata?.Language}, IsExternal=${metadata?.IsExternal}")
+                                    
+                                    if (jellyfinIndex != lastSelectedSubtitleIndex) {
+                                        lastSelectedSubtitleIndex = jellyfinIndex
+                                        currentSubtitleIndex = jellyfinIndex
+                                        settings.setSubtitlePreference(item.Id, jellyfinIndex)
+                                        Log.d("JellyfinPlayer", "💾 Saved subtitle preference: $jellyfinIndex (COMPOSITE KEY - 100% RELIABLE)")
+                                    }
+                                } else {
+                                    // Could not resolve - ExoPlayer internal track (CEA-608, etc.)
+                                    Log.w("JellyfinPlayer", "⚠️ Composite key resolution failed")
+                                    Log.w("JellyfinPlayer", "   This is likely: CEA-608, embedded metadata, or ExoPlayer auto-generated track")
+                                    Log.w("JellyfinPlayer", "   Not saving preference (doesn't map to Jellyfin subtitle)")
+                                }
+                            } else if (lastSelectedSubtitleIndex != null) {
+                                // No subtitle selected (user deselected)
                                 Log.d("JellyfinPlayer", "Subtitle deselected via ExoPlayer controller")
                                 lastSelectedSubtitleIndex = null
                                 currentSubtitleIndex = null
-                                
-                                // Save preference
                                 settings.setSubtitlePreference(item.Id, null)
                             }
                             
@@ -798,16 +940,20 @@ fun JellyfinVideoPlayerScreen(
                                     player.trackSelectionParameters = updatedParameters
                                     
                                     val selectedFormat = groupToSelect.mediaTrackGroup.getFormat(0)
-                                        currentSubtitleIndex = subtitleStreamIndex
-                                        lastSelectedSubtitleIndex = subtitleStreamIndex
-                                        Log.d("JellyfinPlayer", "✅ Selected subtitle track: language=${selectedFormat.language}, id=${selectedFormat.id}, Jellyfin index=$subtitleStreamIndex")
-                                    } else {
-                                        Log.w("JellyfinPlayer", "Could not find matching ExoPlayer track group for Jellyfin subtitle index $subtitleStreamIndex")
-                                    }
+                                    currentSubtitleIndex = subtitleStreamIndex
+                                    lastSelectedSubtitleIndex = subtitleStreamIndex
+                                    
+                                    Log.d("JellyfinPlayer", "✅ Selected subtitle track:")
+                                    Log.d("JellyfinPlayer", "   ExoPlayer: lang=${selectedFormat.language}, id=${selectedFormat.id}")
+                                    Log.d("JellyfinPlayer", "   Jellyfin: index=$subtitleStreamIndex")
+                                    Log.d("JellyfinPlayer", "   Composite key will be registered in onTracksChanged")
+                                } else {
+                                    Log.w("JellyfinPlayer", "Could not find matching ExoPlayer track group for Jellyfin subtitle index $subtitleStreamIndex")
+                                }
                                 } catch (e: Exception) {
                                     Log.w("JellyfinPlayer", "Error selecting subtitle track: ${e.message}", e)
                                 }
-                            } else if (subtitleStreamIndex == null && currentSubtitleIndex == null && textTrackGroups.isNotEmpty() && selectedTextTrackGroup == null) {
+                            } else if (subtitleStreamIndex == null && currentSubtitleIndex == null && textTrackGroups.isNotEmpty() && textTrackGroups.none { it.isSelected }) {
                                 // User explicitly selected "None" from series/movie page AND no subtitle is currently selected
                                 // Only clear if no subtitle is selected via ExoPlayer's controller either
                                 try {
@@ -1916,6 +2062,7 @@ fun JellyfinVideoPlayerScreen(
                 currentSubtitleIndex = currentSubtitleIndex,
                 onDismiss = { showSettingsMenu = false },
                 player = player,
+                jellyfinSubtitleStreams = jellyfinSubtitleStreams, // Pass for composite key registration
                 onSubtitleSelected = { subtitleIndex ->
                     currentSubtitleIndex = subtitleIndex
                     // Reload player with new subtitle
@@ -2005,7 +2152,8 @@ fun ExoPlayerSettingsMenu(
     currentSubtitleIndex: Int?,
     onDismiss: () -> Unit,
     onSubtitleSelected: (Int?) -> Unit,
-    player: ExoPlayer? = null
+    player: ExoPlayer? = null,
+    jellyfinSubtitleStreams: List<MediaStream> = emptyList() // For composite key registration
 ) {
     var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     var isLoadingSubtitles by remember { mutableStateOf(true) }
@@ -2029,7 +2177,8 @@ fun ExoPlayerSettingsMenu(
     }
     
     // Update tracks when player tracks change
-    DisposableEffect(player) {
+    // Capture jellyfinSubtitleStreams in the effect scope
+    DisposableEffect(player, jellyfinSubtitleStreams) {
         val listener = if (player != null) {
             // Get initial tracks if available
             val initialTracks = player.currentTracks
@@ -2041,7 +2190,27 @@ fun ExoPlayerSettingsMenu(
             object : Player.Listener {
                 override fun onTracksChanged(tracks: Tracks) {
                     currentTracks = tracks
+                    
+                    // Log detected subtitle tracks for debugging
+                    val textGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+                    Log.d("JellyfinPlayer", "ExoPlayer detected ${textGroups.size} subtitle track group(s)")
+                    if (textGroups.isEmpty()) {
+                        Log.w("JellyfinPlayer", "⚠️ No subtitle tracks detected by ExoPlayer")
+                        Log.w("JellyfinPlayer", "   This usually means:")
+                        Log.w("JellyfinPlayer", "   1. The subtitle URL returned 404 (file doesn't exist)")
+                        Log.w("JellyfinPlayer", "   2. The subtitle MIME type is incorrect")
+                        Log.w("JellyfinPlayer", "   3. ExoPlayer couldn't parse the subtitle file")
+                    } else {
+                        // Log detected subtitle tracks for debugging
+                        textGroups.forEachIndexed { idx, group ->
+                            val format = group.mediaTrackGroup.getFormat(0)
+                            Log.d("JellyfinPlayer", "  ExoPlayer subtitle track group $idx:")
+                            Log.d("JellyfinPlayer", "    Format.id: '${format.id}', Lang: ${format.language}, MIME: ${format.sampleMimeType}")
+                            Log.d("JellyfinPlayer", "    Label: ${format.label}, Selected: ${group.isSelected}")
+                        }
+                    }
                 }
+                
             }.also { player.addListener(it) }
         } else null
         
@@ -2429,5 +2598,89 @@ fun NextUpOverlay(
             }
         }
     }
+}
+
+/**
+ * Normalizes ISO 639-1 (2-letter) and ISO 639-2/T (3-letter) language codes to a common format.
+ * This helps match subtitles when ExoPlayer uses different language code standards than Jellyfin.
+ * 
+ * Examples:
+ * - "es" -> "es"
+ * - "spa" -> "es"
+ * - "en" -> "en"
+ * - "eng" -> "en"
+ * - "fr" -> "fr"
+ * - "fra" -> "fr"
+ * - "tur" -> "tr"
+ * - "chi" -> "zh"
+ */
+private fun normalizeLanguageCode(languageCode: String?): String? {
+    if (languageCode == null) return null
+    
+    // Map common ISO 639-2/T (3-letter) codes to ISO 639-1 (2-letter) codes
+    val iso639Map = mapOf(
+        "eng" to "en",
+        "spa" to "es",
+        "fra" to "fr",
+        "deu" to "de",
+        "ita" to "it",
+        "por" to "pt",
+        "rus" to "ru",
+        "jpn" to "ja",
+        "chi" to "zh",
+        "kor" to "ko",
+        "ara" to "ar",
+        "tur" to "tr",
+        "pol" to "pl",
+        "nld" to "nl",
+        "swe" to "sv",
+        "dan" to "da",
+        "fin" to "fi",
+        "nor" to "no",
+        "ces" to "cs",
+        "hun" to "hu",
+        "tha" to "th",
+        "vie" to "vi",
+        "ind" to "id",
+        "heb" to "he",
+        "ukr" to "uk",
+        "ron" to "ro",
+        "ell" to "el",
+        "cat" to "ca",
+        "hrv" to "hr",
+        "slk" to "sk",
+        "bul" to "bg",
+        "srp" to "sr",
+        "slv" to "sl",
+        "lit" to "lt",
+        "lav" to "lv",
+        "est" to "et",
+        "isl" to "is",
+        "msa" to "ms",
+        "fil" to "tl",
+        "hin" to "hi",
+        "ben" to "bn",
+        "tam" to "ta",
+        "tel" to "te",
+        "mar" to "mr",
+        "urd" to "ur",
+        "fas" to "fa",
+        "swa" to "sw"
+    )
+    
+    val lowerCode = languageCode.lowercase()
+    
+    // If it's a 3-letter code and we have a mapping, return the 2-letter equivalent
+    if (lowerCode.length == 3 && iso639Map.containsKey(lowerCode)) {
+        return iso639Map[lowerCode]
+    }
+    
+    // If it's already 2 letters, return as-is
+    if (lowerCode.length == 2) {
+        return lowerCode
+    }
+    
+    // Fallback: return first 2 characters
+    return lowerCode.take(2)
 }
 

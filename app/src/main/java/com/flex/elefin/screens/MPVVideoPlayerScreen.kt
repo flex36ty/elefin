@@ -6,9 +6,11 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,6 +37,7 @@ import com.flex.elefin.jellyfin.JellyfinApiService
 import com.flex.elefin.jellyfin.JellyfinItem
 import com.flex.elefin.jellyfin.AppSettings
 import com.flex.elefin.player.mpv.MpvUrlSelector
+import com.flex.elefin.player.mpv.MPVHolder
 import `is`.xyz.mpv.MPVView
 import `is`.xyz.mpv.MPVLib
 import kotlinx.coroutines.Dispatchers
@@ -46,6 +49,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import java.io.File
 import android.media.MediaCodecList
 import android.media.MediaCodecInfo
+import okhttp3.OkHttpClient
+import okhttp3.Request
+
+// MPV singleton is managed by MPVHolder - no need for global state tracking here
 
 @Composable
 fun MPVVideoPlayerScreen(
@@ -60,13 +67,18 @@ fun MPVVideoPlayerScreen(
     var mediaUrl by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var mpvViewRef by remember { mutableStateOf<MPVView?>(null) }
-    var initialized by remember { mutableStateOf(false) }
+    var initialized by remember { mutableStateOf(false) }  // Tracks if playback is initialized
     var progressReportingJob by remember { mutableStateOf<Job?>(null) }
     var subtitleHeaders by remember { mutableStateOf<String?>(null) }
     var overlayVisible by remember { mutableStateOf(false) }
     var urlFallbackAttempt by remember { mutableStateOf(0) }
     var playbackFailed by remember { mutableStateOf(false) }
     var overlayTimeoutJob by remember { mutableStateOf<Job?>(null) }
+    
+    // ⭐ SUBTITLE OVERLAY WORKAROUND FOR MPV-ANDROID ⭐
+    // MPV can't render subtitles on SurfaceView properly on Android TV
+    // So we extract sub-text from MPV and render it ourselves in Compose
+    var currentSubtitleText by remember { mutableStateOf<String?>(null) }
 
     // Track itemDetails for video codec detection and subtitle URL generation
     var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
@@ -78,6 +90,25 @@ fun MPVVideoPlayerScreen(
     LaunchedEffect(Unit) {
         delay(10000) // 10 seconds
         titleOverlayVisible = false
+    }
+    
+    // ⭐ Poll MPV for current subtitle text - ONLY after file is loaded!
+    LaunchedEffect(MPVHolder.ready) {
+        if (MPVHolder.ready) {
+            Log.d("MPVPlayer", "✅ MPV ready, starting subtitle text polling")
+            
+            while (MPVHolder.ready) {
+                try {
+                    val subText = `is`.xyz.mpv.MPVLib.getPropertyString("sub-text")
+                    currentSubtitleText = if (!subText.isNullOrBlank()) subText else null
+                } catch (e: Exception) {
+                    // Property not available - no subtitle selected or not ready yet
+                    // This is normal behavior, not an error
+                    currentSubtitleText = null
+                }
+                delay(100) // Poll 10 times per second
+            }
+        }
     }
     
     // Hide title overlay when controls are shown
@@ -102,6 +133,73 @@ fun MPVVideoPlayerScreen(
             delay(overlayTimeoutMs)
             overlayVisible = false
             Log.d("MPVPlayer", "⏰ Overlay auto-hidden after timeout")
+        }
+    }
+    
+    /**
+     * ⭐ CRITICAL FIX FOR MPV SUBTITLE BUG:
+     * MPV does NOT send HTTP headers for sub-add commands (known MPV bug on all platforms).
+     * 
+     * Solution: Download subtitle locally with proper authentication headers,
+     * then load from cache. This bypasses MPV's header bug entirely.
+     * 
+     * @param subtitleUrl The Jellyfin subtitle stream URL
+     * @param apiKey The Jellyfin API key for authentication
+     * @param deviceId The device ID for client identification
+     * @return Local file path if successful, null if failed
+     */
+    suspend fun downloadSubtitleToLocal(
+        context: android.content.Context,
+        subtitleUrl: String,
+        apiKey: String,
+        deviceId: String
+    ): File? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val client = OkHttpClient()
+                val request = Request.Builder()
+                    .url(subtitleUrl)
+                    .header("User-Agent", "Elefin/1.0 (MPV)")
+                    .header("X-Emby-Token", apiKey)
+                    .header(
+                        "X-Emby-Authorization",
+                        "MediaBrowser Client=\"Elefin\", Device=\"AndroidTV\", DeviceId=\"$deviceId\", Version=\"1.0.0\", Token=\"$apiKey\""
+                    )
+                    .header("Accept", "*/*")
+                    .build()
+
+                Log.d("MPVPlayer", "📥 Downloading subtitle from Jellyfin with auth headers...")
+                val response = client.newCall(request).execute()
+                
+                if (!response.isSuccessful) {
+                    Log.e("MPVPlayer", "❌ Subtitle download failed: HTTP ${response.code}")
+                    return@withContext null
+                }
+
+                // Determine file extension from URL or content-type
+                val extension = when {
+                    subtitleUrl.contains(".srt", ignoreCase = true) -> "srt"
+                    subtitleUrl.contains(".ass", ignoreCase = true) -> "ass"
+                    subtitleUrl.contains(".vtt", ignoreCase = true) -> "vtt"
+                    subtitleUrl.contains(".ssa", ignoreCase = true) -> "ssa"
+                    response.header("Content-Type")?.contains("subrip", ignoreCase = true) == true -> "srt"
+                    response.header("Content-Type")?.contains("webvtt", ignoreCase = true) == true -> "vtt"
+                    response.header("Content-Type")?.contains("ass", ignoreCase = true) == true -> "ass"
+                    else -> "srt" // Default to SRT
+                }
+
+                // Save to cache with timestamp to avoid conflicts
+                val file = File(context.cacheDir, "mpv_subtitle_${System.currentTimeMillis()}.$extension")
+                file.outputStream().use { out ->
+                    response.body?.byteStream()?.copyTo(out)
+                }
+                
+                Log.d("MPVPlayer", "✅ Subtitle downloaded successfully: ${file.absolutePath} (${file.length()} bytes)")
+                file
+            } catch (e: Exception) {
+                Log.e("MPVPlayer", "❌ Exception downloading subtitle: ${e.message}", e)
+                null
+            }
         }
     }
     
@@ -203,40 +301,84 @@ fun MPVVideoPlayerScreen(
         }
     }
 
-    // Initialize MPV view when media URL is ready
+    // Start playback when media URL is ready
     LaunchedEffect(mediaUrl, mpvViewRef, itemDetails) {
-        if (mediaUrl != null && mpvViewRef != null && !initialized) {
+        if (mediaUrl != null && mpvViewRef != null) {
             withContext(Dispatchers.Main) {
                 try {
                     val mpvView = mpvViewRef ?: return@withContext
                     
-                    Log.d("MPVPlayer", "Starting MPV initialization")
-
-                    // Initialize MPV with config and cache directories
-                    val configDir = File(context.filesDir, "mpv_config").apply {
-                        if (!exists()) mkdirs()
+                    // ⭐ MPV is already initialized by MPVHolder - just configure for this playback
+                    Log.d("MPVPlayer", "Configuring MPV for playback")
+                    
+                    // ⭐ CRITICAL: Configure MPV for subtitle visibility on Android TV
+                    // This is the DEFINITIVE configuration for NVIDIA Shield, Chromecast, Fire TV
+                    // Ensures subtitles ALWAYS render in the GPU layer with video
+                    try {
+                        // ----- VIDEO OUTPUT (CRITICAL FOR SUBTITLE VISIBILITY) -----
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "vo", "gpu"))
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "gpu-api", "opengl"))
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "gpu-context", "android"))
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "opengl-es", "yes"))
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "profile", "gpu-hq"))
                         
-                        // Copy mpv.conf from assets to config directory if it doesn't exist
-                        val mpvConfFile = File(this, "mpv.conf")
-                        if (!mpvConfFile.exists()) {
-                            try {
-                                context.assets.open("mpv.conf").use { input ->
-                                    mpvConfFile.outputStream().use { output ->
-                                        input.copyTo(output)
-                                    }
-                                }
-                                Log.d("MPVPlayer", "✅ Copied mpv.conf from assets to config directory")
-                            } catch (e: Exception) {
-                                Log.w("MPVPlayer", "Could not copy mpv.conf from assets", e)
-                            }
+                        // ----- CRITICAL: FORCE SUBTITLE BLENDING IN GPU LAYER -----
+                        // This ensures subtitles are composited WITH the video, not on a separate plane
+                        // Without this, subtitles render but remain invisible on Android TV
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "blend-subtitles", "video"))
+                        
+                        // ----- HARDWARE DECODING -----
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "hwdec", "mediacodec-copy"))
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "hwdec-preload", "yes"))
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "hwdec-codecs", "all"))
+                        
+                        // ----- TEXT SUBTITLE SETTINGS (SRT, ASS, VTT) -----
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "sub-scale-by-window", "yes"))
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "sub-ass", "yes"))
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "sub-use-margins", "yes"))
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "sub-pos", "95"))
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "sub-ass-vsfilter-aspect-compat", "no"))
+                        
+                        // ----- SUBTITLE CUSTOMIZATION FROM SETTINGS -----
+                        val settings = AppSettings(context)
+                        
+                        // Text size (30-100, default 55)
+                        val textSize = settings.subtitleTextSize
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "sub-font-size", textSize.toString()))
+                        
+                        // Text color (ARGB format)
+                        val textColor = settings.subtitleTextColor
+                        val textColorHex = String.format("#%08X", textColor)
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "sub-color", textColorHex))
+                        
+                        // Background color and transparency
+                        if (settings.subtitleBgTransparent) {
+                            // Transparent background
+                            `is`.xyz.mpv.MPVLib.command(arrayOf("set", "sub-back-color", "#00000000"))
+                        } else {
+                            // Opaque background with custom color
+                            val bgColor = settings.subtitleBgColor
+                            val bgColorHex = String.format("#%08X", bgColor)
+                            `is`.xyz.mpv.MPVLib.command(arrayOf("set", "sub-back-color", bgColorHex))
                         }
-                    }
-                    val cacheDir = context.cacheDir
-
-                    val initSuccess = mpvView.initialize(configDir.absolutePath, cacheDir.absolutePath)
-                    if (!initSuccess) {
-                        Log.e("MPVPlayer", "Failed to initialize MPV, libraries not available")
-                        throw Exception("MPV libraries not available")
+                        
+                        Log.d("MPVPlayer", "✅ Applied subtitle customization: size=$textSize, textColor=$textColorHex, bgTransparent=${settings.subtitleBgTransparent}")
+                        
+                        // ----- PGS/SUP/BITMAP SUBTITLE FIX (CRITICAL FOR BLU-RAY) -----
+                        // PGS subtitles are bitmap images from Blu-ray discs
+                        // Without these settings, they render off-screen or at wrong scale
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "stretch-image-subs-to-screen", "yes"))
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "image-subs-video-resolution", "no"))
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "sub-scale", "2.4"))
+                        `is`.xyz.mpv.MPVLib.command(arrayOf("set", "sub-ass-force-style", "PlayResY=1080,PlayResX=1920"))
+                        
+                        Log.d("MPVPlayer", "✅ MPV configured for Android TV (Shield-optimized + PGS fix)")
+                        
+                        // ⭐ REMOVED: Don't query current-vo before file-loaded!
+                        // Will verify rendering mode after file-loaded event in the coroutine below
+                        Log.d("MPVPlayer", "✅ MPV configured, will verify rendering mode after file-loaded")
+                    } catch (e: Exception) {
+                        Log.e("MPVPlayer", "❌ Error configuring MPV: ${e.message}", e)
                     }
 
                     // Use headers from MpvUrlSelector result (includes all required headers)
@@ -249,9 +391,13 @@ fun MPVVideoPlayerScreen(
                         append("X-Emby-Client-Capabilities: $clientCapabilities\r\n")
                     }
                     
-                    // Store headers in MPVView - they'll be set via stream-lavf-o before playback
+                    // Store headers in MPVView for BOTH video AND subtitle requests
+                    // ffmpegHeaders: Used for stream-lavf-o (video playback)
+                    // httpHeaders: Used for http-header-fields (subtitle requests via sub-add)
                     mpvView.ffmpegHeaders = ffmpegHeaders
-                    Log.d("MPVPlayer", "Stored FFmpeg headers in MPVView from MpvUrlSelector")
+                    mpvView.httpHeaders = ffmpegHeaders // ⭐ CRITICAL: Also set httpHeaders for subtitles!
+                    Log.d("MPVPlayer", "Stored FFmpeg headers in MPVView for video AND subtitle requests")
+                    Log.d("MPVPlayer", "Headers: $ffmpegHeaders")
                     
                     // Get effective resume position from itemDetails (fetched from server)
                     val effectiveResumePositionMs = itemDetails?.UserData?.PositionTicks?.let { ticks ->
@@ -265,6 +411,9 @@ fun MPVVideoPlayerScreen(
                         0.0
                     }
 
+                    // ⭐ CRITICAL: Reset for new video to prevent double-load crash
+                    MPVHolder.prepareForNewVideo()
+                    
                     // Play the video first - BaseMPVView.playFile() will handle waiting for surface
                     // It stores the filePath and plays it when surface is ready
                     if (resumePositionSeconds > 0) {
@@ -311,9 +460,14 @@ fun MPVVideoPlayerScreen(
                                     subtitleHeaders = result.headers
                                     
                                     mpvViewRef?.let { view ->
+                                        // ⭐ CRITICAL: Reset for fallback URL attempt
+                                        view.resetForNextVideo()
+                                        MPVHolder.prepareForNewVideo()
+                                        
                                         view.ffmpegHeaders = subtitleHeaders ?: ""
+                                        view.httpHeaders = subtitleHeaders ?: "" // ⭐ Also set for subtitles!
                                         view.play(result.url, 0.0) // Start from beginning on fallback
-                                        Log.d("MPVPlayer", "Retrying with fallback URL: ${result.url}")
+                                        Log.d("MPVPlayer", "✅ Reset hasLoadedOnce flag and retrying with fallback URL: ${result.url}")
                                     }
                                 }
                             } else {
@@ -331,70 +485,85 @@ fun MPVVideoPlayerScreen(
                         Log.d("MPVPlayer", "✅ Resuming playback from ${resumePositionSeconds}s")
                     }
                     
-                    // Load subtitles - check both explicit index and stored preference
-                    // Wait for MPV playback to start before loading subtitles
+                    // Post-playback verification will happen AFTER file-loaded event in the subtitle loading coroutine
+                    
+                    // ⭐ CRITICAL: Wait for MPV file-loaded event (event-based, not polling!)
+                    // Accessing MPV properties before file-loaded causes SIGSEGV crashes
                     scope.launch {
-                        // Wait for playback to start - check duration > 0 as indicator
-                        var attempts = 0
-                        var playbackStarted = false
-                        while (attempts < 20 && !playbackStarted) { // Wait up to 10 seconds
+                        Log.d("MPVPlayer", "Waiting for MPV file-loaded event (MPVHolder.ready)...")
+                        
+                        var waitAttempts = 0
+                        while (!MPVHolder.ready && waitAttempts < 20) { // Wait up to 10 seconds
                             delay(500)
-                            attempts++
-                            try {
-                                val dur = mpvViewRef?.getDuration() ?: 0.0
-                                if (dur > 0) {
-                                    playbackStarted = true
-                                    Log.d("MPVPlayer", "Playback started, duration=$dur, loading subtitles...")
-                                }
-                            } catch (e: Exception) {
-                                // Ignore - still waiting for playback
+                            waitAttempts++
+                            if (waitAttempts % 4 == 0) {
+                                Log.d("MPVPlayer", "Still waiting for file-loaded event... (${waitAttempts * 500}ms)")
                             }
                         }
                         
-                        if (!playbackStarted) {
-                            Log.w("MPVPlayer", "Playback didn't start within timeout, attempting subtitle load anyway")
+                        if (!MPVHolder.ready) {
+                            Log.e("MPVPlayer", "❌ MPV never became ready - playback failed")
+                            return@launch
                         }
+                        
+                        Log.d("MPVPlayer", "✅ MPV ready (file-loaded event received), safe to query properties and load subtitles")
+                        
+                        // Verify rendering mode now that MPV is ready
+                        try {
+                            val voActual = `is`.xyz.mpv.MPVLib.getPropertyString("vo")
+                            val currentVo = `is`.xyz.mpv.MPVLib.getPropertyString("current-vo")
+                            val hwdecActual = `is`.xyz.mpv.MPVLib.getPropertyString("hwdec")
+                            
+                            Log.d("MPVPlayer", "🔍 RENDERING MODE (after file-loaded):")
+                            Log.d("MPVPlayer", "   vo = $voActual, current-vo = $currentVo, hwdec = $hwdecActual")
+                            
+                            if (currentVo == "gpu" || currentVo == "gpu-next") {
+                                Log.d("MPVPlayer", "✅ GPU rendering confirmed - subtitles will be visible")
+                            } else {
+                                Log.w("MPVPlayer", "⚠️ current-vo = $currentVo (expected: gpu or gpu-next)")
+                            }
+                        } catch (e: Exception) {
+                            Log.w("MPVPlayer", "Could not verify rendering mode: ${e.message}")
+                        }
+
+                        // ------------------------------
+                        // ⭐ CLEAN SUBTITLE LOADER ⭐
+                        // ------------------------------
+                        val subtitleManager = com.flex.elefin.player.subtitles.SubtitleManager(context, apiService)
                         
                         val mediaSource = itemDetails?.MediaSources?.firstOrNull()
                         val mediaSourceId = mediaSource?.Id ?: item.Id
-                        
-                        // Get subtitle streams from media source
-                        val subtitleStreams = mediaSource?.MediaStreams?.filter { it.Type == "Subtitle" } ?: emptyList()
-                        Log.d("MPVPlayer", "Found ${subtitleStreams.size} subtitle stream(s) available")
-                        
-                        // Log all available subtitle streams for debugging
-                        subtitleStreams.forEach { stream ->
-                            Log.d("MPVPlayer", "Available subtitle stream: Index=${stream.Index}, Language=${stream.Language}, DisplayTitle=${stream.DisplayTitle}, Codec=${stream.Codec}")
-                        }
-                        
-                        // Determine which subtitle to load: explicit index > stored preference
+
+                        val subtitleStreams = mediaSource?.MediaStreams
+                            ?.filter { it.Type == "Subtitle" }
+                            ?.sortedBy { it.Index ?: 0 }
+                            ?: emptyList()
+
+                        Log.d("MPVPlayer", "Found ${subtitleStreams.size} subtitle stream(s)")
+                        Log.d("MPVPlayer", "MediaSourceId = $mediaSourceId")
+
+                        // Determine which subtitle to load
                         val settings = AppSettings(context)
-                        val subtitleIndexToLoad = subtitleStreamIndex ?: settings.getSubtitlePreference(item.Id)
-                        
-                        if (subtitleIndexToLoad != null) {
-                            val subtitleStream = subtitleStreams.find { it.Index == subtitleIndexToLoad }
+                        val selectedIndex = subtitleStreamIndex ?: settings.getSubtitlePreference(item.Id)
+                        val selectedStream = subtitleStreams.find { it.Index == selectedIndex }
+
+                        if (selectedStream != null) {
+                            Log.d("MPVPlayer", "➡ Selected subtitle: ${selectedStream.DisplayTitle} (Index=${selectedStream.Index})")
+                            Log.d("MPVPlayer", "   IsExternal=${selectedStream.IsExternal}")
+                            Log.d("MPVPlayer", "   SupportsExternalStream=${selectedStream.SupportsExternalStream}")
                             
-                            if (subtitleStream != null) {
-                                try {
-                                    val subtitleUrl = apiService.getSubtitleUrl(item.Id, mediaSourceId, subtitleIndexToLoad)
-                                    val subtitleTitle = subtitleStream.DisplayTitle 
-                                        ?: subtitleStream.Language 
-                                        ?: "Unknown"
-                                    Log.d("MPVPlayer", "Loading subtitle track ${subtitleIndexToLoad} (${subtitleTitle}): $subtitleUrl")
-                                    
-                                    // Add subtitle URL to MPV - this loads the external subtitle file
-                                    // MPV will use the same headers from stream-lavf-o for authentication
-                                    mpvViewRef?.setSubtitleUrl(subtitleUrl, subtitleTitle)
-                                    Log.d("MPVPlayer", "✅ Subtitle loaded: track ${subtitleIndexToLoad} (${subtitleTitle})")
-                                } catch (e: Exception) {
-                                    Log.e("MPVPlayer", "Error loading subtitle track ${subtitleIndexToLoad}: ${e.message}", e)
-                                    Log.w("MPVPlayer", "Subtitle track ${subtitleIndexToLoad} failed to load, but playback will continue")
+                            mpvViewRef?.let { mpv ->
+                                scope.launch {
+                                    subtitleManager.loadSubtitle(
+                                        itemId = item.Id,
+                                        mediaSourceId = mediaSourceId,
+                                        stream = selectedStream,
+                                        mpv = mpv
+                                    )
                                 }
-                            } else {
-                                Log.w("MPVPlayer", "Subtitle track Index=${subtitleIndexToLoad} not found in available streams. Available indices: ${subtitleStreams.map { it.Index }.joinToString()}")
                             }
                         } else {
-                            Log.d("MPVPlayer", "No subtitle preference found, skipping auto-load")
+                            Log.d("MPVPlayer", "No subtitle selected (selectedIndex=$selectedIndex)")
                         }
                     }
                     
@@ -452,57 +621,56 @@ fun MPVVideoPlayerScreen(
             progressReportingJob = null
             overlayTimeoutJob?.cancel()
             
-            // Get references BEFORE destroying MPV
-            val viewToDestroy = mpvViewRef
-            val wasInitialized = initialized
+            // ⭐ CRITICAL: MPV singleton - just stop playback, DON'T destroy!
             val itemId = item.Id
             
-            // Destroy MPV FIRST to prevent race conditions
+            // Get position BEFORE stopping
+            var currentPositionSeconds = 0.0
+            var duration = 0.0
             try {
-                if (wasInitialized && viewToDestroy != null) {
-                    // Get position BEFORE destroying (while MPV is still valid)
-                    var currentPositionSeconds = 0.0
-                    var duration = 0.0
-                    try {
-                        // Access MPV methods - they have null checks internally
-                        currentPositionSeconds = viewToDestroy.getCurrentPosition() ?: 0.0
-                        duration = viewToDestroy.getDuration() ?: 0.0
-                        Log.d("MPVPlayer", "Got position before destroy: $currentPositionSeconds, duration: $duration")
-                    } catch (e: Exception) {
-                        Log.w("MPVPlayer", "Error getting position before destroy (MPV may already be destroyed)", e)
-                    }
-                    
-                    // Destroy MPV
-                    viewToDestroy.destroy()
-                    Log.d("MPVPlayer", "MPV destroyed in DisposableEffect")
-                    
-                    // Report final position AFTER destroying (on background thread)
-                    if (currentPositionSeconds > 0) {
-                        scope.launch(Dispatchers.IO) {
-                            try {
-                                val positionTicks = (currentPositionSeconds * 10_000_000).toLong()
-                                apiService.reportPlaybackStopped(itemId, positionTicks)
-                                
-                                // Only mark as watched if video was actually completed (watched at least 90% or within last 5 seconds)
-                                val isComplete = duration > 0 && (
-                                    currentPositionSeconds >= duration - 5 || // Within last 5 seconds
-                                    currentPositionSeconds >= duration * 0.90 // Or watched 90% of video
-                                )
-                                if (isComplete) {
-                                    apiService.markAsWatched(itemId)
-                                    Log.d("MPVPlayer", "Marked item as watched (completed ${(currentPositionSeconds * 100 / duration).toInt()}%)")
-                                } else {
-                                    Log.d("MPVPlayer", "Playback stopped early (${(currentPositionSeconds * 100 / duration).toInt()}%), not marking as watched")
-                                }
-                                Log.d("MPVPlayer", "Reported final playback position on dispose")
-                            } catch (e: Exception) {
-                                Log.w("MPVPlayer", "Error reporting final playback position", e)
-                            }
-                        }
-                    }
+                mpvViewRef?.let { view ->
+                    currentPositionSeconds = view.getCurrentPosition() ?: 0.0
+                    duration = view.getDuration() ?: 0.0
+                    Log.d("MPVPlayer", "Got position before stopping: $currentPositionSeconds, duration: $duration")
                 }
             } catch (e: Exception) {
-                Log.e("MPVPlayer", "Error destroying MPV player", e)
+                Log.w("MPVPlayer", "Error getting position", e)
+            }
+            
+            // ⭐ CRITICAL: DO NOT call stop or destroy - use loadfile replace for next video!
+            // Stopping playback here breaks the VO pipeline and causes crashes on next load
+            // Just pause playback to reduce resource usage
+            try {
+                `is`.xyz.mpv.MPVLib.command(arrayOf("set", "pause", "yes"))
+                MPVHolder.prepareForNewVideo()  // Reset flags only, no stop/destroy
+                Log.d("MPVPlayer", "MPV playback paused (singleton retained, VO pipeline preserved)")
+            } catch (e: Exception) {
+                Log.w("MPVPlayer", "Error pausing playback", e)
+            }
+            
+            // Report final position (on background thread)
+            if (currentPositionSeconds > 0) {
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        val positionTicks = (currentPositionSeconds * 10_000_000).toLong()
+                        apiService.reportPlaybackStopped(itemId, positionTicks)
+                        
+                        // Only mark as watched if video was actually completed (watched at least 90% or within last 5 seconds)
+                        val isComplete = duration > 0 && (
+                            currentPositionSeconds >= duration - 5 || // Within last 5 seconds
+                            currentPositionSeconds >= duration * 0.90 // Or watched 90% of video
+                        )
+                        if (isComplete) {
+                            apiService.markAsWatched(itemId)
+                            Log.d("MPVPlayer", "Marked item as watched (completed ${(currentPositionSeconds * 100 / duration).toInt()}%)")
+                        } else {
+                            Log.d("MPVPlayer", "Playback stopped early (${(currentPositionSeconds * 100 / duration).toInt()}%), not marking as watched")
+                        }
+                        Log.d("MPVPlayer", "Reported final playback position on dispose")
+                    } catch (e: Exception) {
+                        Log.w("MPVPlayer", "Error reporting final playback position", e)
+                    }
+                }
             }
         }
     }
@@ -538,22 +706,11 @@ fun MPVVideoPlayerScreen(
                     
                     if (isEnterKey) {
                         if (overlayVisible) {
-                            // If overlay is visible, toggle play/pause (like ExoPlayer)
-                            scope.launch(Dispatchers.Main) {
-                                try {
-                                    val isPaused = mpvViewRef?.isPaused() ?: false
-                                    if (isPaused) {
-                                        mpvViewRef?.resume()
-                                        Log.d("MPVPlayer", "Enter/OK pressed - resuming playback")
-                                    } else {
-                                        mpvViewRef?.pause()
-                                        Log.d("MPVPlayer", "Enter/OK pressed - pausing playback")
-                                    }
-                                } catch (e: Exception) {
-                                    Log.w("MPVPlayer", "Error toggling play/pause", e)
-                                }
-                            }
-                            return@onPreviewKeyEvent true  // consume event
+                            // ⚠️ FIX: Don't consume Enter/OK when overlay is visible!
+                            // Let the overlay buttons handle the click event
+                            // The overlay's IconButtons have their own onClick handlers
+                            Log.d("MPVPlayer", "Enter/OK pressed with overlay visible - letting overlay handle it")
+                            return@onPreviewKeyEvent false  // DON'T consume - let overlay buttons handle it!
                         } else {
                             // If overlay is hidden, show it temporarily
                             showControlsTemporarily()
@@ -564,6 +721,7 @@ fun MPVVideoPlayerScreen(
                     
                     // When overlay is visible, let directional keys pass through to overlay buttons
                     // But don't intercept them - let overlay handle navigation
+                    // IMPORTANT: Reset timeout on ANY key press to keep controls visible during navigation
                     if (overlayVisible) {
                         val isDirectionalKey = event.key == Key.DirectionUp ||
                                                event.key == Key.DirectionDown ||
@@ -575,6 +733,15 @@ fun MPVVideoPlayerScreen(
                                                nativeKeyCode == 22    // KEYCODE_DPAD_RIGHT
                         
                         if (isDirectionalKey) {
+                            // ⭐ CRITICAL FIX: Reset timeout when user navigates controls!
+                            // This prevents controls from disappearing while user is actively using them
+                            overlayTimeoutJob?.cancel()
+                            overlayTimeoutJob = scope.launch {
+                                delay(overlayTimeoutMs)
+                                overlayVisible = false
+                                Log.d("MPVPlayer", "⏰ Overlay auto-hidden after timeout")
+                            }
+                            
                             // Don't consume - let overlay handle navigation
                             return@onPreviewKeyEvent false
                         }
@@ -639,16 +806,19 @@ fun MPVVideoPlayerScreen(
             mediaUrl != null -> {
                 AndroidView(
                     factory = { ctx ->
-                        MPVView(ctx, null).apply {
-                            mpvViewRef = this
+                        // ⭐ CRITICAL: Use singleton MPVView instance
+                        // Creating multiple MPVView instances causes crashes!
+                        val mpv = MPVHolder.getOrCreateMPV(ctx)
+                        mpvViewRef = mpv
+                        
+                        mpv.apply {
                             // Ensure view is visible and properly configured
                             visibility = android.view.View.VISIBLE
                             // Prevent view from consuming key events - we handle them in Compose
                             isFocusable = false
                             isFocusableInTouchMode = false
-                            // BaseMPVView already handles surface callbacks internally
-                            // The surface will be attached automatically when created
-                            Log.d("MPVPlayer", "MPVView created in AndroidView factory (focus disabled)")
+                            
+                            Log.d("MPVPlayer", "Using MPV singleton instance")
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
@@ -712,25 +882,38 @@ fun MPVVideoPlayerScreen(
                 item = itemDetails ?: item,
                 apiService = apiService,
                 onSubtitleSelected = { subtitleIndex ->
-                    // Handle subtitle selection
-                    scope.launch(Dispatchers.IO) {
+                    // Handle subtitle selection from settings menu
+                    scope.launch {
                         try {
                             val mediaSourceId = itemDetails?.MediaSources?.firstOrNull()?.Id ?: item.Id
                             if (subtitleIndex != null) {
-                                // Load subtitle
-                                val subtitleUrl = apiService.getSubtitleUrl(item.Id, mediaSourceId, subtitleIndex)
                                 val subtitleStream = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
                                     ?.find { it.Type == "Subtitle" && it.Index == subtitleIndex }
-                                val subtitleTitle = subtitleStream?.DisplayTitle ?: subtitleStream?.Language ?: "Unknown"
-                                mpvViewRef?.setSubtitleUrl(subtitleUrl, subtitleTitle)
-                                Log.d("MPVPlayer", "Subtitle loaded: $subtitleTitle")
+                                
+                                if (subtitleStream != null && mpvViewRef != null) {
+                                    Log.d("MPVPlayer", "User selected subtitle from settings: ${subtitleStream.DisplayTitle}")
+                                    
+                                    // Use SubtitleManager for consistent handling
+                                    val subtitleManager = com.flex.elefin.player.subtitles.SubtitleManager(context, apiService)
+                                    subtitleManager.loadSubtitle(
+                                        itemId = item.Id,
+                                        mediaSourceId = mediaSourceId,
+                                        stream = subtitleStream,
+                                        mpv = mpvViewRef!!
+                                    )
+                                    
+                                    // Save preference
+                                    AppSettings(context).setSubtitlePreference(item.Id, subtitleIndex)
+                                } else {
+                                    Log.e("MPVPlayer", "Subtitle stream not found for index $subtitleIndex")
+                                }
                             } else {
-                                // Remove subtitle
-                                mpvViewRef?.setSubtitleUrl("", "")
-                                Log.d("MPVPlayer", "Subtitle removed")
+                                // Disable subtitles
+                                MPVLib.command(arrayOf("sub-select", "no"))
+                                Log.d("MPVPlayer", "Subtitles disabled")
                             }
                         } catch (e: Exception) {
-                            Log.e("MPVPlayer", "Error loading subtitle", e)
+                            Log.e("MPVPlayer", "Error loading subtitle from settings", e)
                         }
                     }
                 },
@@ -771,6 +954,50 @@ fun MPVVideoPlayerScreen(
                         }
                     }
                 }
+            }
+        }
+        
+        // ⭐ CUSTOM SUBTITLE OVERLAY (WORKAROUND FOR MPV-ANDROID RENDERING BUG) ⭐
+        // MPV renders subtitles internally but they don't appear on SurfaceView on Android TV
+        // This Compose overlay extracts sub-text from MPV and displays it ourselves
+        if (!currentSubtitleText.isNullOrBlank()) {
+            val settings = AppSettings(context)
+            val subTextSize = settings.subtitleTextSize.sp
+            val subTextColor = Color(settings.subtitleTextColor.toLong())
+            val isTransparent = settings.subtitleBgTransparent
+            val subBackColor = if (isTransparent) {
+                Color.Transparent
+            } else {
+                Color(settings.subtitleBgColor.toLong()).copy(alpha = 0.7f)
+            }
+            
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(bottom = 80.dp, start = 48.dp, end = 48.dp)
+            ) {
+                androidx.tv.material3.Text(
+                    text = currentSubtitleText!!,
+                    style = androidx.tv.material3.MaterialTheme.typography.titleLarge.copy(
+                        fontSize = subTextSize,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        shadow = androidx.compose.ui.graphics.Shadow(
+                            color = Color.Black,
+                            offset = androidx.compose.ui.geometry.Offset(2f, 2f),
+                            blurRadius = 4f
+                        )
+                    ),
+                    color = subTextColor,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .background(
+                            subBackColor,
+                            androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
             }
         }
     }

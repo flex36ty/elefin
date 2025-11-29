@@ -30,6 +30,12 @@ class AppSettings(context: Context) {
         private const val KEY_AUTOPLAY_NEXT_EPISODE = "autoplay_next_episode"
         private const val KEY_AUTOPLAY_COUNTDOWN_SECONDS = "autoplay_countdown_seconds"
         private const val KEY_AUTO_UPDATE_ENABLED = "auto_update_enabled"
+        
+        // Subtitle customization
+        private const val KEY_SUBTITLE_TEXT_COLOR = "subtitle_text_color"
+        private const val KEY_SUBTITLE_BG_COLOR = "subtitle_bg_color"
+        private const val KEY_SUBTITLE_BG_TRANSPARENT = "subtitle_bg_transparent"
+        private const val KEY_SUBTITLE_TEXT_SIZE = "subtitle_text_size"
     }
 
     var isMpvEnabled: Boolean
@@ -143,7 +149,7 @@ class AppSettings(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_MINIMAL_BUFFER_4K, value).apply()
     
     var transcodeAacToAc3: Boolean
-        get() = prefs.getBoolean(KEY_TRANSCODE_AAC_TO_AC3, true) // Enabled by default
+        get() = prefs.getBoolean(KEY_TRANSCODE_AAC_TO_AC3, false) // Disabled by default
         set(value) = prefs.edit().putBoolean(KEY_TRANSCODE_AAC_TO_AC3, value).apply()
     
     var useLogoForTitle: Boolean
@@ -162,5 +168,26 @@ class AppSettings(context: Context) {
     var autoUpdateEnabled: Boolean
         get() = prefs.getBoolean(KEY_AUTO_UPDATE_ENABLED, true) // Enabled by default
         set(value) = prefs.edit().putBoolean(KEY_AUTO_UPDATE_ENABLED, value).apply()
+    
+    // Subtitle customization settings
+    // Text color as ARGB int (default: White = 0xFFFFFFFF)
+    var subtitleTextColor: Int
+        get() = prefs.getInt(KEY_SUBTITLE_TEXT_COLOR, 0xFFFFFFFF.toInt())
+        set(value) = prefs.edit().putInt(KEY_SUBTITLE_TEXT_COLOR, value).apply()
+    
+    // Background color as ARGB int (default: Black = 0xFF000000)
+    var subtitleBgColor: Int
+        get() = prefs.getInt(KEY_SUBTITLE_BG_COLOR, 0xFF000000.toInt())
+        set(value) = prefs.edit().putInt(KEY_SUBTITLE_BG_COLOR, value).apply()
+    
+    // Background transparency (true = transparent, false = opaque)
+    var subtitleBgTransparent: Boolean
+        get() = prefs.getBoolean(KEY_SUBTITLE_BG_TRANSPARENT, false) // Opaque by default
+        set(value) = prefs.edit().putBoolean(KEY_SUBTITLE_BG_TRANSPARENT, value).apply()
+    
+    // Text size (default: 55, range: 30-100)
+    var subtitleTextSize: Int
+        get() = prefs.getInt(KEY_SUBTITLE_TEXT_SIZE, 55).coerceIn(30, 100)
+        set(value) = prefs.edit().putInt(KEY_SUBTITLE_TEXT_SIZE, value.coerceIn(30, 100)).apply()
 }
 

@@ -47,6 +47,12 @@ import android.widget.Toast
 import com.flex.elefin.updater.GitHubRelease
 import com.flex.elefin.updater.UpdateService
 import android.content.pm.PackageManager
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.size
+import androidx.tv.material3.Surface
+import androidx.tv.material3.SurfaceDefaults
 
 @OptIn(coil.annotation.ExperimentalCoilApi::class)
 @Composable
@@ -80,6 +86,12 @@ fun SettingsScreen(
     var latestRelease by remember { mutableStateOf<com.flex.elefin.updater.GitHubRelease?>(null) }
     var checkingForUpdates by remember { mutableStateOf(false) }
     var updateCheckMessage by remember { mutableStateOf<String?>(null) }
+    
+    // Subtitle customization settings
+    var subtitleTextSize by remember { mutableStateOf(settings.subtitleTextSize) }
+    var subtitleBgTransparent by remember { mutableStateOf(settings.subtitleBgTransparent) }
+    var showSubtitleColorDialog by remember { mutableStateOf(false) }
+    var showSubtitleBgColorDialog by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -157,6 +169,166 @@ fun SettingsScreen(
                     )
                 ) {
                     Text(if (mpvEnabled) "ON" else "OFF")
+                }
+            }
+            
+            // ===== SUBTITLE CUSTOMIZATION SECTION =====
+            if (mpvEnabled) {
+                // Section header
+                Text(
+                    text = "Subtitle Appearance",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                )
+                
+                // Subtitle text size
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "Subtitle Text Size",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Size: $subtitleTextSize (range: 30-100)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                if (subtitleTextSize > 30) {
+                                    subtitleTextSize -= 5
+                                    settings.subtitleTextSize = subtitleTextSize
+                                }
+                            },
+                            enabled = subtitleTextSize > 30
+                        ) {
+                            Text("-")
+                        }
+                        Button(
+                            onClick = {
+                                if (subtitleTextSize < 100) {
+                                    subtitleTextSize += 5
+                                    settings.subtitleTextSize = subtitleTextSize
+                                }
+                            },
+                            enabled = subtitleTextSize < 100
+                        ) {
+                            Text("+")
+                        }
+                    }
+                }
+                
+                // Subtitle text color
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "Subtitle Text Color",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Choose subtitle text color",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    
+                    Button(
+                        onClick = { showSubtitleColorDialog = true }
+                    ) {
+                        Text("Choose Color")
+                    }
+                }
+                
+                // Subtitle background transparency
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "Transparent Subtitle Background",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Make subtitle background transparent or opaque",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    
+                    Button(
+                        onClick = {
+                            subtitleBgTransparent = !subtitleBgTransparent
+                            settings.subtitleBgTransparent = subtitleBgTransparent
+                        },
+                        colors = ButtonDefaults.colors(
+                            containerColor = if (subtitleBgTransparent) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            }
+                        )
+                    ) {
+                        Text(if (subtitleBgTransparent) "Transparent" else "Opaque")
+                    }
+                }
+                
+                // Subtitle background color (only if not transparent)
+                if (!subtitleBgTransparent) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "Subtitle Background Color",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Choose subtitle background color",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                        
+                        Button(
+                            onClick = { showSubtitleBgColorDialog = true }
+                        ) {
+                            Text("Choose Color")
+                        }
+                    }
                 }
             }
 
@@ -1098,6 +1270,120 @@ fun SettingsScreen(
                         latestRelease = null
                     }
                 )
+            }
+        }
+        
+        // Subtitle text color picker dialog
+        if (showSubtitleColorDialog) {
+            SubtitleColorPickerDialog(
+                title = "Subtitle Text Color",
+                currentColor = settings.subtitleTextColor,
+                onColorSelected = { color ->
+                    settings.subtitleTextColor = color
+                    showSubtitleColorDialog = false
+                },
+                onDismiss = { showSubtitleColorDialog = false }
+            )
+        }
+        
+        // Subtitle background color picker dialog
+        if (showSubtitleBgColorDialog) {
+            SubtitleColorPickerDialog(
+                title = "Subtitle Background Color",
+                currentColor = settings.subtitleBgColor,
+                onColorSelected = { color ->
+                    settings.subtitleBgColor = color
+                    showSubtitleBgColorDialog = false
+                },
+                onDismiss = { showSubtitleBgColorDialog = false }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SubtitleColorPickerDialog(
+    title: String,
+    currentColor: Int,
+    onColorSelected: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    // Predefined color options
+    val colorOptions = listOf(
+        "White" to 0xFFFFFFFF.toInt(),
+        "Black" to 0xFF000000.toInt(),
+        "Yellow" to 0xFFFFFF00.toInt(),
+        "Cyan" to 0xFF00FFFF.toInt(),
+        "Green" to 0xFF00FF00.toInt(),
+        "Red" to 0xFFFF0000.toInt(),
+        "Blue" to 0xFF0000FF.toInt(),
+        "Magenta" to 0xFFFF00FF.toInt()
+    )
+    
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.6f)
+                .padding(48.dp),
+            shape = androidx.tv.material3.SurfaceDefaults.shape,
+            colors = androidx.tv.material3.SurfaceDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surface
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(32.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                
+                // Color options
+                colorOptions.forEach { (name, color) ->
+                    val isSelected = color == currentColor
+                    Button(
+                        onClick = { onColorSelected(color) },
+                        colors = ButtonDefaults.colors(
+                            containerColor = if (isSelected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            }
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(name)
+                            // Color preview box
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .background(Color(color), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                    .border(1.dp, Color.White, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                            )
+                        }
+                    }
+                }
+                
+                // Cancel button
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.colors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Text("Cancel")
+                }
             }
         }
     }

@@ -57,6 +57,11 @@ data class Person(
 )
 
 @Serializable
+data class JellyfinPlaybackInfo(
+    val MediaSources: List<MediaSource>? = null
+)
+
+@Serializable
 data class MediaSource(
     val Id: String? = null,
     val Protocol: String? = null,
@@ -69,13 +74,21 @@ data class MediaStream(
     val Type: String? = null, // "Video", "Audio", "Subtitle"
     val Codec: String? = null,
     val Language: String? = null,
+    val DisplayLanguage: String? = null, // Human-readable language name (e.g., "Turkish")
     val DisplayTitle: String? = null,
     val IsExternal: Boolean? = null,
+    val SupportsExternalStream: Boolean? = null, // Whether this subtitle can be streamed via /Subtitles/{index}/Stream
     val DeliveryUrl: String? = null,
+    val DeliveryMethod: String? = null, // "External", "Encode", "Embed", "Hls"
+    val Path: String? = null, // File system path for external subtitles
     val IsDefault: Boolean? = null,
     val IsForced: Boolean? = null,
-    val Width: Int? = null,
-    val Height: Int? = null,
+    val IsTextSubtitleStream: Boolean? = null, // True for text (SRT, VTT, ASS), false for bitmap (PGS, VOBSUB)
+    val CodecTag: String? = null, // Codec tag for advanced format detection
+    val IsHearingImpaired: Boolean? = null, // Closed captions / SDH subtitles
+    val Title: String? = null, // Subtitle track title
+    val Width: Int? = null, // Video/subtitle width
+    val Height: Int? = null, // Video/subtitle height
     val ChannelLayout: String? = null // Audio channel layout (e.g., "5.1", "7.1", "stereo")
 )
 
@@ -84,7 +97,8 @@ data class UserData(
     val PlayedPercentage: Double? = null,
     @SerialName("PlaybackPositionTicks")
     val PositionTicks: Long? = null,
-    val Played: Boolean? = null
+    val Played: Boolean? = null,
+    val UnplayedItemCount: Int? = null // Number of unwatched episodes for Series
 )
 
 @Serializable
@@ -639,14 +653,60 @@ class JellyfinApiService(
     
     fun getSubtitleUrl(itemId: String, mediaSourceId: String, subtitleStreamIndex: Int): String {
         val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
-        // Jellyfin subtitle URL format: /Videos/{itemId}/Subtitles/{subtitleStreamIndex}/Stream
-        // Use correct casing: mediaSourceId (camelCase)
-        val url = URLBuilder().takeFrom("${base}Videos/$itemId/Subtitles/$subtitleStreamIndex/Stream").apply {
-            parameters.append("mediaSourceId", mediaSourceId)
+        // ⭐ CORRECT Jellyfin subtitle URL format: /Videos/{itemId}/{mediaSourceId}/Subtitles/{index}/Stream
+        // mediaSourceId is REQUIRED in the path for proper subtitle resolution
+        // This is the format used by official Jellyfin clients
+        val url = URLBuilder().takeFrom("${base}Videos/$itemId/$mediaSourceId/Subtitles/$subtitleStreamIndex/Stream").apply {
             parameters.append("api_key", accessToken)
         }.buildString()
-        android.util.Log.d("JellyfinAPI", "Generated subtitle URL: $url")
+        android.util.Log.d("JellyfinAPI", "✅ Correct Subtitle URL: $url")
         return url
+    }
+    
+    /**
+     * Converts a relative DeliveryUrl from Jellyfin into an absolute URL
+     */
+    fun resolveDeliveryUrl(deliveryUrl: String): String {
+        return if (deliveryUrl.startsWith("http")) {
+            // Already absolute
+            deliveryUrl
+        } else {
+            // Relative URL, prepend base
+            val base = if (baseUrl.endsWith("/")) baseUrl.dropLast(1) else baseUrl
+            "$base$deliveryUrl"
+        }
+    }
+    
+    /**
+     * Get PlaybackInfo to retrieve correct subtitle DeliveryUrl mapping
+     * This is how official Jellyfin clients resolve subtitle stream indices
+     * Note: Simplified version - just re-fetch the item details which should have updated DeliveryUrl
+     */
+    suspend fun getPlaybackInfo(
+        itemId: String,
+        mediaSourceId: String,
+        subtitleStreamIndex: Int? = null
+    ): JellyfinPlaybackInfo? {
+        return try {
+            android.util.Log.d("JellyfinAPI", "Fetching PlaybackInfo (re-requesting item details for updated DeliveryUrl)...")
+            android.util.Log.d("JellyfinAPI", "  ItemId: $itemId")
+            android.util.Log.d("JellyfinAPI", "  MediaSourceId: $mediaSourceId")
+            android.util.Log.d("JellyfinAPI", "  SubtitleStreamIndex: $subtitleStreamIndex")
+            
+            // Re-fetch item details which should contain updated MediaStreams with DeliveryUrl
+            val itemDetails = getItemDetails(itemId)
+            
+            if (itemDetails?.MediaSources != null) {
+                android.util.Log.d("JellyfinAPI", "✅ PlaybackInfo (ItemDetails) received with ${itemDetails.MediaSources.size} MediaSource(s)")
+                JellyfinPlaybackInfo(MediaSources = itemDetails.MediaSources)
+            } else {
+                android.util.Log.w("JellyfinAPI", "⚠️ No MediaSources in ItemDetails")
+                null
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "❌ Failed to get PlaybackInfo: ${e.message}", e)
+            null
+        }
     }
 
     fun getVideoRequestHeaders(): Map<String, String> {
@@ -664,6 +724,15 @@ class JellyfinApiService(
             "Authorization" to "MediaBrowser Token=\"$accessToken\"",
             "X-Emby-Authorization" to embyAuthHeader
         )
+    }
+    
+    /**
+     * Build correct Jellyfin subtitle URL for streaming subtitles.
+     * Format: /Videos/{itemId}/{mediaSourceId}/Subtitles/{index}/Stream?api_key=xxx
+     */
+    fun buildSubtitleUrl(itemId: String, mediaSourceId: String, index: Int): String {
+        val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+        return "${base}Videos/$itemId/$mediaSourceId/Subtitles/$index/Stream?api_key=$accessToken"
     }
 
     suspend fun getLibraries(): List<JellyfinLibrary> {
@@ -928,6 +997,29 @@ class JellyfinApiService(
             response.Items
         } catch (e: Exception) {
             android.util.Log.e("JellyfinAPI", "Error fetching movies by genre", e)
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+    
+    suspend fun getSeriesByGenre(genre: String, excludeItemId: String? = null, limit: Int = 20): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("IncludeItemTypes", "Series")
+                parameters.append("Genres", genre)
+                parameters.append("Recursive", "true")
+                parameters.append("Limit", limit.toString())
+                excludeItemId?.let { parameters.append("ExcludeItemIds", it) }
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            }.body()
+            response.Items
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error fetching series by genre", e)
             e.printStackTrace()
             emptyList()
         }

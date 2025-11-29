@@ -464,7 +464,7 @@ fun BottomContainer(
 ) {
     val context = LocalContext.current
     // Get cast members (People with Type == "Actor")
-    val castMembers = item.People?.filter { it.Type == "Actor" }?.take(10) ?: emptyList() // Limit to first 10
+    val castMembers = item.People?.filter { it.Type == "Actor" } ?: emptyList()
     val firstGenre = item.Genres?.firstOrNull()
     val firstCastMember = castMembers.firstOrNull()
     
@@ -1173,9 +1173,9 @@ fun ActionButtonsRow(
                             if (resumeFocused) {
                                 Modifier
                                     .wrapContentWidth()
-                                    .height(40.dp)
+                                    .height(28.dp)
                             } else {
-                                Modifier.size(40.dp) // Circular when unfocused
+                                Modifier.size(28.dp)
                             }
                         )
                         .animateContentSize(
@@ -1190,7 +1190,7 @@ fun ActionButtonsRow(
                         containerColor = MaterialTheme.colorScheme.surface,
                         contentColor = MaterialTheme.colorScheme.onSurface
                     ),
-                    contentPadding = PaddingValues(12.dp)
+                    contentPadding = PaddingValues(8.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
@@ -1204,7 +1204,7 @@ fun ActionButtonsRow(
                             style = MaterialTheme.typography.labelLarge.copy(
                                 fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
                             ),
-                            modifier = Modifier.padding(horizontal = 16.dp)
+                            modifier = Modifier.padding(horizontal = 12.dp)
                         )
                     }
                 }
@@ -1249,9 +1249,9 @@ fun ActionButtonsRow(
                         if (playFocused) {
                             Modifier
                                 .wrapContentWidth()
-                                .height(40.dp)
+                                .height(28.dp)
                         } else {
-                            Modifier.size(40.dp) // Circular when unfocused
+                            Modifier.size(28.dp)
                         }
                     )
                     .animateContentSize(
@@ -1266,23 +1266,23 @@ fun ActionButtonsRow(
                     containerColor = MaterialTheme.colorScheme.surface,
                     contentColor = MaterialTheme.colorScheme.onSurface
                 ),
-                contentPadding = PaddingValues(12.dp)
+                contentPadding = PaddingValues(8.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.PlayArrow,
                     contentDescription = "Play",
                     modifier = Modifier.size(14.3.dp)
                 )
-                    if (playFocused) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = playButtonLabel,
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                            ),
-                            modifier = Modifier.padding(horizontal = 16.dp)
-                        )
-                    }
+                if (playFocused) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = playButtonLabel,
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
+                        ),
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
             }
         }
         }
@@ -1299,9 +1299,9 @@ fun ActionButtonsRow(
                     if (audioFocused) {
                         Modifier
                             .wrapContentWidth()
-                            .height(40.dp)
+                            .height(28.dp)
                     } else {
-                        Modifier.size(40.dp) // Circular when unfocused
+                        Modifier.size(28.dp)
                     }
                 )
                 .animateContentSize(
@@ -1316,7 +1316,7 @@ fun ActionButtonsRow(
                 containerColor = MaterialTheme.colorScheme.surface,
                 contentColor = MaterialTheme.colorScheme.onSurface
             ),
-            contentPadding = PaddingValues(12.dp)
+            contentPadding = PaddingValues(8.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.VolumeUp,
@@ -1330,7 +1330,7 @@ fun ActionButtonsRow(
                     style = MaterialTheme.typography.labelLarge.copy(
                         fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
                     ),
-                    modifier = Modifier.padding(horizontal = 16.dp)
+                    modifier = Modifier.padding(horizontal = 12.dp)
                 )
             }
         }
@@ -1347,9 +1347,9 @@ fun ActionButtonsRow(
                     if (subtitleFocused) {
                         Modifier
                             .wrapContentWidth()
-                            .height(40.dp)
+                            .height(28.dp)
                     } else {
-                        Modifier.size(40.dp) // Circular when unfocused
+                        Modifier.size(28.dp)
                     }
                 )
                 .animateContentSize(
@@ -1364,9 +1364,8 @@ fun ActionButtonsRow(
                 containerColor = MaterialTheme.colorScheme.surface,
                 contentColor = MaterialTheme.colorScheme.onSurface
             ),
-            contentPadding = PaddingValues(12.dp)
+            contentPadding = PaddingValues(8.dp)
         ) {
-            // Language icon from Material Icons Extended
             Icon(
                 imageVector = Icons.Default.Language,
                 contentDescription = "Subtitles",
@@ -1379,7 +1378,7 @@ fun ActionButtonsRow(
                     style = MaterialTheme.typography.labelLarge.copy(
                         fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
                     ),
-                    modifier = Modifier.padding(horizontal = 16.dp)
+                    modifier = Modifier.padding(horizontal = 12.dp)
                 )
             }
         }
@@ -1432,9 +1431,9 @@ fun ActionButtonsRow(
                     if (watchedFocused) {
                         Modifier
                             .wrapContentWidth()
-                            .height(40.dp)
+                            .height(28.dp)
                     } else {
-                        Modifier.size(40.dp) // Circular when unfocused
+                        Modifier.size(28.dp)
                     }
                 )
                 .animateContentSize(
@@ -1449,7 +1448,7 @@ fun ActionButtonsRow(
                 containerColor = MaterialTheme.colorScheme.surface,
                 contentColor = MaterialTheme.colorScheme.onSurface
             ),
-            contentPadding = PaddingValues(12.dp)
+            contentPadding = PaddingValues(8.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.Check,

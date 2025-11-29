@@ -1,19 +1,18 @@
 package com.flex.elefin.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,16 +21,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -90,9 +84,9 @@ fun AnimatedPlayButton(
                 if (focused) {
                     Modifier
                         .wrapContentWidth()
-                        .height(40.dp)
+                        .height(28.dp)
                 } else {
-                    Modifier.size(40.dp) // Circular when unfocused
+                    Modifier.size(28.dp) // Circular when unfocused
                 }
             )
             .animateContentSize(
@@ -125,8 +119,8 @@ fun AnimatedPlayButton(
         Row(
             modifier = Modifier
                 .align(Alignment.Center)
-                .padding(horizontal = 12.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center
         ) {
             Icon(
@@ -136,16 +130,16 @@ fun AnimatedPlayButton(
                 tint = contentColor
             )
             
-                // Show label when focused
-                if (focused && showLabel) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = label,
-                        style = labelTextStyle,
-                        color = contentColor,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                }
+            // Show label when focused
+            if (focused && showLabel) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = label,
+                    style = labelTextStyle,
+                    color = contentColor,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+            }
         }
     }
 }

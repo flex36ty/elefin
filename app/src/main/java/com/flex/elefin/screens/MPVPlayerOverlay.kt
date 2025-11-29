@@ -55,10 +55,23 @@ fun MPVPlayerOverlay(
     val settings = remember { AppSettings(context) }
     
     val currentPosition = remember { mutableStateOf(0.0) }
-    val duration = remember { mutableStateOf(0.0) }
+    
+    // ⭐ CRITICAL FIX: Get duration from Jellyfin API, NOT from MPV!
+    // MPV's duration property is unreliable with network streams (shows buffer size)
+    // Jellyfin's RunTimeTicks is the TRUE duration of the video
+    val duration = remember { 
+        val ticks = item?.RunTimeTicks ?: 0L
+        val seconds = if (ticks > 0) ticks / 10_000_000.0 else 0.0
+        android.util.Log.d("MPVPlayerOverlay", "✅ Using Jellyfin duration: ${seconds}s (${ticks} ticks) for ${item?.Name}")
+        mutableStateOf(seconds)
+    }
+    
     val isPaused = remember { mutableStateOf(false) }
     var showSettingsMenu by remember { mutableStateOf(false) }
     var currentSubtitleIndex by remember { mutableStateOf<Int?>(null) }
+    
+    // Focus requester for play/pause button (default focus)
+    val playPauseFocusRequester = remember { FocusRequester() }
     
     // Title overlay visibility - show initially, hide after 10 seconds (like ExoPlayer)
     var titleOverlayVisible by remember { mutableStateOf(true) }
@@ -75,27 +88,56 @@ fun MPVPlayerOverlay(
         }
     }
     
+    // Request focus on play/pause button when overlay appears
+    LaunchedEffect(visible) {
+        if (visible) {
+            delay(100) // Small delay to ensure composables are laid out
+            try {
+                playPauseFocusRequester.requestFocus()
+            } catch (e: Exception) {
+                // Focus request may fail if button not yet composed
+            }
+        }
+    }
+    
     // Update position and pause state periodically
-    LaunchedEffect(visible, mpvView) {
-        val currentView = mpvView ?: return@LaunchedEffect
-        if (!visible) return@LaunchedEffect
+    // ⭐ CRITICAL: Wait for MPVHolder.ready before polling properties!
+    LaunchedEffect(visible, mpvView, com.flex.elefin.player.mpv.MPVHolder.ready) {
+        android.util.Log.d("MPVPlayerOverlay", "🔵 LaunchedEffect triggered: visible=$visible, mpvView=$mpvView, ready=${com.flex.elefin.player.mpv.MPVHolder.ready}")
         
-        while (visible) {
+        val currentView = mpvView ?: run {
+            android.util.Log.w("MPVPlayerOverlay", "❌ mpvView is null, exiting LaunchedEffect")
+            return@LaunchedEffect
+        }
+        
+        if (!visible) {
+            android.util.Log.d("MPVPlayerOverlay", "⚠️ Overlay not visible, exiting LaunchedEffect")
+            return@LaunchedEffect
+        }
+        
+        // Wait for MPV to be ready (file-loaded event must fire first)
+        if (!com.flex.elefin.player.mpv.MPVHolder.ready) {
+            android.util.Log.d("MPVPlayerOverlay", "⏳ Waiting for MPV to be ready before polling properties... (ready=false)")
+            return@LaunchedEffect
+        }
+        
+        android.util.Log.d("MPVPlayerOverlay", "✅ MPV is ready, starting property polling loop...")
+        
+        while (visible && com.flex.elefin.player.mpv.MPVHolder.ready) {
             val view = mpvView ?: break
             try {
-                // Only update if playback has started (duration > 0 indicates playback is active)
+                // Query MPV properties (safe now that file is loaded)
                 val pos = view.getCurrentPosition()
-                val dur = view.getDuration()
+                val paused = view.isPaused()
                 
-                // Only update state if we have valid values (avoids spamming errors)
-                if (dur > 0 || pos > 0) {
-                    currentPosition.value = pos
-                    duration.value = dur
-                    isPaused.value = view.isPaused()
-                }
+                // Update state (duration comes from Jellyfin, not MPV!)
+                currentPosition.value = pos
+                isPaused.value = paused
+                
+                android.util.Log.v("MPVPlayerOverlay", "Position: ${pos}s, Duration: ${duration.value}s (from Jellyfin), Paused: $paused")
             } catch (e: Exception) {
-                // Silently ignore - properties may not be available yet
-                break
+                android.util.Log.w("MPVPlayerOverlay", "Error getting MPV properties: ${e.message}")
+                // Don't break - just try again next iteration
             }
             delay(500) // Update every 500ms
         }
@@ -199,6 +241,11 @@ fun MPVPlayerOverlay(
                                 colors = IconButtonDefaults.colors(
                                     contentColor = Color.White,
                                     containerColor = Color.Transparent
+                                ),
+                                scale = IconButtonDefaults.scale(
+                                    scale = 1.0f,
+                                    focusedScale = 1.0f,
+                                    pressedScale = 0.95f
                                 )
                             ) {
                                 Icon(
@@ -209,7 +256,7 @@ fun MPVPlayerOverlay(
                             }
                         }
                         
-                        // Play/Pause button
+                        // Play/Pause button (default focus)
                         var playPauseFocused by remember { mutableStateOf(false) }
                         Box(
                             modifier = Modifier
@@ -227,12 +274,18 @@ fun MPVPlayerOverlay(
                                     }
                                 },
                                 modifier = Modifier
+                                    .focusRequester(playPauseFocusRequester)
                                     .onFocusChanged { focusState ->
                                         playPauseFocused = focusState.isFocused || focusState.hasFocus
                                     },
                                 colors = IconButtonDefaults.colors(
                                     contentColor = Color.White,
                                     containerColor = Color.Transparent
+                                ),
+                                scale = IconButtonDefaults.scale(
+                                    scale = 1.0f,
+                                    focusedScale = 1.0f,
+                                    pressedScale = 0.95f
                                 )
                             ) {
                                 Icon(
@@ -270,6 +323,11 @@ fun MPVPlayerOverlay(
                                 colors = IconButtonDefaults.colors(
                                     contentColor = Color.White,
                                     containerColor = Color.Transparent
+                                ),
+                                scale = IconButtonDefaults.scale(
+                                    scale = 1.0f,
+                                    focusedScale = 1.0f,
+                                    pressedScale = 0.95f
                                 )
                             ) {
                                 Icon(
@@ -330,6 +388,11 @@ fun MPVPlayerOverlay(
                                 colors = IconButtonDefaults.colors(
                                     contentColor = Color.White,
                                     containerColor = Color.Transparent
+                                ),
+                                scale = IconButtonDefaults.scale(
+                                    scale = 1.0f,
+                                    focusedScale = 1.0f,
+                                    pressedScale = 0.95f
                                 )
                             ) {
                                 Icon(
@@ -360,6 +423,11 @@ fun MPVPlayerOverlay(
                                 colors = IconButtonDefaults.colors(
                                     contentColor = Color.White,
                                     containerColor = Color.Transparent
+                                ),
+                                scale = IconButtonDefaults.scale(
+                                    scale = 1.0f,
+                                    focusedScale = 1.0f,
+                                    pressedScale = 0.95f
                                 )
                             ) {
                                 Icon(
