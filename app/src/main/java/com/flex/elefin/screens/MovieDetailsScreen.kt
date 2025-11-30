@@ -1104,6 +1104,12 @@ fun ActionButtonsRow(
     var selectedSubtitleIndex by remember { mutableStateOf<Int?>(settings.getSubtitlePreference(item.Id)) }
     var selectedAudioIndex by remember { mutableStateOf<Int?>(settings.getAudioPreference(item.Id)) }
     
+    // Refresh subtitle and audio preferences when returning to this screen
+    LaunchedEffect(item.Id) {
+        selectedSubtitleIndex = settings.getSubtitlePreference(item.Id)
+        selectedAudioIndex = settings.getAudioPreference(item.Id)
+    }
+    
     // Change label to "Play From Start" when there's a resume button
     val playButtonLabel = if (isResumable) "Play From Start" else "Play"
     

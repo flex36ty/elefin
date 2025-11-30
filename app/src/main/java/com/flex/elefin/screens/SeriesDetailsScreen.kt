@@ -1722,8 +1722,14 @@ fun EpisodeActionButtonsRow(
     
     var showSubtitleDialog by remember { mutableStateOf(false) }
     var showAudioDialog by remember { mutableStateOf(false) }
-    val storedSubtitleIndex = settings.getSubtitlePreference(displayEpisode.Id)
-    val storedAudioIndex = settings.getAudioPreference(displayEpisode.Id)
+    var storedSubtitleIndex by remember { mutableStateOf<Int?>(settings.getSubtitlePreference(displayEpisode.Id)) }
+    var storedAudioIndex by remember { mutableStateOf<Int?>(settings.getAudioPreference(displayEpisode.Id)) }
+    
+    // Refresh subtitle and audio preferences when returning to this screen
+    LaunchedEffect(displayEpisode.Id) {
+        storedSubtitleIndex = settings.getSubtitlePreference(displayEpisode.Id)
+        storedAudioIndex = settings.getAudioPreference(displayEpisode.Id)
+    }
     
     // Fetch episode details to get MediaSources and UserData for time remaining
     var episodeDetails by remember { mutableStateOf<JellyfinItem?>(null) }
