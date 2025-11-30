@@ -42,10 +42,22 @@ Elefin is an Android TV jellyfin client. It's built from the ground up using Jet
   - Video resolution and HDR/SDR indicators
 
 ### Video Playback
-- **ExoPlayer** support (default) for reliable video playback
-- **MPV Player** option for advanced video codec support
+- **ExoPlayer with FFmpeg** support (default) for comprehensive codec support
+  - **Advanced Audio Codecs**: DTS, DTS-HD Master Audio, Dolby TrueHD, AC3, E-AC3
+  - **Additional Codecs**: FLAC, ALAC, Vorbis, Opus, and 30+ more formats
+  - Powered by Jellyfin's FFmpeg decoder extension
+  - Automatic hardware acceleration when available
+- **MPV Player** option (experimental) for alternative playback
 - Automatic playback position tracking and resume functionality
-- **Subtitle selection** with language detection
+- **Enhanced Subtitle Support**:
+  - Language-aware selection with forced/CC/external detection
+  - Support for SRT, VTT, ASS, PGS, and embedded formats
+  - Customizable appearance (size, color, background)
+  - Reliable matching system for accurate subtitle selection
+- **Custom Settings Menu** with transparent overlay:
+  - Quick access to subtitle, audio, and playback speed settings
+  - Auto-focus on first item for better TV navigation
+  - Semi-transparent background for viewing content while adjusting
 - **Seek controls** (15 seconds forward/backward with D-pad)
 - Title overlay showing movie/show name and episode information
 - Automatic error handling and fallback to transcoding
@@ -64,8 +76,11 @@ Elefin is an Android TV jellyfin client. It's built from the ground up using Jet
 - Touch-optimized controls for Android TV remote
 
 ### Settings
-- Player selection (ExoPlayer/MPV)
-- Image loading preferences
+- Player selection (ExoPlayer with FFmpeg / MPV experimental)
+- Subtitle customization (size, color, background transparency)
+- Image loading preferences (Coil/Glide)
+- Auto-refresh intervals for home screen
+- Dark mode and poster resolution options
 - Debug outlines for development
 - Multiple customization options
 
@@ -78,7 +93,7 @@ Elefin is an Android TV jellyfin client. It's built from the ground up using Jet
 
 ### Dark mode
 
-![darkmode1](https://raw.githubusercontent.com/flex36ty/elefin/master/screenshots/darkmode1.png)
+![darkmode1](https://raw.githubusercontent.com/flex36ty/elefin/master/screenshots/darkmode.png)
 
 ## Requirements
 
@@ -116,8 +131,9 @@ _Add screenshots here to showcase the app interface_
 - **Kotlin** - Programming language
 - **Jetpack Compose for TV** - Modern UI framework
 - **Material Design 3** - Design system
-- **ExoPlayer/Media3** - Video playback engine
-- **MPV** - Alternative video player (optional)
+- **ExoPlayer/Media3** - Video playback engine with full codec support
+- **Jellyfin FFmpeg Decoder** - Advanced audio codec support (DTS, TrueHD, AC3, etc.)
+- **MPV** - Alternative video player (experimental)
 - **Ktor** - HTTP client for Jellyfin API
 - **Coil/Glide** - Image loading libraries
 - **Kotlin Serialization** - JSON parsing
