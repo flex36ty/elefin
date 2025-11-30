@@ -1,4 +1,4 @@
-# Changelog v1.1.5 
+# Changelog v1.1.5 (v1.1.4 was a private release)
 
 All notable changes to Elefin will be documented in this file.
 
