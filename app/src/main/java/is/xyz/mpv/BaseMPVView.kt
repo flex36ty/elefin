@@ -174,11 +174,29 @@ abstract class BaseMPVView(context: Context, attrs: AttributeSet?) : SurfaceView
     var pendingUrl: String? = null
 
     /**
-     * Reset for next video - call this before loading a new file
+     * Reset for next video - just clear the loaded flag
+     * Do NOT call stop here - it must be done BEFORE surface attach!
      */
     fun resetForNextVideo() {
         hasLoadedOnce = false
-        Log.d(TAG, "✅ Reset for next video (hasLoadedOnce = false)")
+        Log.d(TAG, "✅ Reset hasLoadedOnce flag for next video")
+    }
+    
+    /**
+     * Stop playback - call this BEFORE surface initialization
+     * This must be called before any GPU/VO configuration
+     */
+    fun stopPlayback() {
+        try {
+            if (initialized) {
+                Log.d(TAG, "Stopping MPV playback...")
+                MPVLib.command(arrayOf("stop"))
+                Thread.sleep(50) // Wait for stop to complete
+                Log.d(TAG, "✅ MPV stopped")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping MPV", e)
+        }
     }
     
     /**
@@ -200,11 +218,17 @@ abstract class BaseMPVView(context: Context, attrs: AttributeSet?) : SurfaceView
         
         // Only load file if surface is ready and VO is configured
         if (initialized && surfaceReady && holder.surface != null && holder.surface.isValid) {
-            Log.d(TAG, "✅ Surface ready, loading file (ONCE): $url")
-            MPVLib.command(arrayOf("loadfile", url))
-            hasLoadedOnce = true  // Mark as loaded
-            this.filePath = null
-            this.pendingUrl = null
+            try {
+                // ⭐ NO STOP HERE - already done in resetForNextVideo()
+                // Double stop kills MPV's command queue!
+                Log.d(TAG, "✅ Surface ready, loading file: $url")
+                MPVLib.command(arrayOf("loadfile", url))
+                hasLoadedOnce = true  // Mark as loaded
+                this.filePath = null
+                this.pendingUrl = null
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading file", e)
+            }
         } else {
             Log.d(TAG, "Waiting for surface to be ready before loading file. initialized=$initialized, surfaceReady=$surfaceReady, surface=${holder.surface?.isValid}")
         }
@@ -255,48 +279,11 @@ abstract class BaseMPVView(context: Context, attrs: AttributeSet?) : SurfaceView
             Log.w(TAG, "Error configuring surface format for HDR", e)
         }
         
-        // Attach surface AFTER format is set - this is critical for video output
+        // ⭐ ONLY attach surface here - do NOT configure VO/HDR/GPU properties!
+        // Configuration MUST happen ONCE in the app code (MPVVideoPlayerScreen), NOT here
+        // Double configuration causes MPV to enter reconfig loop and discard loadfile commands
         MPVLib.attachSurface(holder.surface)
-        Log.d(TAG, "✅ Surface attached via MPVLib.attachSurface() with HDR format (RGBA_1010102)")
-        
-        // CRITICAL: Configure video output properties AFTER attaching surface
-        // These must be set as PROPERTIES (after init and attachSurface) for HDR to work
-        Log.d(TAG, "Configuring video output properties for HDR (MUST be after attachSurface)")
-        
-        // GPU context and API (required for video rendering)
-        MPVLib.setPropertyString("gpu-context", "android")
-        MPVLib.setPropertyString("gpu-api", "opengl")
-        MPVLib.setPropertyString("opengl-es", "yes")
-        MPVLib.setPropertyString("hwdec", "mediacodec-copy")
-        
-        // HDR output configuration - MUST be set as properties AFTER attachSurface
-        // Use gpu-next VO for better HDR support (already set in initOptions, but ensure it's active)
-        MPVLib.setPropertyString("vo", "gpu-next")
-        Log.d(TAG, "✅ VO set to gpu-next for HDR support")
-        
-        // HDR processing properties
-        MPVLib.setPropertyString("hdr-compute-peak", "yes")
-        MPVLib.setPropertyString("hdr-peak-percentile", "99")
-        MPVLib.setPropertyString("target-colorspace-hint", "yes")
-        
-        // CRITICAL: Enable native HDR passthrough (must be set as properties)
-        MPVLib.setPropertyString("gpu-hdr", "yes")
-        MPVLib.setPropertyString("native-hdr", "yes")
-        Log.d(TAG, "✅ Native HDR passthrough enabled: gpu-hdr=yes, native-hdr=yes")
-        
-        // Tone mapping - use "auto" for better HDR handling (clip was too aggressive)
-        MPVLib.setPropertyString("tone-mapping", "auto")
-        Log.d(TAG, "✅ Tone mapping set to auto for HDR")
-        
-        // Enable 10-bit framebuffer format for HDR output (critical to prevent dithering to 8-bit)
-        try {
-            MPVLib.setPropertyString("fbo-format", "rgb10_a2")
-            Log.d(TAG, "✅ HDR framebuffer format set to rgb10_a2 (10-bit) - prevents dithering to 8-bit")
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not set fbo-format (may not be supported)", e)
-        }
-        
-        Log.d(TAG, "✅ HDR support fully configured: Surface=RGBA_1010102, vo=gpu-next, fbo-format=rgb10_a2, gpu-hdr=yes, native-hdr=yes, tone-mapping=bt2390")
+        Log.d(TAG, "✅ Surface attached (RGBA_1010102 format for HDR)")
         
         // This forces mpv to render subs/osd/whatever into our surface even if it would ordinarily not
         MPVLib.setOptionString("force-window", "yes")
@@ -320,17 +307,19 @@ abstract class BaseMPVView(context: Context, attrs: AttributeSet?) : SurfaceView
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         if (!initialized) return
-        Log.w(TAG, "⚠️ Surface destroyed - this should NOT happen during video playback!")
-        Log.w(TAG, "   If this happens between videos, you'll get crashes!")
+        
+        // Surface destroyed - this should only happen when:
+        // 1. App is backgrounded
+        // 2. Activity is finishing
+        // 3. Configuration change (rotation, etc.)
+        // It should NOT happen between normal video loads (MPVView is now persistent)
+        Log.d(TAG, "Surface destroyed (app backgrounded or activity finishing)")
         
         // ⭐ CRITICAL: DO NOT detach surface or set vo=null during normal operation!
         // This breaks MPV's VO pipeline and causes "current-vo=null" + crashes
-        // Surface should only be destroyed when:
-        // 1. App is backgrounded
-        // 2. Activity is finishing
-        // NOT between video loads!
-        
+        // We only mark surfaceReady as false, but don't destroy the VO
         surfaceReady = false
+        
         // DO NOT set vo=null or detach surface - MPV needs the surface to stay alive!
         // The only exception is in destroy() when we're truly shutting down
     }

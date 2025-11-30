@@ -14,13 +14,12 @@ android {
         applicationId = "com.flex.elefin"
         minSdk = 21
         targetSdk = 36
+
         // Version code: major * 10000 + minor * 100 + patch
-        // Examples: v1.0 = 10000, v1.1 = 10100, v1.2.3 = 10203, v2.0.0 = 20000
-        versionCode = 10102  // v1.1.2 = 1 * 10000 + 1 * 100 + 0 = 10100
-        versionName = "1.1.2"  // This is just for display - versionCode is used for comparison
+        versionCode = 10102  
+        versionName = "1.1.2"
 
         ndk {
-            // Include all ABIs that have native libraries
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
         }
     }
@@ -39,8 +38,8 @@ android {
         onVariants { variant ->
             if (variant.buildType == "release") {
                 variant.outputs.forEach { output ->
-                    val outputImpl = output as com.android.build.api.variant.impl.VariantOutputImpl
-                    outputImpl.outputFileName.set("elefin-release.apk")
+                    val out = output as com.android.build.api.variant.impl.VariantOutputImpl
+                    out.outputFileName.set("elefin-release.apk")
                 }
             }
         }
@@ -53,10 +52,11 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+
     buildFeatures {
         compose = true
     }
-    
+
     sourceSets {
         getByName("main") {
             jniLibs.srcDirs("lib")
@@ -65,56 +65,99 @@ android {
 }
 
 dependencies {
+
+    // -------------------------------------------------------------
+    // AndroidX Core + Leanback
+    // -------------------------------------------------------------
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.leanback)
+
+    // -------------------------------------------------------------
+    // Images - Glide + Coil
+    // -------------------------------------------------------------
     implementation(libs.glide)
     kapt("com.github.bumptech.glide:compiler:4.11.0")
-    
-    // Compose BOM
+    implementation(libs.coil.compose)
+
+    // -------------------------------------------------------------
+    // Compose BOM + UI
+    // -------------------------------------------------------------
     implementation(platform(libs.compose.bom))
     implementation(libs.ui)
     implementation(libs.foundation)
     implementation(libs.lifecycle.runtime.ktx)
     implementation(libs.activity.compose)
-    
+    implementation("androidx.compose.material3:material3:1.3.0")
+    implementation("androidx.compose.material:material-icons-extended")
+
     // TV Compose
     implementation(libs.tv.foundation)
     implementation(libs.tv.material)
-    
-    // Material Icons Extended (includes Language icon and more)
-    implementation("androidx.compose.material:material-icons-extended")
-    
-    // Coil for image loading
-    implementation(libs.coil.compose)
-    
+
+    // -------------------------------------------------------------
     // Navigation
+    // -------------------------------------------------------------
     implementation(libs.navigation.compose)
-    
-    // Ktor for HTTP client
+
+    // -------------------------------------------------------------
+    // JSON / Networking - Ktor + Gson
+    // -------------------------------------------------------------
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.android)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.kotlinx.serialization.json)
+    implementation("com.google.code.gson:gson:2.11.0")
+
+    // GitHub updater
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // -------------------------------------------------------------
+    // Lottie
+    // -------------------------------------------------------------
+    implementation(libs.lottieCompose)
+
+    // -------------------------------------------------------------
+    // Media3 / ExoPlayer - COMPLETE JELLYFIN CLIENT EXTENSIONS
+    // -------------------------------------------------------------
     
-    // Media3/ExoPlayer for video playback
+    // Core ExoPlayer
     implementation(libs.media3.exoplayer)
-    implementation(libs.media3.exoplayer.hls) // HLS streaming support (better subtitle track detection)
-    implementation(libs.media3.exoplayer.dash) // DASH streaming support (better subtitle track detection)
-    // Note: FFmpeg extension is not available as a pre-built Maven dependency
-    // Extension renderer mode (EXTENSION_RENDERER_MODE_PREFER) is already configured in JellyfinVideoPlayerScreen
-    // which enables software decoding for additional codecs. For full FFmpeg support (DTS, TrueHD),
-    // the extension would need to be built from source or use a third-party build.
-    implementation(libs.media3.ui)
-    implementation(libs.media3.ui.compose)
     implementation(libs.media3.common)
     
-    // Lottie for animations
-    implementation(libs.lottieCompose)
+    // Adaptive Streaming (HLS, DASH, SmoothStreaming)
+    implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.exoplayer.dash)
+    implementation(libs.media3.exoplayer.smoothstreaming)
     
-    // OkHttp for GitHub Releases API
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // UI Components
+    implementation(libs.media3.ui)
+    implementation(libs.media3.ui.compose)
+    implementation(libs.media3.ui.leanback) // Android TV optimized UI
     
-    // Gson for JSON parsing
-    implementation("com.google.code.gson:gson:2.11.0")
+    // Extractors (Subtitle support: SRT, ASS, VTT, TTML, MKV internal subs)
+    implementation(libs.media3.extractor)
+    
+    // MediaSession (TV remote controls, Next Episode, Media keys)
+    implementation(libs.media3.session)
+    
+    // Network DataSources
+    implementation(libs.media3.datasource.okhttp) // REQUIRED for Jellyfin API reliability
+    implementation(libs.media3.datasource.cronet) // Optional: Ultra-low latency streaming
+    
+    // Transformer (Optional: Advanced media processing)
+    implementation(libs.media3.transformer)
+    
+    // -------------------------------------------------------------
+    // FFmpeg Extension (Optional - Build Required)
+    // -------------------------------------------------------------
+    // Enables: DTS, TrueHD, PGS subtitles (.sup), VobSub, 30+ codecs
+    // See BUILD_FFMPEG.md for build instructions
+    
+    // Step 1: Build or download media3-decoder-ffmpeg.aar
+    // Step 2: Place in app/libs/
+    // Step 3: Uncomment these lines:
+    
+    // implementation("androidx.media3:media3-decoder:1.8.0")
+    // implementation(files("libs/media3-decoder-ffmpeg.aar"))
 }

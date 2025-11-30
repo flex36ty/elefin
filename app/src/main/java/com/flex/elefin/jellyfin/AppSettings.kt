@@ -36,6 +36,10 @@ class AppSettings(context: Context) {
         private const val KEY_SUBTITLE_BG_COLOR = "subtitle_bg_color"
         private const val KEY_SUBTITLE_BG_TRANSPARENT = "subtitle_bg_transparent"
         private const val KEY_SUBTITLE_TEXT_SIZE = "subtitle_text_size"
+        private const val KEY_EXO_SUBTITLE_TEXT_COLOR = "exo_subtitle_text_color"
+        private const val KEY_EXO_SUBTITLE_BG_COLOR = "exo_subtitle_bg_color"
+        private const val KEY_EXO_SUBTITLE_BG_TRANSPARENT = "exo_subtitle_bg_transparent"
+        private const val KEY_EXO_SUBTITLE_TEXT_SIZE = "exo_subtitle_text_size"
     }
 
     var isMpvEnabled: Boolean
@@ -189,5 +193,22 @@ class AppSettings(context: Context) {
     var subtitleTextSize: Int
         get() = prefs.getInt(KEY_SUBTITLE_TEXT_SIZE, 55).coerceIn(30, 100)
         set(value) = prefs.edit().putInt(KEY_SUBTITLE_TEXT_SIZE, value.coerceIn(30, 100)).apply()
+    
+    // ExoPlayer-specific subtitle settings
+    var exoSubtitleTextColor: Int
+        get() = prefs.getInt(KEY_EXO_SUBTITLE_TEXT_COLOR, 0xFFFFFFFF.toInt())
+        set(value) = prefs.edit().putInt(KEY_EXO_SUBTITLE_TEXT_COLOR, value).apply()
+    
+    var exoSubtitleBgColor: Int
+        get() = prefs.getInt(KEY_EXO_SUBTITLE_BG_COLOR, 0xFF000000.toInt())
+        set(value) = prefs.edit().putInt(KEY_EXO_SUBTITLE_BG_COLOR, value).apply()
+    
+    var exoSubtitleBgTransparent: Boolean
+        get() = prefs.getBoolean(KEY_EXO_SUBTITLE_BG_TRANSPARENT, false)
+        set(value) = prefs.edit().putBoolean(KEY_EXO_SUBTITLE_BG_TRANSPARENT, value).apply()
+    
+    var exoSubtitleTextSize: Int
+        get() = prefs.getInt(KEY_EXO_SUBTITLE_TEXT_SIZE, 55).coerceIn(30, 100)
+        set(value) = prefs.edit().putInt(KEY_EXO_SUBTITLE_TEXT_SIZE, value.coerceIn(30, 100)).apply()
 }
 

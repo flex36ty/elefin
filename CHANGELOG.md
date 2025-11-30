@@ -1,8 +1,56 @@
-# Changelog v1.1.2
+# Changelog v1.1
 
 All notable changes to Elefin will be documented in this file.
 
 ## Unreleased / Upcoming Release
+
+### Added
+- **ExoPlayer - External Subtitle Support**
+  - Full support for external SRT subtitle files
+  - Correct URL format for Jellyfin external subtitles
+  - Automatic detection and loading of sidecar subtitle files
+  - Support for multiple subtitle formats (SRT, VTT, ASS, PGS)
+
+- **ExoPlayer - Comprehensive Media3 Extensions**
+  - Added HLS extension for HTTP Live Streaming support
+  - Added DASH extension for Dynamic Adaptive Streaming
+  - Added SmoothStreaming extension for Microsoft adaptive streaming
+  - Added UI extensions for standard and TV (Leanback) interfaces
+  - Added enhanced subtitle extractor for better format support
+  - Added MediaSession extension for Android TV media controls
+  - Added OkHttp and Cronet data source extensions for improved networking
+  - Added Transformer extension for media processing capabilities
+  - FFmpeg extension support prepared for advanced codecs (DTS, TrueHD, PGS)
+
+- **ExoPlayer - Subtitle Customization**
+  - Adjustable subtitle text size (range: 30-100)
+  - Customizable subtitle text color
+  - Toggle subtitle background transparency
+  - Customizable subtitle background color
+  - Independent settings from MPV player
+  - Settings saved per-player type
+
+### Changed
+- **Subtitle Loading System**
+  - Switched to `DefaultMediaSourceFactory` for proper subtitle configuration handling
+  - Improved subtitle track detection and registration
+  - Fixed duplicate subtitle registration issues
+  - Enhanced subtitle URL generation with correct extensions
+
+### Fixed
+- **Subtitle Selection**
+  - Fixed indexing issues causing wrong subtitle selection
+  - Corrected group index mapping for filtered track lists
+  - Resolved conflicts between saved preferences and manual selections
+  - Fixed "None" option not disabling subtitles properly
+  - Prevented forced subtitle auto-selection
+
+- **Track Selector Configuration**
+  - Disabled forced and default subtitle auto-selection flags
+  - Improved track selector parameter handling
+  - Fixed subtitle preference application (now only applies once on startup)
+
+### Previous Unreleased Features
 
 ### Added
 - **MPV Player - Custom Subtitle Overlay**

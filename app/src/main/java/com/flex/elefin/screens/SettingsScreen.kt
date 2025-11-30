@@ -86,12 +86,19 @@ fun SettingsScreen(
     var latestRelease by remember { mutableStateOf<com.flex.elefin.updater.GitHubRelease?>(null) }
     var checkingForUpdates by remember { mutableStateOf(false) }
     var updateCheckMessage by remember { mutableStateOf<String?>(null) }
+    var isMpvEnabled by remember { mutableStateOf(settings.isMpvEnabled) }
     
-    // Subtitle customization settings
+    // MPV Subtitle customization settings
     var subtitleTextSize by remember { mutableStateOf(settings.subtitleTextSize) }
     var subtitleBgTransparent by remember { mutableStateOf(settings.subtitleBgTransparent) }
     var showSubtitleColorDialog by remember { mutableStateOf(false) }
     var showSubtitleBgColorDialog by remember { mutableStateOf(false) }
+    
+    // ExoPlayer Subtitle customization settings
+    var exoSubtitleTextSize by remember { mutableStateOf(settings.exoSubtitleTextSize) }
+    var exoSubtitleBgTransparent by remember { mutableStateOf(settings.exoSubtitleBgTransparent) }
+    var showExoSubtitleColorDialog by remember { mutableStateOf(false) }
+    var showExoSubtitleBgColorDialog by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -325,6 +332,165 @@ fun SettingsScreen(
                         
                         Button(
                             onClick = { showSubtitleBgColorDialog = true }
+                        ) {
+                            Text("Choose Color")
+                        }
+                    }
+                }
+            }
+            
+            // ExoPlayer Subtitle Customization section
+            if (!isMpvEnabled) {
+                Text(
+                    text = "ExoPlayer Subtitle Customization",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                )
+                
+                // ExoPlayer subtitle text size
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "ExoPlayer Subtitle Text Size",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Size: $exoSubtitleTextSize (range: 30-100)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                if (exoSubtitleTextSize > 30) {
+                                    exoSubtitleTextSize -= 5
+                                    settings.exoSubtitleTextSize = exoSubtitleTextSize
+                                }
+                            },
+                            enabled = exoSubtitleTextSize > 30
+                        ) {
+                            Text("-")
+                        }
+                        Button(
+                            onClick = {
+                                if (exoSubtitleTextSize < 100) {
+                                    exoSubtitleTextSize += 5
+                                    settings.exoSubtitleTextSize = exoSubtitleTextSize
+                                }
+                            },
+                            enabled = exoSubtitleTextSize < 100
+                        ) {
+                            Text("+")
+                        }
+                    }
+                }
+                
+                // ExoPlayer subtitle text color
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "ExoPlayer Subtitle Text Color",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Choose ExoPlayer subtitle text color",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    
+                    Button(
+                        onClick = { showExoSubtitleColorDialog = true }
+                    ) {
+                        Text("Choose Color")
+                    }
+                }
+                
+                // ExoPlayer subtitle background transparency
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "Transparent ExoPlayer Subtitle Background",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Make ExoPlayer subtitle background transparent or opaque",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    
+                    Button(
+                        onClick = {
+                            exoSubtitleBgTransparent = !exoSubtitleBgTransparent
+                            settings.exoSubtitleBgTransparent = exoSubtitleBgTransparent
+                        },
+                        colors = ButtonDefaults.colors(
+                            containerColor = if (exoSubtitleBgTransparent) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            }
+                        )
+                    ) {
+                        Text(if (exoSubtitleBgTransparent) "Transparent" else "Opaque")
+                    }
+                }
+                
+                // ExoPlayer subtitle background color (only if not transparent)
+                if (!exoSubtitleBgTransparent) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "ExoPlayer Subtitle Background Color",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Choose ExoPlayer subtitle background color",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                        
+                        Button(
+                            onClick = { showExoSubtitleBgColorDialog = true }
                         ) {
                             Text("Choose Color")
                         }
@@ -1296,6 +1462,32 @@ fun SettingsScreen(
                     showSubtitleBgColorDialog = false
                 },
                 onDismiss = { showSubtitleBgColorDialog = false }
+            )
+        }
+        
+        // ExoPlayer subtitle text color picker dialog
+        if (showExoSubtitleColorDialog) {
+            SubtitleColorPickerDialog(
+                title = "ExoPlayer Subtitle Text Color",
+                currentColor = settings.exoSubtitleTextColor,
+                onColorSelected = { color ->
+                    settings.exoSubtitleTextColor = color
+                    showExoSubtitleColorDialog = false
+                },
+                onDismiss = { showExoSubtitleColorDialog = false }
+            )
+        }
+        
+        // ExoPlayer subtitle background color picker dialog
+        if (showExoSubtitleBgColorDialog) {
+            SubtitleColorPickerDialog(
+                title = "ExoPlayer Subtitle Background Color",
+                currentColor = settings.exoSubtitleBgColor,
+                onColorSelected = { color ->
+                    settings.exoSubtitleBgColor = color
+                    showExoSubtitleBgColorDialog = false
+                },
+                onDismiss = { showExoSubtitleBgColorDialog = false }
             )
         }
     }

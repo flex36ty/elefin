@@ -1495,6 +1495,31 @@ fun ActionButtonsRow(
             onSubtitleSelected = { subtitleIndex ->
                 selectedSubtitleIndex = subtitleIndex
                 settings.setSubtitlePreference(item.Id, subtitleIndex)
+                
+                // ⭐ Pre-download subtitle when selected (before playback starts)
+                if (subtitleIndex != null && apiService != null) {
+                    scope.launch {
+                        try {
+                            val mediaSource = displayItem.MediaSources?.firstOrNull()
+                            val mediaSourceId = mediaSource?.Id ?: displayItem.Id
+                            val subtitleStream = mediaSource?.MediaStreams
+                                ?.find { it.Type == "Subtitle" && it.Index == subtitleIndex }
+                            
+                            if (subtitleStream != null) {
+                                android.util.Log.d("MovieDetails", "Pre-downloading selected subtitle: ${subtitleStream.DisplayTitle}")
+                                com.flex.elefin.player.SubtitleDownloader.downloadSubtitle(
+                                    context = context,
+                                    apiService = apiService,
+                                    itemId = item.Id,
+                                    mediaSourceId = mediaSourceId,
+                                    stream = subtitleStream
+                                )
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("MovieDetails", "Error pre-downloading subtitle", e)
+                        }
+                    }
+                }
             }
         )
     }

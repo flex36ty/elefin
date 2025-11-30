@@ -1,10 +1,14 @@
 package com.flex.elefin.player
 
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import com.flex.elefin.jellyfin.JellyfinApiService
 import com.flex.elefin.jellyfin.MediaStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Maps Jellyfin subtitle streams to ExoPlayer subtitle track IDs
@@ -44,10 +48,16 @@ object SubtitleMapper {
     
     /** Stores the order subtitles were added (for position-based mapping) */
     private val jellyfinIndexToExpectedPosition = mutableMapOf<Int, Int>()
+    
+    /** Reverse lookup: Jellyfin index → (groupIndex, trackIndex) */
+    private val jellyfinIndexToExoPlayerTrack = mutableMapOf<Int, Pair<Int, Int>>()
 
-    fun buildSubtitleConfiguration(
+    suspend fun buildSubtitleConfiguration(
+        context: Context,
+        apiService: JellyfinApiService,
+        itemId: String,
+        mediaSourceId: String,
         stream: MediaStream,
-        subtitleUrl: String,
         positionIndex: Int
     ): MediaItem.SubtitleConfiguration {
         // Save the expected position for this Jellyfin index
@@ -72,18 +82,47 @@ object SubtitleMapper {
         }
         
         Log.d(TAG, "✅ Mapped subtitle: JF index=${stream.Index}, position=$positionIndex, lang=${stream.Language}, codec=${stream.Codec}, flags=[$flags]")
+        Log.d(TAG, "   IsExternal=${stream.IsExternal}, Path=${stream.Path}")
         Log.d(TAG, "   Expected to appear at position $positionIndex in ExoPlayer track list")
         Log.d(TAG, "   Label: ${buildLabel(stream)}")
-        Log.d(TAG, "   URL: $subtitleUrl")
         
-        // Determine MIME type from codec
-        val mimeType = when (stream.Codec?.lowercase()) {
-            "srt", "subrip" -> MimeTypes.APPLICATION_SUBRIP
-            "vtt", "webvtt" -> MimeTypes.TEXT_VTT
-            "ass", "ssa" -> MimeTypes.TEXT_SSA
-            "ttml" -> MimeTypes.APPLICATION_TTML
-            else -> MimeTypes.TEXT_VTT // Default to VTT
+        // ⭐ Use HTTP URL directly - don't block playback with downloads
+        // ExoPlayer can load subtitles from HTTP perfectly fine
+        val httpUrl = apiService.buildJellyfinSubtitleUrl(
+            itemId = itemId,
+            mediaSourceId = mediaSourceId,
+            streamIndex = stream.Index ?: 0,
+            isExternal = stream.IsExternal == true,
+            codec = stream.Codec,
+            path = stream.Path
+        )
+        Log.d(TAG, "   Using HTTP URL: $httpUrl")
+        
+        val subtitleUri = Uri.parse(httpUrl)
+        
+        // Determine MIME type from codec OR file extension (for external subtitles)
+        // ⭐ CRITICAL: External subtitles may have NULL codec, so check Path extension too
+        val codecLower = stream.Codec?.lowercase()
+        val pathExtension = stream.Path?.substringAfterLast('.')?.lowercase()
+        
+        val mimeType = when {
+            codecLower == "srt" || codecLower == "subrip" -> MimeTypes.APPLICATION_SUBRIP
+            codecLower == "vtt" || codecLower == "webvtt" -> MimeTypes.TEXT_VTT
+            codecLower == "ass" || codecLower == "ssa" || codecLower == "substationalpha" -> MimeTypes.TEXT_SSA
+            codecLower == "ttml" -> MimeTypes.APPLICATION_TTML
+            codecLower == "pgs" || codecLower == "hdmv_pgs_subtitle" -> MimeTypes.APPLICATION_PGS
+            // Fallback to file extension for external subtitles with NULL codec
+            pathExtension == "srt" -> MimeTypes.APPLICATION_SUBRIP
+            pathExtension == "vtt" -> MimeTypes.TEXT_VTT
+            pathExtension == "ass" || pathExtension == "ssa" -> MimeTypes.TEXT_SSA
+            // Default to SRT (most common for external subtitles)
+            else -> {
+                Log.w(TAG, "⚠️ Unknown subtitle codec='${stream.Codec}', path='${stream.Path}' - defaulting to APPLICATION_SUBRIP")
+                MimeTypes.APPLICATION_SUBRIP
+            }
         }
+        
+        Log.d(TAG, "   MIME type: $mimeType (codec=${stream.Codec}, ext=$pathExtension)")
         
         // Store metadata for later composite key matching
         // When ExoPlayer exposes this track, we'll compute its composite key and match it
@@ -97,7 +136,7 @@ object SubtitleMapper {
             compositeKeyToMetadata["jf_idx_${jellyfinIndex}"] = stream
         }
         
-        return MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitleUrl))
+        return MediaItem.SubtitleConfiguration.Builder(subtitleUri)
             .setMimeType(mimeType)
             .setLanguage(stream.Language ?: "und")
             .setLabel(buildLabel(stream))
@@ -190,15 +229,27 @@ object SubtitleMapper {
         compositeKeyToJellyfinIndex[languageFallbackKey] = jellyfinIndex
         compositeKeyToMetadata[languageFallbackKey] = metadata
         
+        // Store reverse lookup: Jellyfin index → ExoPlayer track
+        jellyfinIndexToExoPlayerTrack[jellyfinIndex] = Pair(groupIndex, trackIndex)
+        
         Log.d(TAG, "✅ Registered ExoPlayer track: Group=$groupIndex, Track=$trackIndex → JF index=$jellyfinIndex")
         Log.d(TAG, "   Composite key: $compositeKey")
     }
 
+    /**
+     * Get ExoPlayer track info (groupIndex, trackIndex) from Jellyfin subtitle index.
+     * Returns null if the mapping doesn't exist.
+     */
+    fun getExoPlayerTrackInfo(jellyfinIndex: Int): Pair<Int, Int>? {
+        return jellyfinIndexToExoPlayerTrack[jellyfinIndex]
+    }
+    
     /** Clears mappings for a new playback session */
     fun reset() {
         compositeKeyToJellyfinIndex.clear()
         compositeKeyToMetadata.clear()
         jellyfinIndexToExpectedPosition.clear()
+        jellyfinIndexToExoPlayerTrack.clear()
         Log.d(TAG, "Reset subtitle mappings for new playback session")
     }
     
@@ -265,11 +316,32 @@ object SubtitleMapper {
     }
 
     private fun buildLabel(stream: MediaStream): String {
-        // Use DisplayLanguage (human-readable) if available, fallback to DisplayTitle or Language code
-        val base = stream.DisplayLanguage ?: stream.DisplayTitle ?: stream.Language ?: "Unknown"
-        val ext = if (stream.IsExternal == true) " (External)" else ""
-        val forced = if (stream.IsForced == true) " [Forced]" else ""
-        val cc = if (stream.IsHearingImpaired == true) " [CC/SDH]" else ""
+        // ⭐ Priority order for subtitle label:
+        // 1. DisplayTitle (full name from Jellyfin, e.g., "English (CC) - SUBRIP - Default")
+        // 2. Title (custom track title)
+        // 3. DisplayLanguage (human-readable language name, e.g., "English")
+        // 4. Language code (ISO code, e.g., "eng")
+        val base = stream.DisplayTitle 
+            ?: stream.Title 
+            ?: stream.DisplayLanguage 
+            ?: stream.Language 
+            ?: "Unknown"
+        
+        // Only add flags if they're NOT already in DisplayTitle
+        val displayTitleLower = stream.DisplayTitle?.lowercase() ?: ""
+        
+        val ext = if (stream.IsExternal == true && !displayTitleLower.contains("external")) {
+            " (External)"
+        } else ""
+        
+        val forced = if (stream.IsForced == true && !displayTitleLower.contains("forced")) {
+            " [Forced]"
+        } else ""
+        
+        val cc = if (stream.IsHearingImpaired == true && !displayTitleLower.contains("cc") && !displayTitleLower.contains("sdh")) {
+            " [CC/SDH]"
+        } else ""
+        
         return "$base$ext$forced$cc"
     }
 }

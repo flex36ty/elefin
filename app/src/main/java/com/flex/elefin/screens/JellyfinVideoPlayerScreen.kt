@@ -46,6 +46,7 @@ import androidx.media3.ui.PlayerView
 import com.flex.elefin.jellyfin.JellyfinApiService
 import com.flex.elefin.jellyfin.JellyfinItem
 import com.flex.elefin.jellyfin.MediaStream
+import com.flex.elefin.player.SubtitleMapper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -68,6 +69,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.ListItem
 import androidx.tv.material3.Text
+import androidx.tv.material3.Icon
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.background
@@ -75,8 +77,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.heightIn
 import androidx.media3.common.TrackSelectionOverride
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 
 @UnstableApi
 @Composable
@@ -115,6 +129,14 @@ fun JellyfinVideoPlayerScreen(
         setParameters(
             buildUponParameters()
                 .setForceHighestSupportedBitrate(true)
+                // Subtitle preferences - disable ALL auto-selection but allow manual control
+                .setSelectUndeterminedTextLanguage(false)  // Don't auto-select unknown language subs
+                .setDisabledTextTrackSelectionFlags(C.SELECTION_FLAG_FORCED or C.SELECTION_FLAG_DEFAULT)  // Disable forced AND default auto-selection
+                // ❌ DO NOT use setTrackTypeDisabled - it prevents "None" from working in ExoPlayer UI
+                // Only select subtitles explicitly chosen by user or saved preference
+                .setPreferredTextLanguage(null)  // No auto language preference
+                .setPreferredTextRoleFlags(0)  // No role-based auto-selection
+                .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_FORCED or C.SELECTION_FLAG_DEFAULT)  // Ignore forced/default flags completely
         )
     }
     
@@ -172,6 +194,7 @@ fun JellyfinVideoPlayerScreen(
     var showSettingsMenu by remember { mutableStateOf(false) }
     var currentSubtitleIndex by remember { mutableStateOf<Int?>(subtitleStreamIndex) }
     var lastSelectedSubtitleIndex by remember { mutableStateOf<Int?>(subtitleStreamIndex) } // Track last selected subtitle from controller
+    var hasAppliedInitialSubtitlePreference by remember { mutableStateOf(false) } // Track if we've applied the saved preference once
     var currentAudioIndex by remember { mutableStateOf<Int?>(storedAudioPreference) }
     var lastSelectedAudioIndex by remember { mutableStateOf<Int?>(storedAudioPreference) } // Track last selected audio from controller
     var is4KContent by remember { mutableStateOf(false) } // Track if current content is 4K
@@ -422,15 +445,25 @@ fun JellyfinVideoPlayerScreen(
                             val subtitleConfigurations = allSubtitleStreams.mapIndexed { positionIndex, stream ->
                                 try {
                                     val subtitleIndex = stream.Index ?: return@mapIndexed null
-                                    val subtitleUrl = apiService.getSubtitleUrl(item.Id, mediaSourceIdForSubtitle, subtitleIndex)
+                                    val subtitleUrl = apiService.buildJellyfinSubtitleUrl(
+                                        itemId = item.Id,
+                                        mediaSourceId = mediaSourceIdForSubtitle,
+                                        streamIndex = subtitleIndex,
+                                        isExternal = stream.IsExternal == true,
+                                        codec = stream.Codec,
+                                        path = stream.Path
+                                    )
                                     
                                     Log.d("JellyfinPlayer", "Adding subtitle ${stream.Index}: ${stream.DisplayTitle ?: stream.Language} (${stream.Codec}) - IsExternal=${stream.IsExternal}")
                                     
                                     // Use SubtitleMapper to create configuration with position tracking
                                     // This prevents "Turkish → Spanish" type mismatches using composite keys
                                     com.flex.elefin.player.SubtitleMapper.buildSubtitleConfiguration(
+                                        context = context,
+                                        apiService = apiService,
+                                        itemId = item.Id,
+                                        mediaSourceId = mediaSourceIdForSubtitle ?: item.Id,
                                         stream = stream,
-                                        subtitleUrl = subtitleUrl,
                                         positionIndex = positionIndex
                                     )
                                 } catch (e: Exception) {
@@ -467,15 +500,11 @@ fun JellyfinVideoPlayerScreen(
                         MediaItem.fromUri(Uri.parse(currentMediaUrl))
                     }
                     
-                    // Create media source from MediaItem - use HLS for .m3u8 URLs, Progressive for others
-                    val mediaSource: MediaSource = if (isHlsUrl) {
-                        Log.d("JellyfinPlayer", "Using HLS media source for progressive playback")
-                        HlsMediaSource.Factory(dataSourceFactory)
-                        .createMediaSource(mediaItem)
-                    } else {
-                        ProgressiveMediaSource.Factory(dataSourceFactory)
-                            .createMediaSource(mediaItem)
-                    }
+                    // Create media source from MediaItem - use DefaultMediaSourceFactory for proper subtitle support
+                    // DefaultMediaSourceFactory automatically detects the media type and handles subtitles
+                    val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
+                    val mediaSource: MediaSource = mediaSourceFactory.createMediaSource(mediaItem)
+                    Log.d("JellyfinPlayer", "Created MediaSource using DefaultMediaSourceFactory")
 
                     // Set media source
                     player.setMediaSource(mediaSource)
@@ -566,9 +595,16 @@ fun JellyfinVideoPlayerScreen(
                                             val retryMediaItem = if (subtitleStreamIndex != null && itemDetails != null) {
                                                 try {
                                                     val mediaSourceIdForSubtitle = itemDetails?.MediaSources?.firstOrNull()?.Id ?: item.Id
-                                                    val subtitleUrl = apiService.getSubtitleUrl(item.Id, mediaSourceIdForSubtitle, subtitleStreamIndex!!)
                                                     val subtitleStream = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
                                                         ?.find { it.Type == "Subtitle" && it.Index == subtitleStreamIndex }
+                                                    val subtitleUrl = apiService.buildJellyfinSubtitleUrl(
+                                                        itemId = item.Id,
+                                                        mediaSourceId = mediaSourceIdForSubtitle,
+                                                        streamIndex = subtitleStreamIndex!!,
+                                                        isExternal = subtitleStream?.IsExternal == true,
+                                                        codec = subtitleStream?.Codec,
+                                                        path = subtitleStream?.Path
+                                                    )
                                                     val subtitleLanguage = subtitleStream?.Language
                                                     val subtitleMimeType = MimeTypes.TEXT_VTT
                                                     
@@ -641,9 +677,16 @@ fun JellyfinVideoPlayerScreen(
                                         // Create MediaItem
                                         val transcodedMediaItem = if (subtitleStreamIndex != null && itemDetails != null) {
                                             try {
-                                                val subtitleUrl = apiService.getSubtitleUrl(item.Id, mediaSourceId, subtitleStreamIndex!!)
                                                 val subtitleStream = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
                                                     ?.find { it.Type == "Subtitle" && it.Index == subtitleStreamIndex }
+                                                val subtitleUrl = apiService.buildJellyfinSubtitleUrl(
+                                                    itemId = item.Id,
+                                                    mediaSourceId = mediaSourceId,
+                                                    streamIndex = subtitleStreamIndex!!,
+                                                    isExternal = subtitleStream?.IsExternal == true,
+                                                    codec = subtitleStream?.Codec,
+                                                    path = subtitleStream?.Path
+                                                )
                                                 val subtitleLanguage = subtitleStream?.Language
                                                 val subtitleMimeType = MimeTypes.TEXT_VTT
                                                 
@@ -706,9 +749,20 @@ fun JellyfinVideoPlayerScreen(
                             
                             // When tracks are available, select subtitle track if specified
                             // Handle subtitle selection or disabling
+                            // Filter out ONLY internal CEA-608/708 captions (auto-generated closed captions from video decoder)
+                            // Keep all Jellyfin subtitles: external, embedded, and internal
+                            // NOTE: APPLICATION_MEDIA3_CUES is the MIME type ExoPlayer uses for processed text subtitles, so we keep it
                             val textTrackGroups = tracks.groups.filter { group ->
-                                group.type == androidx.media3.common.C.TRACK_TYPE_TEXT &&
-                                group.isSupported
+                                if (group.type != androidx.media3.common.C.TRACK_TYPE_TEXT || !group.isSupported) {
+                                    return@filter false
+                                }
+                                
+                                val format = group.mediaTrackGroup.getFormat(0)
+                                val isInternalCaption = format.sampleMimeType == MimeTypes.APPLICATION_CEA608 ||
+                                                       format.sampleMimeType == MimeTypes.APPLICATION_CEA708
+                                
+                                // Only filter out CEA-608/708 captions, keep everything else
+                                !isInternalCaption
                             }
                             
                             Log.d("JellyfinPlayer", "Found ${textTrackGroups.size} supported text track groups")
@@ -717,11 +771,16 @@ fun JellyfinVideoPlayerScreen(
                             // ⭐ STEP 1: REGISTER ALL EXOPLAYER TRACKS WITH COMPOSITE KEYS (Production-Safe!)
                             // This must happen BEFORE selection logic so composite keys are available
                             Log.d("JellyfinPlayer", "⭐ STARTING TRACK REGISTRATION PHASE")
-                            textTrackGroups.forEachIndexed { groupIndex, group ->
+                            
+                            // ⚠️ CRITICAL: Find the ACTUAL group index in tracks.groups, not the filtered textTrackGroups index
+                            textTrackGroups.forEachIndexed { filteredIndex, group ->
+                                // Find the original group index in the full tracks list
+                                val actualGroupIndex = tracks.groups.indexOf(group)
+                                
                                 val format = group.mediaTrackGroup.getFormat(0)
                                 val trackIndex = 0 // First track in group
                                 
-                                Log.d("JellyfinPlayer", "  Registering ExoPlayer subtitle track group $groupIndex:")
+                                Log.d("JellyfinPlayer", "  Registering ExoPlayer subtitle track group $filteredIndex (actual index=$actualGroupIndex):")
                                 Log.d("JellyfinPlayer", "    Language: '${format.language}', Label: '${format.label}'")
                                 Log.d("JellyfinPlayer", "    MIME: ${format.sampleMimeType}, ID: ${format.id}")
                                 
@@ -759,15 +818,15 @@ fun JellyfinVideoPlayerScreen(
                                 }
                                 
                                 if (matchingStream?.Index != null) {
-                                    // Register track with composite key
+                                    // Register track with composite key using the ACTUAL group index
                                     com.flex.elefin.player.SubtitleMapper.registerExoPlayerTrack(
                                         format = format,
-                                        groupIndex = groupIndex,
+                                        groupIndex = actualGroupIndex,
                                         trackIndex = trackIndex,
                                         jellyfinIndex = matchingStream.Index,
                                         metadata = matchingStream
                                     )
-                                    Log.d("JellyfinPlayer", "    ✅ Registered: Group=$groupIndex → JF index=${matchingStream.Index}")
+                                    Log.d("JellyfinPlayer", "    ✅ Registered: Filtered=$filteredIndex, Actual=$actualGroupIndex → JF index=${matchingStream.Index}")
                                 } else {
                                     Log.w("JellyfinPlayer", "    ⚠️ Could NOT match to Jellyfin subtitle (CEA-608/internal?)")
                                 }
@@ -776,10 +835,12 @@ fun JellyfinVideoPlayerScreen(
                             
                             // ⭐ STEP 2: CHECK IF USER SELECTED A SUBTITLE
                             // Find the selected track and its group index using composite key resolution
-                            val selectedGroupIndex = textTrackGroups.indexOfFirst { it.isSelected }
+                            val selectedFilteredIndex = textTrackGroups.indexOfFirst { it.isSelected }
                             
-                            if (selectedGroupIndex >= 0) {
-                                val selectedTextTrackGroup = textTrackGroups[selectedGroupIndex]
+                            if (selectedFilteredIndex >= 0) {
+                                val selectedTextTrackGroup = textTrackGroups[selectedFilteredIndex]
+                                // Get the ACTUAL group index in the full tracks list
+                                val selectedActualGroupIndex = tracks.groups.indexOf(selectedTextTrackGroup)
                                 val selectedFormat = selectedTextTrackGroup.mediaTrackGroup.getFormat(0)
                                 val trackIndex = 0 // First track in group
                                 
@@ -787,19 +848,20 @@ fun JellyfinVideoPlayerScreen(
                                 // Uses stable ExoPlayer attributes: groupIndex + trackIndex + MIME + language + flags
                                 val (jellyfinIndex, metadata) = com.flex.elefin.player.SubtitleMapper.resolveJellyfinIndexFromFormat(
                                     format = selectedFormat,
-                                    groupIndex = selectedGroupIndex,
+                                    groupIndex = selectedActualGroupIndex,  // Use ACTUAL index, not filtered
                                     trackIndex = trackIndex
                                 )
                                 
                                 Log.d("JellyfinPlayer", "Subtitle selected via ExoPlayer controller:")
-                                Log.d("JellyfinPlayer", "  Group=$selectedGroupIndex, Track=$trackIndex")
+                                Log.d("JellyfinPlayer", "  Filtered=$selectedFilteredIndex, Actual=$selectedActualGroupIndex, Track=$trackIndex")
                                 Log.d("JellyfinPlayer", "  Format.id = '${selectedFormat.id}' (ExoPlayer internal)")
                                 Log.d("JellyfinPlayer", "  Language = ${selectedFormat.language}, MIME = ${selectedFormat.sampleMimeType}")
                                 
                                 if (jellyfinIndex != null) {
                                     Log.d("JellyfinPlayer", "🔥 Composite key resolved: Jellyfin index=$jellyfinIndex")
-                                    Log.d("JellyfinPlayer", "   Metadata: ${metadata?.DisplayTitle ?: metadata?.Language}, IsExternal=${metadata?.IsExternal}")
+                                    Log.d("JellyfinPlayer", "   Metadata: ${metadata?.DisplayTitle ?: metadata?.Language}, IsExternal=${metadata?.IsExternal}, IsForced=${metadata?.IsForced}")
                                     
+                                    // Save the selection (including forced subtitles - don't clear anything)
                                     if (jellyfinIndex != lastSelectedSubtitleIndex) {
                                         lastSelectedSubtitleIndex = jellyfinIndex
                                         currentSubtitleIndex = jellyfinIndex
@@ -812,12 +874,28 @@ fun JellyfinVideoPlayerScreen(
                                     Log.w("JellyfinPlayer", "   This is likely: CEA-608, embedded metadata, or ExoPlayer auto-generated track")
                                     Log.w("JellyfinPlayer", "   Not saving preference (doesn't map to Jellyfin subtitle)")
                                 }
-                            } else if (lastSelectedSubtitleIndex != null) {
-                                // No subtitle selected (user deselected)
-                                Log.d("JellyfinPlayer", "Subtitle deselected via ExoPlayer controller")
-                                lastSelectedSubtitleIndex = null
-                                currentSubtitleIndex = null
-                                settings.setSubtitlePreference(item.Id, null)
+                            } else if (lastSelectedSubtitleIndex != null || textTrackGroups.isNotEmpty()) {
+                                // No subtitle selected (user deselected via ExoPlayer's UI)
+                                // Clear our overrides to respect the user's choice
+                                if (lastSelectedSubtitleIndex != null) {
+                                    Log.d("JellyfinPlayer", "Subtitle deselected via ExoPlayer controller")
+                                    lastSelectedSubtitleIndex = null
+                                    currentSubtitleIndex = null
+                                    settings.setSubtitlePreference(item.Id, null)
+                                }
+                                
+                                // Actually clear the subtitle selection by removing overrides
+                                try {
+                                    val updatedParameters = player.trackSelectionParameters
+                                        .buildUpon()
+                                        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                                        .build()
+                                    
+                                    player.trackSelectionParameters = updatedParameters
+                                    Log.d("JellyfinPlayer", "✅ Cleared subtitle overrides (user selected None)")
+                                } catch (e: Exception) {
+                                    Log.w("JellyfinPlayer", "Error clearing subtitle overrides: ${e.message}", e)
+                                }
                             }
                             
                             // Ensure subtitle button is visible in controller when tracks are available
@@ -843,10 +921,11 @@ fun JellyfinVideoPlayerScreen(
                                 }
                             }
                             
-                            // Only apply subtitleStreamIndex (from series/movie page) if it's different from current selection
-                            // This prevents clearing subtitles when ExoPlayer's controller selects one
-                            if (subtitleStreamIndex != null && itemDetails != null && textTrackGroups.isNotEmpty() && subtitleStreamIndex != currentSubtitleIndex) {
-                                // User selected a subtitle track from series/movie page - select it
+                            // Only apply subtitleStreamIndex (from series/movie page) ONCE on initial load
+                            // After that, let the user control subtitles via ExoPlayer UI
+                            if (subtitleStreamIndex != null && itemDetails != null && textTrackGroups.isNotEmpty() && !hasAppliedInitialSubtitlePreference) {
+                                // User selected a subtitle track from series/movie page - select it ONCE
+                                hasAppliedInitialSubtitlePreference = true // Mark as applied so it doesn't re-apply
                                 try {
                                     Log.d("JellyfinPlayer", "Found ${textTrackGroups.size} supported subtitle track group(s)")
                                     
@@ -953,9 +1032,10 @@ fun JellyfinVideoPlayerScreen(
                                 } catch (e: Exception) {
                                     Log.w("JellyfinPlayer", "Error selecting subtitle track: ${e.message}", e)
                                 }
-                            } else if (subtitleStreamIndex == null && currentSubtitleIndex == null && textTrackGroups.isNotEmpty() && textTrackGroups.none { it.isSelected }) {
+                            } else if (subtitleStreamIndex == null && currentSubtitleIndex == null && textTrackGroups.isNotEmpty() && textTrackGroups.none { it.isSelected } && !hasAppliedInitialSubtitlePreference) {
                                 // User explicitly selected "None" from series/movie page AND no subtitle is currently selected
-                                // Only clear if no subtitle is selected via ExoPlayer's controller either
+                                // Only apply this ONCE on initial load
+                                hasAppliedInitialSubtitlePreference = true // Mark as applied
                                 try {
                                     // Clear any existing subtitle overrides to ensure no subtitles are selected
                                     val updatedParameters = player.trackSelectionParameters
@@ -1774,12 +1854,72 @@ fun JellyfinVideoPlayerScreen(
                                     visibility = android.view.View.VISIBLE
                                     alpha = 1f
                                     
+                                    // Apply ExoPlayer subtitle customization settings
+                                    subtitleView?.apply {
+                                        // Apply text size
+                                        val textSizePx = settings.exoSubtitleTextSize.toFloat()
+                                        setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, textSizePx)
+                                        
+                                        // Apply text color
+                                        setStyle(
+                                            androidx.media3.ui.CaptionStyleCompat(
+                                                settings.exoSubtitleTextColor, // foregroundColor
+                                                if (settings.exoSubtitleBgTransparent) android.graphics.Color.TRANSPARENT else settings.exoSubtitleBgColor, // backgroundColor
+                                                android.graphics.Color.TRANSPARENT, // windowColor
+                                                androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE, // edgeType
+                                                android.graphics.Color.BLACK, // edgeColor
+                                                null // typeface
+                                            )
+                                        )
+                                        
+                                        Log.d("JellyfinPlayer", "Applied ExoPlayer subtitle customization: size=${settings.exoSubtitleTextSize}, color=${settings.exoSubtitleTextColor}, bgTransparent=${settings.exoSubtitleBgTransparent}")
+                                    }
+                                    
                                     // Explicitly show subtitle button again after view is attached
                                     setShowSubtitleButton(true)
                                     
                                     // Get the PlayerControlView and ensure subtitle button is visible
                                     val controller = findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
                                     controller?.let { controlView ->
+                                        // Note: TrackNameProvider customization is done via Format.label in SubtitleMapper.buildLabel()
+                                        // ExoPlayer's track selection dialog will automatically use Format.label when available
+                                        
+                                        // ⭐ CUSTOM SETTINGS BUTTON - DISABLED (wrong subtitle selection due to duplicate registrations)
+                                        /*
+                                        val existingSubtitleButton = controlView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_subtitle)
+                                        existingSubtitleButton?.let { existingBtn ->
+                                            // Create custom settings button with better icon
+                                            val customSettingsButton = android.widget.ImageButton(ctx).apply {
+                                                setImageResource(android.R.drawable.ic_menu_sort_by_size) // List icon
+                                                background = android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
+                                                scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+                                                setPadding(16, 16, 16, 16)
+                                                contentDescription = "Player Settings"
+                                                isFocusable = true
+                                                isClickable = true
+                                                
+                                                // Set same size as existing subtitle button
+                                                layoutParams = android.view.ViewGroup.LayoutParams(
+                                                    resources.getDimensionPixelSize(androidx.media3.ui.R.dimen.exo_small_icon_width),
+                                                    resources.getDimensionPixelSize(androidx.media3.ui.R.dimen.exo_small_icon_height)
+                                                )
+                                                
+                                                // Open settings menu on click
+                                                setOnClickListener {
+                                                    showSettingsMenu = true
+                                                }
+                                            }
+                                            
+                                            // Find the parent container of the subtitle button and add our custom button next to it
+                                            (existingBtn.parent as? android.view.ViewGroup)?.let { parent ->
+                                                val existingBtnIndex = parent.indexOfChild(existingBtn)
+                                                parent.addView(customSettingsButton, existingBtnIndex + 1)
+                                                
+                                                Log.d("JellyfinPlayer", "✅ Added custom settings button next to ExoPlayer subtitle button")
+                                            }
+                                        }
+                                        */
+                                        
                                         // Customize control button focus color to purple (transparent)
                                         val transparentPurple = android.graphics.Color.argb(150, 156, 39, 176) // Purple with transparency
                                         
@@ -2065,71 +2205,66 @@ fun JellyfinVideoPlayerScreen(
                 jellyfinSubtitleStreams = jellyfinSubtitleStreams, // Pass for composite key registration
                 onSubtitleSelected = { subtitleIndex ->
                     currentSubtitleIndex = subtitleIndex
-                    // Reload player with new subtitle
+                    // Use ExoPlayer track selection API to select the subtitle
                     scope.launch(Dispatchers.Main) {
                         try {
-                            val currentPos = player.currentPosition
-                            val wasPlaying = player.isPlaying
-                            
-                            // Stop and clear current media
-                            player.stop()
-                            player.clearMediaItems()
-                            
-                            // Recreate MediaItem with new subtitle
-                            val mediaSourceIdForSubtitle = itemDetails?.MediaSources?.firstOrNull()?.Id ?: item.Id
-                            val mediaItem = if (subtitleIndex != null && itemDetails != null) {
-                                try {
-                                    val subtitleUrl = apiService.getSubtitleUrl(item.Id, mediaSourceIdForSubtitle, subtitleIndex)
-                                    val subtitleStream = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
-                                        ?.find { it.Type == "Subtitle" && it.Index == subtitleIndex }
-                                    val subtitleLanguage = subtitleStream?.Language
-                                    val subtitleMimeType = MimeTypes.TEXT_VTT
-                                    
-                                    MediaItem.Builder()
-                                        .setUri(Uri.parse(mediaUrl))
-                                        .setSubtitleConfigurations(
-                                            listOf(
-                                                MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitleUrl))
-                                                    .setMimeType(subtitleMimeType)
-                                                    .setLanguage(subtitleLanguage)
-                                                    .build()
-                                            )
-                                        )
-                                        .build()
-                                } catch (e: Exception) {
-                                    Log.w("JellyfinPlayer", "Error creating MediaItem with subtitle, using video only: ${e.message}", e)
-                                    MediaItem.fromUri(Uri.parse(mediaUrl))
-                                }
+                            if (subtitleIndex == null) {
+                                // Disable all subtitles by clearing overrides only
+                                // Do NOT use setTrackTypeDisabled - that prevents ExoPlayer UI from working
+                                val updatedParameters = player.trackSelectionParameters
+                                    .buildUpon()
+                                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                                    .build()
+                                
+                                player.trackSelectionParameters = updatedParameters
+                                Log.d("JellyfinPlayer", "✅ Cleared subtitle selection (subtitles disabled)")
                             } else {
-                                MediaItem.fromUri(Uri.parse(mediaUrl))
+                                // Find the ExoPlayer track that matches the selected Jellyfin subtitle index
+                                val exoTrackInfo = SubtitleMapper.getExoPlayerTrackInfo(subtitleIndex)
+                                
+                                if (exoTrackInfo != null) {
+                                    val (groupIndex, trackIndexInGroup) = exoTrackInfo
+                                    val tracks = player.currentTracks
+                                    
+                                    Log.d("JellyfinPlayer", "🔍 Looking up subtitle: Jellyfin index=$subtitleIndex → ExoPlayer group=$groupIndex, track=$trackIndexInGroup")
+                                    Log.d("JellyfinPlayer", "   Total track groups: ${tracks.groups.size}")
+                                    
+                                    if (groupIndex < tracks.groups.size) {
+                                        val group = tracks.groups[groupIndex]
+                                        val format = group.mediaTrackGroup.getFormat(0)
+                                        Log.d("JellyfinPlayer", "   Selected group format: lang=${format.language}, label=${format.label}, mime=${format.sampleMimeType}")
+                                        
+                                        // Override to select this specific track (text tracks are not disabled, so no need to enable)
+                                        val updatedParameters = player.trackSelectionParameters
+                                            .buildUpon()
+                                            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                                            .addOverride(
+                                                androidx.media3.common.TrackSelectionOverride(
+                                                    group.mediaTrackGroup,
+                                                    listOf(trackIndexInGroup)
+                                                )
+                                            )
+                                            .build()
+                                        
+                                        player.trackSelectionParameters = updatedParameters
+                                        Log.d("JellyfinPlayer", "✅ Selected subtitle: Jellyfin index=$subtitleIndex, ExoPlayer group=$groupIndex, track=$trackIndexInGroup")
+                                    } else {
+                                        Log.w("JellyfinPlayer", "⚠️ Invalid group index: $groupIndex (tracks.groups.size=${tracks.groups.size})")
+                                    }
+                                } else {
+                                    Log.w("JellyfinPlayer", "⚠️ No ExoPlayer track found for Jellyfin subtitle index $subtitleIndex")
+                                }
                             }
-                            
-                            // Get headers
-                            val headers = apiService.getVideoRequestHeaders()
-                            val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-                                .setUserAgent("Jellyfin Android TV")
-                                .setAllowCrossProtocolRedirects(true)
-                                .setDefaultRequestProperties(headers.toMutableMap())
-                            val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
-                            
-                            // Create and set new media source
-                            val newMediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
-                                .createMediaSource(mediaItem)
-                            player.setMediaSource(newMediaSource)
-                            player.prepare()
-                            
-                            // Restore position and playing state
-                            player.seekTo(currentPos)
-                            player.playWhenReady = wasPlaying
                             
                             showSettingsMenu = false
                         } catch (e: Exception) {
-                            Log.e("JellyfinPlayer", "Error reloading with new subtitle", e)
+                            Log.e("JellyfinPlayer", "Error selecting subtitle track", e)
                         }
                     }
                 }
             )
         }
+        
     }
 }
 
@@ -2158,6 +2293,9 @@ fun ExoPlayerSettingsMenu(
     var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     var isLoadingSubtitles by remember { mutableStateOf(true) }
     var currentTracks by remember { mutableStateOf<Tracks?>(null) }
+    
+    // Navigation state for multi-level menu
+    var currentMenuLevel by remember { mutableStateOf("main") } // "main", "subtitles", "audio", "speed"
     
     // Fetch full item details to get MediaSources with subtitle and audio streams
     LaunchedEffect(item.Id, apiService) {
@@ -2255,8 +2393,22 @@ fun ExoPlayerSettingsMenu(
             ?.sortedBy { it.Index ?: 0 } ?: emptyList()
     }
     
+    // Handle back button navigation
+    BackHandler(enabled = currentMenuLevel != "main") {
+        when (currentMenuLevel) {
+            "subtitles", "audio", "speed" -> currentMenuLevel = "main"
+            else -> onDismiss()
+        }
+    }
+    
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            if (currentMenuLevel == "main") {
+                onDismiss()
+            } else {
+                currentMenuLevel = "main"
+            }
+        },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Box(
@@ -2280,9 +2432,14 @@ fun ExoPlayerSettingsMenu(
                         .fillMaxSize()
                         .padding(24.dp)
                 ) {
-                    // Dialog title
+                    // Dialog title - changes based on current menu level
                     Text(
-                        text = "Player Settings",
+                        text = when (currentMenuLevel) {
+                            "subtitles" -> "Subtitles"
+                            "audio" -> "Audio Tracks"
+                            "speed" -> "Playback Speed"
+                            else -> "Player Settings"
+                        },
                         style = MaterialTheme.typography.headlineMedium.copy(
                             fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.8f
                         ),
@@ -2290,21 +2447,126 @@ fun ExoPlayerSettingsMenu(
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
                     
-                    // Audio section - ABOVE subtitles
-                    if (player != null && audioTracks.isNotEmpty()) {
-                        Text(
-                            text = "Audio Tracks",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = MaterialTheme.typography.titleMedium.fontSize * 0.8f
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(bottom = 8.dp, top = 8.dp)
-                        )
+                    // Show different content based on current menu level
+                    when (currentMenuLevel) {
+                        "main" -> {
+                            // Main menu - show 3 category buttons
+                            LazyColumn(
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                contentPadding = PaddingValues(vertical = 8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                // Audio Tracks button
+                                if (player != null && audioTracks.isNotEmpty()) {
+                                    item {
+                                        ListItem(
+                                            selected = false,
+                                            onClick = { currentMenuLevel = "audio" },
+                                            headlineContent = {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.VolumeUp,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(24.dp)
+                                                    )
+                                                    Text(
+                                                        text = "Audio Tracks",
+                                                        style = MaterialTheme.typography.titleMedium.copy(
+                                                            fontSize = MaterialTheme.typography.titleMedium.fontSize * 0.9f
+                                                        )
+                                                    )
+                                                }
+                                            },
+                                            trailingContent = {
+                                                Text(
+                                                    text = "▶",
+                                                    style = MaterialTheme.typography.titleMedium
+                                                )
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                }
+                                
+                                // Subtitles button
+                                item {
+                                    ListItem(
+                                        selected = false,
+                                        onClick = { currentMenuLevel = "subtitles" },
+                                        headlineContent = {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Check,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                                Text(
+                                                    text = "Subtitles",
+                                                    style = MaterialTheme.typography.titleMedium.copy(
+                                                        fontSize = MaterialTheme.typography.titleMedium.fontSize * 0.9f
+                                                    )
+                                                )
+                                            }
+                                        },
+                                        trailingContent = {
+                                            Text(
+                                                text = "▶",
+                                                style = MaterialTheme.typography.titleMedium
+                                            )
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                
+                                // Playback Speed button
+                                if (player != null) {
+                                    item {
+                                        ListItem(
+                                            selected = false,
+                                            onClick = { currentMenuLevel = "speed" },
+                                            headlineContent = {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.FastForward,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(24.dp)
+                                                    )
+                                                    Text(
+                                                        text = "Playback Speed",
+                                                        style = MaterialTheme.typography.titleMedium.copy(
+                                                            fontSize = MaterialTheme.typography.titleMedium.fontSize * 0.9f
+                                                        )
+                                                    )
+                                                }
+                                            },
+                                            trailingContent = {
+                                                Text(
+                                                    text = "▶",
+                                                    style = MaterialTheme.typography.titleMedium
+                                                )
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            contentPadding = PaddingValues(vertical = 4.dp),
-                            modifier = Modifier.heightIn(max = 200.dp)
+                        "audio" -> {
+                            // Audio tracks list
+                            LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(vertical = 8.dp),
+                            modifier = Modifier.weight(1f)
                         ) {
                             items(audioTracks.size) { index ->
                                 val track = audioTracks[index]
@@ -2333,19 +2595,21 @@ fun ExoPlayerSettingsMenu(
                                     selected = track.isSelected,
                                     onClick = {
                                         // Select audio track
-                                        try {
-                                            val trackSelectionOverride = TrackSelectionOverride(
-                                                track.group.mediaTrackGroup,
-                                                0 // Select first track in the group
-                                            )
-                                            val updatedParameters = player.trackSelectionParameters
-                                                .buildUpon()
-                                                .addOverride(trackSelectionOverride)
-                                                .build()
-                                            player.trackSelectionParameters = updatedParameters
-                                            Log.d("ExoPlayerSettingsMenu", "Selected audio track: $trackTitle")
-                                        } catch (e: Exception) {
-                                            Log.e("ExoPlayerSettingsMenu", "Error selecting audio track", e)
+                                        player?.let { exoPlayer ->
+                                            try {
+                                                val trackSelectionOverride = TrackSelectionOverride(
+                                                    track.group.mediaTrackGroup,
+                                                    0 // Select first track in the group
+                                                )
+                                                val updatedParameters = exoPlayer.trackSelectionParameters
+                                                    .buildUpon()
+                                                    .addOverride(trackSelectionOverride)
+                                                    .build()
+                                                exoPlayer.trackSelectionParameters = updatedParameters
+                                                Log.d("ExoPlayerSettingsMenu", "Selected audio track: $trackTitle")
+                                            } catch (e: Exception) {
+                                                Log.e("ExoPlayerSettingsMenu", "Error selecting audio track", e)
+                                            }
                                         }
                                     },
                                     headlineContent = {
@@ -2371,38 +2635,29 @@ fun ExoPlayerSettingsMenu(
                                 )
                             }
                         }
-                    }
-                    
-                    // Subtitle section - BELOW audio tracks
-                    Text(
-                        text = "Subtitles",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontSize = MaterialTheme.typography.titleMedium.fontSize * 0.8f
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(bottom = 8.dp, top = 8.dp)
-                    )
-                    
-                    // Vertical list of subtitle options
-                    if (isLoadingSubtitles) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Loading subtitles...",
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
-                                ),
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                            )
                         }
-                    } else {
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            contentPadding = PaddingValues(vertical = 4.dp),
+                        
+                        "subtitles" -> {
+                            // Subtitles list
+                            if (isLoadingSubtitles) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Loading subtitles...",
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(vertical = 8.dp),
                             modifier = Modifier.weight(1f)
                         ) {
                             // "None" option to disable subtitles
@@ -2471,28 +2726,21 @@ fun ExoPlayerSettingsMenu(
                                 )
                             }
                         }
-                    }
-                    
-                    // Speed section - BELOW subtitles
-                    if (player != null) {
-                        Text(
-                            text = "Playback Speed",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = MaterialTheme.typography.titleMedium.fontSize * 0.8f
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(bottom = 8.dp, top = 16.dp)
-                        )
+                        }
+                        }
                         
-                        val speedOptions = listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
-                        val currentSpeed = player.playbackParameters.speed
-                        val currentSpeedIndex = speedOptions.indexOfFirst { kotlin.math.abs(it - currentSpeed) < 0.01f }.takeIf { it >= 0 } ?: 3
-                        
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            contentPadding = PaddingValues(vertical = 4.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
+                        "speed" -> {
+                            // Playback speed list
+                            player?.let { exoPlayer ->
+                                val speedOptions = listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
+                                val currentSpeed = exoPlayer.playbackParameters.speed
+                                val currentSpeedIndex = speedOptions.indexOfFirst { kotlin.math.abs(it - currentSpeed) < 0.01f }.takeIf { it >= 0 } ?: 3
+                                
+                                LazyColumn(
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                contentPadding = PaddingValues(vertical = 8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
                             items(speedOptions.size) { index ->
                                 val speed = speedOptions[index]
                                 val speedText = if (speed == 1.0f) "Normal (1.0x)" else "${speed}x"
@@ -2500,7 +2748,7 @@ fun ExoPlayerSettingsMenu(
                                 ListItem(
                                     selected = index == currentSpeedIndex,
                                     onClick = {
-                                        player.playbackParameters = androidx.media3.common.PlaybackParameters(speed)
+                                        exoPlayer.playbackParameters = androidx.media3.common.PlaybackParameters(speed)
                                         Log.d("ExoPlayerSettingsMenu", "Changed playback speed to ${speed}x")
                                     },
                                     headlineContent = {
@@ -2513,6 +2761,8 @@ fun ExoPlayerSettingsMenu(
                                     },
                                     modifier = Modifier.fillMaxWidth()
                                 )
+                            }
+                        }
                             }
                         }
                     }
@@ -2682,5 +2932,396 @@ private fun normalizeLanguageCode(languageCode: String?): String? {
     
     // Fallback: return first 2 characters
     return lowerCode.take(2)
+}
+
+@Composable
+fun SubtitleSelectionDialog(
+    item: JellyfinItem,
+    apiService: JellyfinApiService,
+    currentSubtitleIndex: Int?,
+    onDismiss: () -> Unit,
+    onSubtitleSelected: (Int?) -> Unit
+) {
+    var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    
+    // Fetch full item details to get subtitle streams
+    LaunchedEffect(item.Id, apiService) {
+        withContext(Dispatchers.IO) {
+            try {
+                val details = apiService.getItemDetails(item.Id)
+                itemDetails = details
+                isLoading = false
+            } catch (e: Exception) {
+                Log.e("SubtitleDialog", "Error fetching item details", e)
+                isLoading = false
+            }
+        }
+    }
+    
+    // Full-screen dialog with dark background
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.9f))
+            .clickable(
+                onClick = onDismiss,
+                indication = null,
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        // Dialog content
+        androidx.compose.foundation.layout.Column(
+            modifier = Modifier
+                .width(600.dp)
+                .heightIn(max = 500.dp)
+                .background(Color(0xFF1E1E1E), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                .padding(24.dp)
+                .clickable(
+                    onClick = { /* Prevent click from closing dialog */ },
+                    indication = null,
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                ),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Title
+            androidx.compose.material3.Text(
+                text = "Select Subtitle",
+                style = androidx.compose.material3.MaterialTheme.typography.headlineSmall,
+                color = Color.White,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+            
+            if (isLoading) {
+                androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(32.dp))
+                androidx.compose.material3.CircularProgressIndicator(color = Color(0xFF9C27B0))
+            } else {
+                // Get subtitle streams
+                val subtitleStreams = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
+                    ?.filter { it.Type == "Subtitle" }
+                    ?.sortedBy { it.Index ?: 0 } ?: emptyList()
+                
+                // Scrollable list of subtitles
+                androidx.compose.foundation.lazy.LazyColumn(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                ) {
+                    // "None" option
+                    item {
+                        SubtitleOptionItem(
+                            title = "None (Off)",
+                            isSelected = currentSubtitleIndex == null,
+                            onClick = {
+                                onSubtitleSelected(null)
+                            }
+                        )
+                    }
+                    
+                    // Subtitle options
+                    items(subtitleStreams.size) { index ->
+                        val stream = subtitleStreams[index]
+                        val streamIndex = stream.Index ?: 0
+                        
+                        // Build subtitle title
+                        val subtitleTitle = buildString {
+                            append(stream.DisplayTitle ?: stream.Language ?: "Unknown")
+                            if (stream.IsForced == true) append(" [Forced]")
+                            if (stream.IsExternal == true) append(" (External)")
+                            if (stream.IsHearingImpaired == true) append(" [CC]")
+                        }
+                        
+                        SubtitleOptionItem(
+                            title = subtitleTitle,
+                            isSelected = currentSubtitleIndex == streamIndex,
+                            onClick = {
+                                onSubtitleSelected(streamIndex)
+                            }
+                        )
+                    }
+                }
+            }
+            
+            // Close button
+            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(16.dp))
+            androidx.compose.material3.Button(
+                onClick = onDismiss,
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF9C27B0)
+                ),
+                modifier = Modifier.focusable()
+            ) {
+                androidx.compose.material3.Text("Close", color = Color.White)
+            }
+        }
+    }
+}
+
+@Composable
+fun SubtitleOptionItem(
+    title: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    
+    androidx.compose.foundation.layout.Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .background(
+                when {
+                    isSelected -> Color(0xFF9C27B0).copy(alpha = 0.3f)
+                    isFocused -> Color(0xFF9C27B0).copy(alpha = 0.2f)
+                    else -> Color.Transparent
+                },
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+            )
+            .border(
+                width = if (isFocused) 2.dp else 0.dp,
+                color = if (isFocused) Color(0xFF9C27B0) else Color.Transparent,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+            )
+            .clickable(onClick = onClick)
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusable()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (isSelected) {
+            androidx.compose.material3.Icon(
+                imageVector = androidx.compose.material.icons.Icons.Default.Check,
+                contentDescription = "Selected",
+                tint = Color(0xFF9C27B0),
+                modifier = Modifier.size(20.dp).padding(end = 8.dp)
+            )
+        }
+        
+        androidx.compose.material3.Text(
+            text = title,
+            style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+            color = Color.White,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+fun AudioSelectionDialog(
+    player: ExoPlayer,
+    currentAudioIndex: Int?,
+    onDismiss: () -> Unit,
+    onAudioSelected: (Int?) -> Unit
+) {
+    val audioGroups = remember(player.currentTracks) {
+        player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+    }
+    
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.9f))
+            .clickable(
+                onClick = onDismiss,
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .width(600.dp)
+                .heightIn(max = 500.dp)
+                .background(Color(0xFF1E1E1E), shape = RoundedCornerShape(8.dp))
+                .padding(24.dp)
+                .clickable(
+                    onClick = { /* Prevent click from closing dialog */ },
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            androidx.compose.material3.Text(
+                text = "Select Audio Track",
+                style = androidx.compose.material3.MaterialTheme.typography.headlineSmall,
+                color = Color.White,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+            
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                items(audioGroups.size) { index ->
+                    val group = audioGroups[index]
+                    val format = group.mediaTrackGroup.getFormat(0)
+                    val trackTitle = buildString {
+                        append(format.label ?: format.language ?: "Unknown")
+                        format.codecs?.let { append(" • $it") }
+                        if (format.channelCount > 0) append(" • ${format.channelCount}ch")
+                    }
+                    
+                    SimpleOptionItem(
+                        title = trackTitle,
+                        isSelected = group.isSelected,
+                        onClick = {
+                            val updatedParameters = player.trackSelectionParameters
+                                .buildUpon()
+                                .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                                .addOverride(
+                                    TrackSelectionOverride(
+                                        group.mediaTrackGroup,
+                                        listOf(0)
+                                    )
+                                )
+                                .build()
+                            
+                            player.trackSelectionParameters = updatedParameters
+                            onAudioSelected(index)
+                        }
+                    )
+                }
+            }
+            
+            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(16.dp))
+            androidx.compose.material3.Button(
+                onClick = onDismiss,
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF9C27B0)
+                ),
+                modifier = Modifier.focusable()
+            ) {
+                androidx.compose.material3.Text("Close", color = Color.White)
+            }
+        }
+    }
+}
+
+@Composable
+fun SpeedSelectionDialog(
+    player: ExoPlayer,
+    onDismiss: () -> Unit
+) {
+    val speeds = remember { listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f) }
+    var currentSpeed by remember { mutableStateOf(player.playbackParameters.speed) }
+    
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.9f))
+            .clickable(
+                onClick = onDismiss,
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .width(400.dp)
+                .heightIn(max = 500.dp)
+                .background(Color(0xFF1E1E1E), shape = RoundedCornerShape(8.dp))
+                .padding(24.dp)
+                .clickable(
+                    onClick = { /* Prevent click from closing dialog */ },
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            androidx.compose.material3.Text(
+                text = "Playback Speed",
+                style = androidx.compose.material3.MaterialTheme.typography.headlineSmall,
+                color = Color.White,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+            
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                items(speeds.size) { index ->
+                    val speed = speeds[index]
+                    val speedText = when (speed) {
+                        1.0f -> "Normal (1.0x)"
+                        else -> "${speed}x"
+                    }
+                    
+                    SimpleOptionItem(
+                        title = speedText,
+                        isSelected = (currentSpeed - speed) < 0.01f,
+                        onClick = {
+                            player.setPlaybackSpeed(speed)
+                            currentSpeed = speed
+                        }
+                    )
+                }
+            }
+            
+            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(16.dp))
+            androidx.compose.material3.Button(
+                onClick = onDismiss,
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF9C27B0)
+                ),
+                modifier = Modifier.focusable()
+            ) {
+                androidx.compose.material3.Text("Close", color = Color.White)
+            }
+        }
+    }
+}
+
+
+@Composable
+fun SimpleOptionItem(
+    title: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .background(
+                when {
+                    isSelected -> Color(0xFF9C27B0).copy(alpha = 0.3f)
+                    isFocused -> Color(0xFF9C27B0).copy(alpha = 0.2f)
+                    else -> Color.Transparent
+                },
+                shape = RoundedCornerShape(4.dp)
+            )
+            .border(
+                width = if (isFocused) 2.dp else 0.dp,
+                color = if (isFocused) Color(0xFF9C27B0) else Color.Transparent,
+                shape = RoundedCornerShape(4.dp)
+            )
+            .clickable(onClick = onClick)
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusable()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (isSelected) {
+            androidx.compose.material3.Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = "Selected",
+                tint = Color(0xFF9C27B0),
+                modifier = Modifier.size(20.dp).padding(end = 8.dp)
+            )
+        }
+        
+        androidx.compose.material3.Text(
+            text = title,
+            style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+            color = Color.White,
+            modifier = Modifier.weight(1f)
+        )
+    }
 }
 

@@ -651,15 +651,47 @@ class JellyfinApiService(
         }
     }
     
-    fun getSubtitleUrl(itemId: String, mediaSourceId: String, subtitleStreamIndex: Int): String {
-        val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
-        // ⭐ CORRECT Jellyfin subtitle URL format: /Videos/{itemId}/{mediaSourceId}/Subtitles/{index}/Stream
-        // mediaSourceId is REQUIRED in the path for proper subtitle resolution
-        // This is the format used by official Jellyfin clients
-        val url = URLBuilder().takeFrom("${base}Videos/$itemId/$mediaSourceId/Subtitles/$subtitleStreamIndex/Stream").apply {
-            parameters.append("api_key", accessToken)
-        }.buildString()
-        android.util.Log.d("JellyfinAPI", "✅ Correct Subtitle URL: $url")
+    /**
+     * Build correct Jellyfin subtitle URL based on subtitle type
+     * Production-safe URL builder matching official Jellyfin clients
+     * 
+     * @param itemId The Jellyfin item ID
+     * @param mediaSourceId The media source ID
+     * @param streamIndex The REAL Jellyfin stream index (NOT array position!)
+     * @param isExternal Whether this is an external subtitle file on disk
+     * @param path The filesystem path (for external subtitles)
+     * @param codec The subtitle codec (e.g., "subrip", "ass", "pgs")
+     * @return The correct subtitle URL for this subtitle type
+     */
+    fun buildJellyfinSubtitleUrl(
+        itemId: String,
+        mediaSourceId: String?,
+        streamIndex: Int,
+        isExternal: Boolean,
+        codec: String?,
+        path: String? = null
+    ): String {
+        val server = if (baseUrl.endsWith("/")) baseUrl.removeSuffix("/") else baseUrl
+        
+        // Determine file extension from codec or path
+        val extension = when (codec?.lowercase()) {
+            "srt", "subrip" -> "srt"
+            "vtt", "webvtt" -> "vtt"
+            "ass", "ssa", "substationalpha" -> "ass"
+            "ttml" -> "ttml"
+            "pgs", "hdmv_pgs_subtitle" -> "sup"
+            else -> {
+                // Fallback: extract from file path if available
+                path?.substringAfterLast('.')?.lowercase() ?: "srt"
+            }
+        }
+        
+        // ✅ CORRECT URL FORMAT (CONFIRMED WORKING)
+        // Example: /Videos/{itemId}/{mediaSourceId}/Subtitles/{index}/Stream.srt?api_key=xxx
+        // Works for: external sidecar .srt files, embedded subtitles, forced subtitles
+        val url = "$server/Videos/$itemId/$mediaSourceId/Subtitles/$streamIndex/Stream.$extension?api_key=$accessToken"
+        
+        android.util.Log.d("JellyfinAPI", "✅ Subtitle URL (isExternal=$isExternal, codec=$codec, ext=$extension): $url")
         return url
     }
     

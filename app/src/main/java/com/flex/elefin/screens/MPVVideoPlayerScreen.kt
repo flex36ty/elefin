@@ -302,14 +302,23 @@ fun MPVVideoPlayerScreen(
     }
 
     // Start playback when media URL is ready
+    // ⭐ CRITICAL: Track if MPV has been configured to prevent reconfig loop
+    var mpvConfigured by remember { mutableStateOf(false) }
+    
     LaunchedEffect(mediaUrl, mpvViewRef, itemDetails) {
         if (mediaUrl != null && mpvViewRef != null) {
             withContext(Dispatchers.Main) {
                 try {
                     val mpvView = mpvViewRef ?: return@withContext
                     
-                    // ⭐ MPV is already initialized by MPVHolder - just configure for this playback
-                    Log.d("MPVPlayer", "Configuring MPV for playback")
+                    // ⭐ CRITICAL: Only configure MPV ONCE per session
+                    // Re-configuring causes VO reset and MPV discards loadfile commands
+                    if (mpvConfigured) {
+                        Log.d("MPVPlayer", "MPV already configured, skipping reconfig (prevents VO reset)")
+                        return@withContext
+                    }
+                    
+                    Log.d("MPVPlayer", "Configuring MPV for playback (ONCE)")
                     
                     // ⭐ CRITICAL: Configure MPV for subtitle visibility on Android TV
                     // This is the DEFINITIVE configuration for NVIDIA Shield, Chromecast, Fire TV
@@ -374,9 +383,12 @@ fun MPVVideoPlayerScreen(
                         
                         Log.d("MPVPlayer", "✅ MPV configured for Android TV (Shield-optimized + PGS fix)")
                         
+                        // Mark as configured to prevent reconfig loop
+                        mpvConfigured = true
+                        
                         // ⭐ REMOVED: Don't query current-vo before file-loaded!
                         // Will verify rendering mode after file-loaded event in the coroutine below
-                        Log.d("MPVPlayer", "✅ MPV configured, will verify rendering mode after file-loaded")
+                        Log.d("MPVPlayer", "✅ MPV configured ONCE, will not reconfigure (prevents VO reset)")
                     } catch (e: Exception) {
                         Log.e("MPVPlayer", "❌ Error configuring MPV: ${e.message}", e)
                     }
@@ -398,6 +410,11 @@ fun MPVVideoPlayerScreen(
                     mpvView.httpHeaders = ffmpegHeaders // ⭐ CRITICAL: Also set httpHeaders for subtitles!
                     Log.d("MPVPlayer", "Stored FFmpeg headers in MPVView for video AND subtitle requests")
                     Log.d("MPVPlayer", "Headers: $ffmpegHeaders")
+                    
+                    // ⚠️ DISABLED: Subtitle-related MPV properties removed
+                    // Subtitle loading breaks playback - will be re-enabled when we implement
+                    // subtitle pre-download to local cache
+                    Log.d("MPVPlayer", "MPV subtitle loading disabled to prevent playback issues")
                     
                     // Get effective resume position from itemDetails (fetched from server)
                     val effectiveResumePositionMs = itemDetails?.UserData?.PositionTicks?.let { ticks ->
@@ -527,10 +544,8 @@ fun MPVVideoPlayerScreen(
                         }
 
                         // ------------------------------
-                        // ⭐ CLEAN SUBTITLE LOADER ⭐
+                        // ⭐ SUBTITLE LOADING ⭐
                         // ------------------------------
-                        val subtitleManager = com.flex.elefin.player.subtitles.SubtitleManager(context, apiService)
-                        
                         val mediaSource = itemDetails?.MediaSources?.firstOrNull()
                         val mediaSourceId = mediaSource?.Id ?: item.Id
 
@@ -553,13 +568,35 @@ fun MPVVideoPlayerScreen(
                             Log.d("MPVPlayer", "   SupportsExternalStream=${selectedStream.SupportsExternalStream}")
                             
                             mpvViewRef?.let { mpv ->
+                                // ⭐ Download subtitle to local cache, then load via file:// URL
+                                // This bypasses MPV's http-header-fields bug
                                 scope.launch {
-                                    subtitleManager.loadSubtitle(
-                                        itemId = item.Id,
-                                        mediaSourceId = mediaSourceId,
-                                        stream = selectedStream,
-                                        mpv = mpv
-                                    )
+                                    try {
+                                        val localPath = com.flex.elefin.player.mpv.MPVSubtitleDownloader.downloadSubtitle(
+                                            context = context,
+                                            apiService = apiService,
+                                            itemId = item.Id,
+                                            mediaSourceId = mediaSourceId,
+                                            stream = selectedStream
+                                        )
+                                        
+                                        if (localPath != null) {
+                                            withContext(Dispatchers.Main) {
+                                                Log.d("MPVPlayer", "✅ Loading subtitle from local file: $localPath")
+                                                MPVLib.command(arrayOf("sub-add", localPath, "select", selectedStream.DisplayTitle ?: "Subtitle"))
+                                            }
+                                        } else {
+                                            Log.e("MPVPlayer", "❌ Failed to download subtitle, disabling")
+                                            withContext(Dispatchers.Main) {
+                                                MPVLib.command(arrayOf("sub-select", "no"))
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("MPVPlayer", "Error loading subtitle", e)
+                                        withContext(Dispatchers.Main) {
+                                            MPVLib.command(arrayOf("sub-select", "no"))
+                                        }
+                                    }
                                 }
                             }
                         } else {
@@ -802,58 +839,69 @@ fun MPVVideoPlayerScreen(
                 false  // don't consume other events
             }
     ) {
-        when {
-            mediaUrl != null -> {
-                AndroidView(
-                    factory = { ctx ->
-                        // ⭐ CRITICAL: Use singleton MPVView instance
-                        // Creating multiple MPVView instances causes crashes!
-                        val mpv = MPVHolder.getOrCreateMPV(ctx)
-                        mpvViewRef = mpv
-                        
-                        mpv.apply {
-                            // Ensure view is visible and properly configured
-                            visibility = android.view.View.VISIBLE
-                            // Prevent view from consuming key events - we handle them in Compose
-                            isFocusable = false
-                            isFocusableInTouchMode = false
-                            
-                            Log.d("MPVPlayer", "Using MPV singleton instance")
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                    update = { view ->
-                        // Ensure the view is visible and attached to window
-                        // This is critical for SurfaceView to create its surface
-                        view.visibility = android.view.View.VISIBLE
-                        view.requestLayout()
-                        
-                        // Force the holder to create the surface by getting it
-                        // SurfaceView creates the surface when:
-                        // 1. View is attached to window
-                        // 2. View is visible
-                        // 3. View has non-zero size
-                        // 4. holder.surface is accessed or callback is set
-                        try {
-                            val surface = view.holder.surface
-                            if (surface != null && surface.isValid) {
-                                Log.d("MPVPlayer", "Surface is valid in update callback")
-                                // If surface exists but surfaceReady is false, the callback might not have fired yet
-                                // The callback should fire soon, but we can check
-                            } else {
-                                Log.d("MPVPlayer", "Surface not yet created, waiting for surfaceCreated callback")
-                            }
-                        } catch (e: Exception) {
-                            Log.w("MPVPlayer", "Error checking surface in update", e)
-                        }
-                    },
-                    onRelease = { view ->
-                        // Cleanup if needed
-                        Log.d("MPVPlayer", "AndroidView released")
+        // ⭐ CRITICAL: Always keep AndroidView in composition to prevent surface destruction!
+        // If we conditionally show/hide AndroidView based on mediaUrl, the surface gets destroyed
+        // between videos, causing crashes in MPV's VO pipeline
+        AndroidView(
+            factory = { ctx ->
+                // ⭐ CRITICAL: Use singleton MPVView instance
+                // Creating multiple MPVView instances causes crashes!
+                val mpv = MPVHolder.getOrCreateMPV(ctx)
+                mpvViewRef = mpv
+                
+                mpv.apply {
+                    // ⭐ CRITICAL: Stop MPV BEFORE surface initialization
+                    // This must be done before surface attach/GPU config
+                    stopPlayback()
+                    
+                    // Ensure view is visible and properly configured
+                    visibility = android.view.View.VISIBLE
+                    // Prevent view from consuming key events - we handle them in Compose
+                    isFocusable = false
+                    isFocusableInTouchMode = false
+                    
+                    Log.d("MPVPlayer", "Using MPV singleton instance (stopped before surface attach)")
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+            update = { view ->
+                // Ensure the view is visible and attached to window
+                // This is critical for SurfaceView to create its surface
+                view.visibility = android.view.View.VISIBLE
+                view.requestLayout()
+                
+                // Force the holder to create the surface by getting it
+                // SurfaceView creates the surface when:
+                // 1. View is attached to window
+                // 2. View is visible
+                // 3. View has non-zero size
+                // 4. holder.surface is accessed or callback is set
+                try {
+                    val surface = view.holder.surface
+                    if (surface != null && surface.isValid) {
+                        Log.d("MPVPlayer", "Surface is valid in update callback")
+                        // If surface exists but surfaceReady is false, the callback might not have fired yet
+                        // The callback should fire soon, but we can check
+                    } else {
+                        Log.d("MPVPlayer", "Surface not yet created, waiting for surfaceCreated callback")
                     }
-                )
+                } catch (e: Exception) {
+                    Log.w("MPVPlayer", "Error checking surface in update", e)
+                }
+            },
+            onRelease = { view ->
+                // ⚠️ DO NOTHING on release - we want to keep the surface alive!
+                // The singleton MPVView should persist across video changes
+                Log.d("MPVPlayer", "AndroidView onRelease called (no-op to preserve surface)")
             }
-            isLoading -> {
+        )
+        
+        // Show loading overlay on top of MPV view if needed
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
                 // Loading indicator could go here
             }
         }
@@ -893,17 +941,40 @@ fun MPVVideoPlayerScreen(
                                 if (subtitleStream != null && mpvViewRef != null) {
                                     Log.d("MPVPlayer", "User selected subtitle from settings: ${subtitleStream.DisplayTitle}")
                                     
-                                    // Use SubtitleManager for consistent handling
-                                    val subtitleManager = com.flex.elefin.player.subtitles.SubtitleManager(context, apiService)
-                                    subtitleManager.loadSubtitle(
-                                        itemId = item.Id,
-                                        mediaSourceId = mediaSourceId,
-                                        stream = subtitleStream,
-                                        mpv = mpvViewRef!!
-                                    )
+                                    // ⭐ Download subtitle to local cache, then load via file:// URL
+                                    scope.launch {
+                                        try {
+                                            val localPath = com.flex.elefin.player.mpv.MPVSubtitleDownloader.downloadSubtitle(
+                                                context = context,
+                                                apiService = apiService,
+                                                itemId = item.Id,
+                                                mediaSourceId = mediaSourceId,
+                                                stream = subtitleStream
+                                            )
+                                            
+                                            if (localPath != null) {
+                                                withContext(Dispatchers.Main) {
+                                                    Log.d("MPVPlayer", "✅ Loading subtitle from local file: $localPath")
+                                                    // Remove any existing subtitles first
+                                                    MPVLib.command(arrayOf("sub-remove"))
+                                                    // Add new subtitle
+                                                    MPVLib.command(arrayOf("sub-add", localPath, "select", subtitleStream.DisplayTitle ?: "Subtitle"))
+                                                }
+                                            } else {
+                                                Log.e("MPVPlayer", "❌ Failed to download subtitle")
+                                            }
+                                        } catch (e: Exception) {
+                                            Log.e("MPVPlayer", "Error loading subtitle", e)
+                                        }
+                                    }
                                     
                                     // Save preference
                                     AppSettings(context).setSubtitlePreference(item.Id, subtitleIndex)
+                                } else if (subtitleIndex == null && mpvViewRef != null) {
+                                    // User disabled subtitles
+                                    Log.d("MPVPlayer", "Disabling subtitles")
+                                    MPVLib.command(arrayOf("sub-select", "no"))
+                                    AppSettings(context).setSubtitlePreference(item.Id, null)
                                 } else {
                                     Log.e("MPVPlayer", "Subtitle stream not found for index $subtitleIndex")
                                 }
