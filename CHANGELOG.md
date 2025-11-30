@@ -1,4 +1,4 @@
-# Changelog v1.1.5 (upcoming)
+# Changelog v1.1.4 (upcoming)
 
 All notable changes to Elefin will be documented in this file.
 

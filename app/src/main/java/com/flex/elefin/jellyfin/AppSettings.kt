@@ -208,7 +208,7 @@ class AppSettings(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_EXO_SUBTITLE_BG_TRANSPARENT, value).apply()
     
     var exoSubtitleTextSize: Int
-        get() = prefs.getInt(KEY_EXO_SUBTITLE_TEXT_SIZE, 55).coerceIn(30, 100)
-        set(value) = prefs.edit().putInt(KEY_EXO_SUBTITLE_TEXT_SIZE, value.coerceIn(30, 100)).apply()
+        get() = prefs.getInt(KEY_EXO_SUBTITLE_TEXT_SIZE, 30).coerceIn(20, 100)
+        set(value) = prefs.edit().putInt(KEY_EXO_SUBTITLE_TEXT_SIZE, value.coerceIn(20, 100)).apply()
 }
 

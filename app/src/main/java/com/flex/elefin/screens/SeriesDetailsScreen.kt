@@ -575,6 +575,7 @@ fun SeriesTopContainer(
                         fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
                     ),
                     color = Color.White,
+                    logoHeightDp = 31.5f, // 30% smaller than default (45 * 0.7 = 31.5)
                     modifier = Modifier
                         .padding(bottom = 0.dp) // Remove padding between title and episode name
                         .then(
@@ -663,6 +664,7 @@ fun SeriesTopContainer(
                         fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
                     ),
                     color = Color.White,
+                    logoHeightDp = 31.5f, // 30% smaller than default (45 * 0.7 = 31.5)
                     modifier = Modifier
                         .padding(bottom = 8.dp)
                         .then(

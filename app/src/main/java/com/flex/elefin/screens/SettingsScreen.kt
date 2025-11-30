@@ -363,7 +363,7 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Size: $exoSubtitleTextSize (range: 30-100)",
+                            text = "Size: $exoSubtitleTextSize (range: 20-100, default: 30)",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                             modifier = Modifier.padding(top = 4.dp)
@@ -375,12 +375,12 @@ fun SettingsScreen(
                     ) {
                         Button(
                             onClick = {
-                                if (exoSubtitleTextSize > 30) {
+                                if (exoSubtitleTextSize > 20) {
                                     exoSubtitleTextSize -= 5
                                     settings.exoSubtitleTextSize = exoSubtitleTextSize
                                 }
                             },
-                            enabled = exoSubtitleTextSize > 30
+                            enabled = exoSubtitleTextSize > 20
                         ) {
                             Text("-")
                         }

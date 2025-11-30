@@ -177,6 +177,8 @@ class JellyfinApiService(
             val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
             val url = URLBuilder().takeFrom("${base}Users/$userId/Items/Resume").apply {
                 parameters.append("Fields", "ImageTags,UserData,SeriesName,SeriesId") // Request ImageTags to get Thumb images
+                parameters.append("SortBy", "DatePlayed") // Sort by when the item was last played
+                parameters.append("SortOrder", "Descending") // Most recently played first
             }.buildString()
             
             val response: ItemsResponse = client.get(url) {

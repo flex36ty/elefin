@@ -38,7 +38,8 @@ fun TitleOrLogo(
     apiService: JellyfinApiService?,
     style: androidx.compose.ui.text.TextStyle,
     color: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    logoHeightDp: Float = 45f // Default height, can be customized per screen
 ) {
     val context = LocalContext.current
     val settings = remember { AppSettings(context) }
@@ -46,9 +47,9 @@ fun TitleOrLogo(
     val logoTag = item.ImageTags?.get("Logo")
     
     if (useLogo && logoTag != null && apiService != null) {
-        // Show logo image - fixed size for consistent layout across all screens
-        // All logos use the same height to prevent layout shifts
-        val logoHeight = 45.dp // Fixed height for all logos
+        // Show logo image - size can be customized per screen
+        // Default is 45dp, but can be reduced for specific screens (e.g., SeriesDetailsScreen uses 31.5dp)
+        val logoHeight = logoHeightDp.dp
         
         Box(
             modifier = modifier.fillMaxWidth(),
