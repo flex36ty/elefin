@@ -18,6 +18,7 @@ ktor = "2.3.12"
 serialization = "1.6.3"
 compose-compiler = "1.5.8"
 media3 = "1.8.0"
+jellyfin-media3-ffmpeg = "1.8.0+1"
 lottie = "6.1.0"
 
 [libraries]
@@ -52,6 +53,7 @@ media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = 
     media3-datasource-okhttp = { module = "androidx.media3:media3-datasource-okhttp", version.ref = "media3" }
     media3-datasource-cronet = { module = "androidx.media3:media3-datasource-cronet", version.ref = "media3" }
     media3-transformer = { module = "androidx.media3:media3-transformer", version.ref = "media3" }
+jellyfin-media3-ffmpeg-decoder = { module = "org.jellyfin.media3:media3-ffmpeg-decoder", version.ref = "jellyfin-media3-ffmpeg" }
 lottieCompose = { module = "com.airbnb.android:lottie-compose", version.ref = "lottie" }
 
 [plugins]

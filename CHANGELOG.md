@@ -1,8 +1,69 @@
-# Changelog v1.1.3
+# Changelog v1.1.5 (upcoming)
 
 All notable changes to Elefin will be documented in this file.
 
-## Unreleased / Upcoming Release
+### Added
+- **ExoPlayer - Advanced Audio Codec Support**
+  - Added Jellyfin FFmpeg decoder extension for comprehensive audio codec support
+  - Now supports DTS, DTS-HD Master Audio, Dolby TrueHD, AC3, E-AC3
+  - Added support for FLAC, ALAC, Vorbis, Opus, and 30+ additional codecs
+  - FFmpeg renderer preferred over platform decoders for maximum compatibility
+  - No manual building required - uses Jellyfin's prebuilt Maven artifact
+  - Licensed under GPLv3 (compatible with Jellyfin ecosystem)
+
+- **ExoPlayer - Custom Settings Menu**
+  - New modern, transparent settings menu with dark overlay
+  - Auto-focus on first item when menu opens for better TV UX
+  - Quick access to subtitle, audio, and playback speed settings
+  - Semi-transparent background allows viewing content while adjusting settings
+  - Optimized for Android TV remote navigation
+
+### Fixed
+- **Subtitle Language Selection**
+  - Fixed subtitle selection choosing wrong language in ExoPlayer
+  - Now matches by language code + flags (forced, CC, external) instead of position
+  - Handles ExoPlayer's internal track reordering correctly
+  - Prevents mismatches when tracks have similar characteristics
+  - More robust matching algorithm with exact and fallback strategies
+
+- **Subtitle Preference UI Refresh**
+  - Subtitle selection now immediately updates on series/movie info screens
+  - No longer requires navigating away and back to see updated subtitle preference
+  - Fixed state management to trigger immediate Compose recomposition
+  - Improved user experience with instant visual feedback
+
+### Changed
+- **ExoPlayer - Subtitle Mapper**
+  - Updated to prevent duplicate Jellyfin index registrations
+  - Only stores first occurrence of each Jellyfin index for correct mapping
+  - Added detailed logging for track registration debugging
+  - Improved reliability of subtitle and audio track selection
+
+---
+
+# Changelog v1.1.3
+
+### Fixed
+- **Subtitle Auto-Selection from Info Page**
+  - Completely rewrote subtitle preference application logic to use SubtitleMapper
+  - Now uses 100% reliable composite key system for track matching
+  - Subtitle selections from movie/show info screens are now correctly applied on playback start
+  - Eliminated unreliable language code and position-based matching
+  - Uses the same production-tested approach as Plex, Emby, and Jellyfin TV apps
+  - Removed ~100 lines of complex fallback logic
+
+### Changed
+- **Episode Name Text Sizing**
+  - Adjusted episode name to proper medium size between title and synopsis
+  - Changed from `titleMedium * 0.9f` to `bodyLarge * 1.1f`
+  - Creates better visual hierarchy: Title → Episode Name → Synopsis
+  - Episode names are now 37.5% larger than synopsis but still smaller than series title
+
+- **Logo Display Sizing**
+  - All movie and TV show logos now use a fixed height (45dp) for consistent layout
+  - Prevents layout shifts between different titles
+  - Width automatically adjusts to maintain aspect ratios
+  - Uniform sizing across all screens for a cleaner, more professional appearance
 
 ### Added
 - **ExoPlayer - External Subtitle Support**
@@ -30,25 +91,38 @@ All notable changes to Elefin will be documented in this file.
   - Independent settings from MPV player
   - Settings saved per-player type
 
-### Changed
+- **Subtitle Preference Memory**
+  - Subtitle selections are now remembered for each movie/episode
+  - Selected subtitles persist when navigating away and returning
+  - Preferences are automatically applied on next playback
+  - Audio track preferences also saved and restored
+
+### Changed (Continued)
 - **Subtitle Loading System**
   - Switched to `DefaultMediaSourceFactory` for proper subtitle configuration handling
   - Improved subtitle track detection and registration
   - Fixed duplicate subtitle registration issues
   - Enhanced subtitle URL generation with correct extensions
 
-### Fixed
+- **Subtitle Preference Application**
+  - Preferences from movie/show info page now apply correctly on playback start
+  - Track selector prevents unwanted auto-selection of forced/default subtitles
+  - Saved preferences override ExoPlayer's default behavior
+
+### Fixed (Continued)
 - **Subtitle Selection**
   - Fixed indexing issues causing wrong subtitle selection
   - Corrected group index mapping for filtered track lists
   - Resolved conflicts between saved preferences and manual selections
   - Fixed "None" option not disabling subtitles properly
   - Prevented forced subtitle auto-selection
+  - Fixed selected subtitles not persisting from movie/show info page
 
 - **Track Selector Configuration**
   - Disabled forced and default subtitle auto-selection flags
   - Improved track selector parameter handling
   - Fixed subtitle preference application (now only applies once on startup)
+  - Ensured subtitle selection from info page sticks when media starts
 
 ### Previous Unreleased Features
 

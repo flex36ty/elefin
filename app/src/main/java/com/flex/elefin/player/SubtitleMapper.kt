@@ -230,9 +230,13 @@ object SubtitleMapper {
         compositeKeyToMetadata[languageFallbackKey] = metadata
         
         // Store reverse lookup: Jellyfin index → ExoPlayer track
-        jellyfinIndexToExoPlayerTrack[jellyfinIndex] = Pair(groupIndex, trackIndex)
-        
-        Log.d(TAG, "✅ Registered ExoPlayer track: Group=$groupIndex, Track=$trackIndex → JF index=$jellyfinIndex")
+        // Only store the FIRST occurrence to avoid duplicates overwriting the correct mapping
+        if (!jellyfinIndexToExoPlayerTrack.containsKey(jellyfinIndex)) {
+            jellyfinIndexToExoPlayerTrack[jellyfinIndex] = Pair(groupIndex, trackIndex)
+            Log.d(TAG, "✅ Registered ExoPlayer track: Group=$groupIndex, Track=$trackIndex → JF index=$jellyfinIndex (FIRST)")
+        } else {
+            Log.d(TAG, "⚠️ Skipped duplicate registration: Group=$groupIndex, Track=$trackIndex → JF index=$jellyfinIndex (already mapped to ${jellyfinIndexToExoPlayerTrack[jellyfinIndex]})")
+        }
         Log.d(TAG, "   Composite key: $compositeKey")
     }
 
@@ -241,7 +245,13 @@ object SubtitleMapper {
      * Returns null if the mapping doesn't exist.
      */
     fun getExoPlayerTrackInfo(jellyfinIndex: Int): Pair<Int, Int>? {
-        return jellyfinIndexToExoPlayerTrack[jellyfinIndex]
+        val result = jellyfinIndexToExoPlayerTrack[jellyfinIndex]
+        if (result == null) {
+            Log.w(TAG, "⚠️ No mapping found for Jellyfin index $jellyfinIndex")
+            Log.w(TAG, "   Available mappings: ${jellyfinIndexToExoPlayerTrack.keys.sorted()}")
+            Log.w(TAG, "   Total registered tracks: ${jellyfinIndexToExoPlayerTrack.size}")
+        }
+        return result
     }
     
     /** Clears mappings for a new playback session */

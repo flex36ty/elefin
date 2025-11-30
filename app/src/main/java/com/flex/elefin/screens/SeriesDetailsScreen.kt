@@ -550,6 +550,7 @@ fun SeriesTopContainer(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(start = 30.24.dp, end = 30.24.dp, top = 18.dp, bottom = 16.2.dp) // Reduced all padding by 10%
+                .verticalScroll(rememberScrollState()) // Allow scrolling if synopsis is too long
                 .then(
                     if (showDebugOutlines) {
                         Modifier.border(2.dp, Color.Magenta)
@@ -589,7 +590,7 @@ fun SeriesTopContainer(
                 Text(
                     text = focusedEpisode.Name,
                     style = MaterialTheme.typography.bodyLarge.copy(
-                        fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
+                        fontSize = MaterialTheme.typography.bodyLarge.fontSize * 1.1f
                     ),
                     color = Color.White.copy(alpha = 0.9f),
                     modifier = Modifier
@@ -2126,6 +2127,7 @@ fun EpisodeActionButtonsRow(
             apiService = apiService,
             onDismiss = { showSubtitleDialog = false },
             onSubtitleSelected = { subtitleIndex ->
+                storedSubtitleIndex = subtitleIndex  // ⭐ Update state immediately for UI refresh
                 settings.setSubtitlePreference(episode.Id, subtitleIndex)
                 showSubtitleDialog = false
                 

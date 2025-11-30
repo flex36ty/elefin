@@ -1501,6 +1501,7 @@ fun ActionButtonsRow(
             onSubtitleSelected = { subtitleIndex ->
                 selectedSubtitleIndex = subtitleIndex
                 settings.setSubtitlePreference(item.Id, subtitleIndex)
+                showSubtitleDialog = false  // Close dialog after selection
                 
                 // ⭐ Pre-download subtitle when selected (before playback starts)
                 if (subtitleIndex != null && apiService != null) {

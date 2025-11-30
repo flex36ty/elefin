@@ -16,8 +16,8 @@ android {
         targetSdk = 36
 
         // Version code: major * 10000 + minor * 100 + patch
-        versionCode = 10102  
-        versionName = "1.1.2"
+        versionCode = 10105
+        versionName = "1.1.5"
 
         ndk {
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
@@ -149,15 +149,9 @@ dependencies {
     implementation(libs.media3.transformer)
     
     // -------------------------------------------------------------
-    // FFmpeg Extension (Optional - Build Required)
+    // FFmpeg Audio Decoder (Jellyfin-provided)
     // -------------------------------------------------------------
-    // Enables: DTS, TrueHD, PGS subtitles (.sup), VobSub, 30+ codecs
-    // See BUILD_FFMPEG.md for build instructions
-    
-    // Step 1: Build or download media3-decoder-ffmpeg.aar
-    // Step 2: Place in app/libs/
-    // Step 3: Uncomment these lines:
-    
-    // implementation("androidx.media3:media3-decoder:1.8.0")
-    // implementation(files("libs/media3-decoder-ffmpeg.aar"))
+    // Adds support for: DTS, DTS-HD, TrueHD, AC3, E-AC3, and 30+ codecs
+    // Licensed under GPLv3 (compatible with Jellyfin ecosystem)
+    implementation(libs.jellyfin.media3.ffmpeg.decoder)
 }

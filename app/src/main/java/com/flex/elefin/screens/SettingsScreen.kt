@@ -150,12 +150,12 @@ fun SettingsScreen(
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(
-                        text = "Use MPV Player",
+                        text = "Use MPV Player (Experimental)",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Use MPV player instead of ExoPlayer for video playback",
+                        text = "Use MPV player instead of ExoPlayer for video playback. Note: MPV is experimental and may be unstable.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                         modifier = Modifier.padding(top = 4.dp)

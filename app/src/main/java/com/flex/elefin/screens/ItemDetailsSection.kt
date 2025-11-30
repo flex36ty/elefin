@@ -46,10 +46,9 @@ fun TitleOrLogo(
     val logoTag = item.ImageTags?.get("Logo")
     
     if (useLogo && logoTag != null && apiService != null) {
-        // Show logo image - maintain same height as text would be, left-aligned
-        // Calculate approximate text height: fontSize * line height multiplier (typically 1.2)
-        val fontSizeValue = style.fontSize.value
-        val logoHeight = (fontSizeValue * 1.2f).dp // Slightly taller than text for better visibility
+        // Show logo image - fixed size for consistent layout across all screens
+        // All logos use the same height to prevent layout shifts
+        val logoHeight = 45.dp // Fixed height for all logos
         
         Box(
             modifier = modifier.fillMaxWidth(),
@@ -62,7 +61,7 @@ fun TitleOrLogo(
                     .build(),
                 contentDescription = item.Name,
                 modifier = Modifier
-                    .height(logoHeight)
+                    .height(logoHeight) // Fixed height for consistent layout
                     .wrapContentWidth(),
                 contentScale = ContentScale.Fit
             )
