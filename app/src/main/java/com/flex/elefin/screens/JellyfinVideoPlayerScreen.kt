@@ -17,6 +17,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
@@ -1750,6 +1752,38 @@ fun JellyfinVideoPlayerScreen(
         }
     }
 
+    // Handle lifecycle events - pause when app goes to background (home button)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
+                    // Pause playback when app goes to background
+                    if (player.isPlaying) {
+                        player.pause()
+                        Log.d("JellyfinPlayer", "Paused playback - app went to background")
+                    }
+                }
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
+                    // Note: We don't auto-resume here - let user manually resume if they want
+                    Log.d("JellyfinPlayer", "App resumed - player ready")
+                }
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> {
+                    // Ensure player is paused when activity is stopped
+                    if (player.isPlaying) {
+                        player.pause()
+                        Log.d("JellyfinPlayer", "Paused playback - activity stopped")
+                    }
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     // BackHandler to handle back button
     BackHandler(enabled = true) {
         // Exit player on back button
@@ -2081,6 +2115,21 @@ fun JellyfinVideoPlayerScreen(
                                                 
                                                 applyToAllChildren(controlView)
                                                 controlView.invalidate()
+                                                
+                                                // Auto-focus play/pause button when controller appears
+                                                controlView.post {
+                                                    val pauseButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_pause)
+                                                    val playButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_play)
+                                                    val buttonToFocus = if (player.isPlaying && pauseButton != null) pauseButton else playButton
+                                                    
+                                                    buttonToFocus?.let { button ->
+                                                        if (button.isFocusable) {
+                                                            button.requestFocus()
+                                                            Log.d("ExoPlayer", "GL Mode: Auto-focused play/pause button")
+                                                        }
+                                                    }
+                                                }
+                                                
                                                 Log.d("ExoPlayer", "GL Mode: PlayerControlView initialized with purple focus styling")
                                             }
                                         }
@@ -2271,6 +2320,21 @@ fun JellyfinVideoPlayerScreen(
                                         
                                         // Force a refresh to ensure subtitle button is visible
                                         controlView.invalidate()
+                                        
+                                        // Auto-focus play/pause button when controller appears
+                                        controlView.post {
+                                            val pauseButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_pause)
+                                            val playButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_play)
+                                            val buttonToFocus = if (player.isPlaying && pauseButton != null) pauseButton else playButton
+                                            
+                                            buttonToFocus?.let { button ->
+                                                if (button.isFocusable) {
+                                                    button.requestFocus()
+                                                    Log.d("ExoPlayer", "Standard Mode: Auto-focused play/pause button")
+                                                }
+                                            }
+                                        }
+                                        
                                         Log.d("ExoPlayer", "PlayerControlView initialized, subtitle button explicitly enabled, focus color set to purple for all controls")
                                     }
                                     
