@@ -4,7 +4,7 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
-## [1.1.5] - 2025-11-30
+## [1.1.6 (next release) ] - 2025-11-30
 
 ### Added
 - **ExoPlayer - Video Enhancements (OpenGL Post-Processing)**
