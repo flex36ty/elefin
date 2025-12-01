@@ -4,7 +4,7 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
-## [1.1.6] - 2025-12-01
+## 2025-12-01
 
 ### Added
 
