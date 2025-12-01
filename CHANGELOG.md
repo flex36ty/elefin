@@ -4,7 +4,7 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
-## [1.1.6] - 2025-12-01
+## 2025-12-01
 
 ### Added
 
@@ -17,6 +17,16 @@ All notable changes to Elefin will be documented in this file.
   - Optimized for NVIDIA Shield, ONN 4K, and budget Android TV boxes
   - Based on Google TV and streaming app best practices
   - Smooth 60fps scrolling even on Tegra X1 (Shield 2015/2017)
+
+- **Background Image Debouncing (1-second delay)**
+  - Added 1-second delay before changing background image on focus
+  - Prevents excessive server requests during fast scrolling
+  - Cancels pending requests when focus changes quickly
+  - Significantly reduces network traffic and server load
+  - Smoother scrolling experience without background flickering
+  - Background only updates when user pauses on an item
+  - Applied to all screens: home rows, library grids, and collection grids
+  - Ideal for browsing large libraries quickly
 
 - **Background Image Loading Optimizations**
   - Added smooth 300ms crossfade animation when background images load

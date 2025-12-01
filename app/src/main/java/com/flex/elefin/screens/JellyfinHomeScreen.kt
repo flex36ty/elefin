@@ -42,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -391,6 +392,9 @@ fun JellyfinHomeScreen(
     var highlightedItemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     // Track the original episode item when highlighting a series from an episode
     var originalEpisodeItem by remember { mutableStateOf<JellyfinItem?>(null) }
+    
+    // Job to track debounced background image changes
+    var backgroundChangeJob by remember { mutableStateOf<Job?>(null) }
     
     // Set initial highlighted item to first continue watching item or first recently added movie
     LaunchedEffect(continueWatchingItems, recentlyAddedMoviesByLibrary) {
@@ -1248,7 +1252,14 @@ fun JellyfinHomeScreen(
                                             },
                                             onFocusChanged = { isFocused ->
                                                 if (isFocused) {
-                                                    highlightedItem = item
+                                                    // Cancel any pending background change
+                                                    backgroundChangeJob?.cancel()
+                                                    
+                                                    // Debounce: wait 1 second before changing background
+                                                    backgroundChangeJob = scope.launch {
+                                                        delay(1000)
+                                                        highlightedItem = item
+                                                    }
                                                 }
                                             },
                                             enableCaching = cacheLibraryImages,
@@ -1565,7 +1576,18 @@ fun JellyfinHomeScreen(
                                                     }
                                                     context.startActivity(intent)
                                                 },
-                                                onFocusChanged = { },
+                                                onFocusChanged = { isFocused ->
+                                                    if (isFocused) {
+                                                        // Cancel any pending background change
+                                                        backgroundChangeJob?.cancel()
+                                                        
+                                                        // Debounce: wait 1 second before changing background
+                                                        backgroundChangeJob = scope.launch {
+                                                            delay(1000)
+                                                            highlightedItem = item
+                                                        }
+                                                    }
+                                                },
                                                 enableCaching = cacheLibraryImages,
                                                 reducePosterResolution = reducePosterResolution,
                                                 unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null,
@@ -1670,12 +1692,18 @@ fun JellyfinHomeScreen(
                                         },
                                         onFocusChanged = { isFocused ->
                                             if (isFocused) {
-                                                // For episodes, highlight the series instead of the episode
-                                                if (item.Type == "Episode" && item.SeriesId != null) {
-                                                    // Store the original episode item to show its name
-                                                    originalEpisodeItem = item
-                                                    // Fetch series details for highlighting
-                                                    scope.launch {
+                                                // Cancel any pending background change
+                                                backgroundChangeJob?.cancel()
+                                                
+                                                // Debounce: wait 1 second before changing background
+                                                backgroundChangeJob = scope.launch {
+                                                    delay(1000)
+                                                    
+                                                    // For episodes, highlight the series instead of the episode
+                                                    if (item.Type == "Episode" && item.SeriesId != null) {
+                                                        // Store the original episode item to show its name
+                                                        originalEpisodeItem = item
+                                                        // Fetch series details for highlighting
                                                         val seriesDetails = apiService?.getItemDetails(item.SeriesId)
                                                         if (seriesDetails != null) {
                                                             highlightedItem = seriesDetails
@@ -1683,10 +1711,10 @@ fun JellyfinHomeScreen(
                                                             highlightedItem = item
                                                             originalEpisodeItem = null
                                                         }
+                                                    } else {
+                                                        highlightedItem = item
+                                                        originalEpisodeItem = null
                                                     }
-                                                } else {
-                                                    highlightedItem = item
-                                                    originalEpisodeItem = null
                                                 }
                                             }
                                         }
@@ -1735,12 +1763,18 @@ fun JellyfinHomeScreen(
                                         },
                                         onFocusChanged = { isFocused ->
                                             if (isFocused) {
-                                                // For episodes, highlight the series instead of the episode
-                                                if (item.Type == "Episode" && item.SeriesId != null) {
-                                                    // Store the original episode item to show its name
-                                                    originalEpisodeItem = item
-                                                    // Fetch series details for highlighting
-                                                    scope.launch {
+                                                // Cancel any pending background change
+                                                backgroundChangeJob?.cancel()
+                                                
+                                                // Debounce: wait 1 second before changing background
+                                                backgroundChangeJob = scope.launch {
+                                                    delay(1000)
+                                                    
+                                                    // For episodes, highlight the series instead of the episode
+                                                    if (item.Type == "Episode" && item.SeriesId != null) {
+                                                        // Store the original episode item to show its name
+                                                        originalEpisodeItem = item
+                                                        // Fetch series details for highlighting
                                                         val seriesDetails = apiService?.getItemDetails(item.SeriesId)
                                                         if (seriesDetails != null) {
                                                             highlightedItem = seriesDetails
@@ -1748,10 +1782,10 @@ fun JellyfinHomeScreen(
                                                             highlightedItem = item
                                                             originalEpisodeItem = null
                                                         }
+                                                    } else {
+                                                        highlightedItem = item
+                                                        originalEpisodeItem = null
                                                     }
-                                                } else {
-                                                    highlightedItem = item
-                                                    originalEpisodeItem = null
                                                 }
                                             }
                                         }
@@ -1797,7 +1831,14 @@ fun JellyfinHomeScreen(
                                                 },
                                                 onFocusChanged = { isFocused ->
                                                     if (isFocused) {
-                                                        highlightedItem = item
+                                                        // Cancel any pending background change
+                                                        backgroundChangeJob?.cancel()
+                                                        
+                                                        // Debounce: wait 1 second before changing background
+                                                        backgroundChangeJob = scope.launch {
+                                                            delay(1000)
+                                                            highlightedItem = item
+                                                        }
                                                     }
                                                 },
                                                 enableCaching = cacheLibraryImages,
@@ -1835,7 +1876,14 @@ fun JellyfinHomeScreen(
                                         },
                                         onFocusChanged = { isFocused ->
                                             if (isFocused) {
-                                                highlightedItem = item
+                                                // Cancel any pending background change
+                                                backgroundChangeJob?.cancel()
+                                                
+                                                // Debounce: wait 1 second before changing background
+                                                backgroundChangeJob = scope.launch {
+                                                    delay(1000)
+                                                    highlightedItem = item
+                                                }
                                             }
                                         },
                                         enableCaching = cacheLibraryImages,
@@ -1893,7 +1941,14 @@ fun JellyfinHomeScreen(
                                                 },
                                                 onFocusChanged = { isFocused ->
                                                     if (isFocused) {
-                                                        highlightedItem = item
+                                                        // Cancel any pending background change
+                                                        backgroundChangeJob?.cancel()
+                                                        
+                                                        // Debounce: wait 1 second before changing background
+                                                        backgroundChangeJob = scope.launch {
+                                                            delay(1000)
+                                                            highlightedItem = item
+                                                        }
                                                     }
                                                 },
                                                 enableCaching = cacheLibraryImages,
