@@ -4,39 +4,44 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## [1.1.6] - 2025-12-01
+
 ### Added
-- **ExoPlayer - Video Enhancements (OpenGL Post-Processing)**
-  - NEW: Custom GL video pipeline with post-processing effects
-  - Fake HDR simulation with tone mapping and brightness boost
-  - Image sharpening using edge detection (unsharp mask technique)
-  - Adjustable strength controls for both HDR (1.0-2.0) and sharpening (0.0-1.0)
-  - OpenGL ES 2.0 pipeline intercepts ExoPlayer video frames for shader processing
-  - Maintains full ExoPlayer compatibility (no decoder changes needed)
-  - Settings located under "Video Enhancements" section
-  - Toggle individual effects on/off or disable GL processing entirely
-  - Inspired by VLC, Kodi, and MPV professional video rendering pipelines
-  - Zero performance impact when disabled (uses standard PlayerView)
 
-- **ExoPlayer - Advanced Audio Codec Support**
-  - Added Jellyfin FFmpeg decoder extension for comprehensive audio codec support
-  - Now supports DTS, DTS-HD Master Audio, Dolby TrueHD, AC3, E-AC3
-  - Added support for FLAC, ALAC, Vorbis, Opus, and 30+ additional codecs
-  - FFmpeg renderer preferred over platform decoders for maximum compatibility
-  - No manual building required - uses Jellyfin's prebuilt Maven artifact
-  - Licensed under GPLv3 (compatible with Jellyfin ecosystem)
+- **UI Performance Optimizations for Android TV**
+  - Added `@Stable` annotations to all data classes (JellyfinItem, UserData, MediaSource, etc.)
+  - Prevents unnecessary recomposition during scrolling
+  - LazyRow items now use `key` parameter for proper item tracking
+  - Added `contentType` hints for better recycling and composition reuse
+  - Significantly reduces layout invalidations and recomposition overhead
+  - Optimized for NVIDIA Shield, ONN 4K, and budget Android TV boxes
+  - Based on Google TV and streaming app best practices
+  - Smooth 60fps scrolling even on Tegra X1 (Shield 2015/2017)
 
-- **ExoPlayer - Custom Settings Menu**
-  - New modern, transparent settings menu with dark overlay
-  - Auto-focus on first item when menu opens for better TV UX
-  - Quick access to subtitle, audio, and playback speed settings
-  - Semi-transparent background allows viewing content while adjusting settings
-  - Optimized for Android TV remote navigation
+- **Background Image Loading Optimizations**
+  - Added smooth 300ms crossfade animation when background images load
+  - Enabled hardware acceleration (GPU memory) for faster rendering
+  - Eliminates white flashes and jarring transitions
+  - Professional, polished feel when navigating between items
+  - Combines with Compose's Crossfade for double-buffered smooth transitions
+  - Works seamlessly with caching for instant loading on subsequent views
 
-- **Library Refresh - Image Cache Clearing**
-  - Library refresh button now clears image cache before refreshing
-  - Ensures new thumbnails and artwork are downloaded immediately
-  - Fixes issue where cached images would prevent new media art from appearing
-  - Both memory and disk caches are cleared for complete refresh
+- **Background Image Caching**
+  - Explicitly enabled memory and disk caching for all background images
+  - Background images are now aggressively cached for instant loading
+  - Eliminates redundant network requests when navigating between screens
+  - Smooth background transitions as you browse your library
+  - Significantly improves perceived performance on home screen
+  - Cache persists across app sessions for faster startup
+
+- **Background Image Resolution Optimization**
+  - Reduced all background images from 4K (3840×2160) to 1080p (1920×1080)
+  - Applies to home screen, series details, and movie details backgrounds
+  - **75% smaller file size** (~4MB → ~1MB typical backdrop)
+  - Significantly faster loading times and reduced memory usage
+  - Perfect quality for backgrounds (heavily dimmed/overlaid anyway)
+  - Ideal for 1080p TVs (native resolution) and still great on 4K TVs
+  - Major improvement for slower network connections and budget devices
 
 - **Performance Optimization for Weaker Devices**
   - NEW: "Disable UI Animations" setting for better performance on budget devices
@@ -48,40 +53,38 @@ All notable changes to Elefin will be documented in this file.
   - Card zoom animations remain (StandardCardContainer limitation)
   - Ideal for Android TV boxes, older Shield models, or slower hardware
 
-- **Background Image Resolution Optimization**
-  - Reduced all background images from 4K (3840×2160) to 1080p (1920×1080)
-  - Applies to home screen, series details, and movie details backgrounds
-  - **75% smaller file size** (~4MB → ~1MB typical backdrop)
-  - Significantly faster loading times and reduced memory usage
-  - Perfect quality for backgrounds (heavily dimmed/overlaid anyway)
-  - Ideal for 1080p TVs (native resolution) and still great on 4K TVs
-  - Major improvement for slower network connections and budget devices
+- **Library Refresh - Image Cache Clearing**
+  - Library refresh button now clears image cache before refreshing
+  - Ensures new thumbnails and artwork are downloaded immediately
+  - Fixes issue where cached images would prevent new media art from appearing
+  - Both memory and disk caches are cleared for complete refresh
 
-- **Background Image Caching**
-  - Explicitly enabled memory and disk caching for all background images
-  - Background images are now aggressively cached for instant loading
-  - Eliminates redundant network requests when navigating between screens
-  - Smooth background transitions as you browse your library
-  - Significantly improves perceived performance on home screen
-  - Cache persists across app sessions for faster startup
+- **ExoPlayer - Custom Settings Menu**
+  - New modern, transparent settings menu with dark overlay
+  - Auto-focus on first item when menu opens for better TV UX
+  - Quick access to subtitle, audio, and playback speed settings
+  - Semi-transparent background allows viewing content while adjusting settings
+  - Optimized for Android TV remote navigation
 
-- **Background Image Loading Optimizations**
-  - Added smooth 300ms crossfade animation when background images load
-  - Enabled hardware acceleration (GPU memory) for faster rendering
-  - Eliminates white flashes and jarring transitions
-  - Professional, polished feel when navigating between items
-  - Combines with Compose's Crossfade for double-buffered smooth transitions
-  - Works seamlessly with caching for instant loading on subsequent views
+- **ExoPlayer - Advanced Audio Codec Support**
+  - Added Jellyfin FFmpeg decoder extension for comprehensive audio codec support
+  - Now supports DTS, DTS-HD Master Audio, Dolby TrueHD, AC3, E-AC3
+  - Added support for FLAC, ALAC, Vorbis, Opus, and 30+ additional codecs
+  - FFmpeg renderer preferred over platform decoders for maximum compatibility
+  - No manual building required - uses Jellyfin's prebuilt Maven artifact
+  - Licensed under GPLv3 (compatible with Jellyfin ecosystem)
 
-- **UI Performance Optimizations for Android TV**
-  - Added `@Stable` annotations to all data classes (JellyfinItem, UserData, MediaSource, etc.)
-  - Prevents unnecessary recomposition during scrolling
-  - LazyRow items now use `key` parameter for proper item tracking
-  - Added `contentType` hints for better recycling and composition reuse
-  - Significantly reduces layout invalidations and recomposition overhead
-  - Optimized for NVIDIA Shield, ONN 4K, and budget Android TV boxes
-  - Based on Google TV and streaming app best practices
-  - Smooth 60fps scrolling even on Tegra X1 (Shield 2015/2017)
+- **ExoPlayer - Video Enhancements (OpenGL Post-Processing)**
+  - NEW: Custom GL video pipeline with post-processing effects
+  - Fake HDR simulation with tone mapping and brightness boost
+  - Image sharpening using edge detection (unsharp mask technique)
+  - Adjustable strength controls for both HDR (1.0-2.0) and sharpening (0.0-1.0)
+  - OpenGL ES 2.0 pipeline intercepts ExoPlayer video frames for shader processing
+  - Maintains full ExoPlayer compatibility (no decoder changes needed)
+  - Settings located under "Video Enhancements" section
+  - Toggle individual effects on/off or disable GL processing entirely
+  - Inspired by VLC, Kodi, and MPV professional video rendering pipelines
+  - Zero performance impact when disabled (uses standard PlayerView)
 
 ### Fixed
 - **Subtitle Language Selection**
