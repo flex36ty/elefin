@@ -106,6 +106,9 @@ fun SettingsScreen(
     var enableSharpening by remember { mutableStateOf(settings.enableSharpening) }
     var hdrStrength by remember { mutableStateOf(settings.hdrStrength) }
     var sharpenStrength by remember { mutableStateOf(settings.sharpenStrength) }
+    
+    // UI Performance settings
+    var disableUIAnimations by remember { mutableStateOf(settings.disableUIAnimations) }
 
     Box(
         modifier = Modifier
@@ -931,6 +934,45 @@ fun SettingsScreen(
                     )
                 ) {
                     Text(if (reducePosterResolutionEnabled) "ON" else "OFF")
+                }
+            }
+
+            // Disable UI Animations setting
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "Disable UI Animations",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Turn off all card zoom animations for better performance on weaker devices",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                
+                Button(
+                    onClick = {
+                        disableUIAnimations = !disableUIAnimations
+                        settings.disableUIAnimations = disableUIAnimations
+                    },
+                    colors = ButtonDefaults.colors(
+                        containerColor = if (disableUIAnimations) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        }
+                    )
+                ) {
+                    Text(if (disableUIAnimations) "ON" else "OFF")
                 }
             }
 

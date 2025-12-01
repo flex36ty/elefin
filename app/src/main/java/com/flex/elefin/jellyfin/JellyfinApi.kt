@@ -19,7 +19,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
 import okhttp3.Headers
+import androidx.compose.runtime.Stable
 
+@Stable
 @Serializable
 data class JellyfinItem(
     val Id: String,
@@ -48,6 +50,7 @@ data class JellyfinItem(
     val NextEpisodeId: String? = null // ID of the next episode for autoplay
 )
 
+@Stable
 @Serializable
 data class Person(
     val Id: String? = null,
@@ -56,11 +59,13 @@ data class Person(
     val PrimaryImageTag: String? = null // Image tag for person's photo
 )
 
+@Stable
 @Serializable
 data class JellyfinPlaybackInfo(
     val MediaSources: List<MediaSource>? = null
 )
 
+@Stable
 @Serializable
 data class MediaSource(
     val Id: String? = null,
@@ -68,6 +73,7 @@ data class MediaSource(
     val MediaStreams: List<MediaStream>? = null
 )
 
+@Stable
 @Serializable
 data class MediaStream(
     val Index: Int? = null,
@@ -92,6 +98,7 @@ data class MediaStream(
     val ChannelLayout: String? = null // Audio channel layout (e.g., "5.1", "7.1", "stereo")
 )
 
+@Stable
 @Serializable
 data class UserData(
     val PlayedPercentage: Double? = null,

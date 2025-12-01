@@ -26,6 +26,9 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.ScrollScope
+import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
@@ -146,6 +149,18 @@ fun JellyfinHomeScreen(
     // Debug outlines setting - read from settings and update when settings dialog closes
     var debugOutlinesEnabled by remember { mutableStateOf(settings.showDebugOutlines) }
     
+    // UI animations setting - read from settings
+    val disableUIAnimations = remember { mutableStateOf(settings.disableUIAnimations) }
+    
+    // No-fling behavior for when animations are disabled (instant scroll, no smooth animation)
+    val noFlingBehavior = remember {
+        object : FlingBehavior {
+            override suspend fun ScrollScope.performFling(initialVelocity: Float): Float {
+                return 0f // No fling - instant stop
+            }
+        }
+    }
+    
     // Hide shows with zero episodes setting - read from settings
     var hideShowsWithZeroEpisodes by remember { mutableStateOf(settings.hideShowsWithZeroEpisodes) }
     
@@ -257,6 +272,7 @@ fun JellyfinHomeScreen(
     var showSettings by remember { mutableStateOf(false) }
     var darkModeWhenSettingsOpened by remember { mutableStateOf(false) }
     var debugOutlinesWhenSettingsOpened by remember { mutableStateOf(false) }
+    var disableUIAnimationsWhenSettingsOpened by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     var showSortDialog by remember { mutableStateOf(false) }
@@ -420,12 +436,13 @@ fun JellyfinHomeScreen(
                 }
                 
                 // Prioritize backdrop for home screen background
-                val backdropUrl = apiService?.getImageUrl(itemId, "Backdrop", null, maxWidth = 3840, maxHeight = 2160, quality = 90) ?: ""
+                // Use 1080p resolution - sufficient for background images and faster loading
+                val backdropUrl = apiService?.getImageUrl(itemId, "Backdrop", null, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
                 if (backdropUrl.isNotEmpty()) {
                     backdropUrl
                 } else {
                     // Fall back to primary image if no backdrop
-                    apiService?.getImageUrl(itemId, "Primary", null, maxWidth = 3840, maxHeight = 2160, quality = 90) ?: ""
+                    apiService?.getImageUrl(itemId, "Primary", null, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
                 }
             } ?: ""
             
@@ -444,6 +461,10 @@ fun JellyfinHomeScreen(
                             model = ImageRequest.Builder(LocalContext.current)
                                 .data(currentUrl)
                                 .headers(headerMap)
+                                .memoryCachePolicy(CachePolicy.ENABLED)
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .crossfade(300) // Smooth 300ms crossfade when loading
+                                .allowHardware(true) // Use GPU memory for faster rendering
                                 .build(),
                             contentDescription = highlightedItem?.Name ?: "",
                             modifier = Modifier.fillMaxSize(),
@@ -522,6 +543,7 @@ fun JellyfinHomeScreen(
                     onClick = {
                         darkModeWhenSettingsOpened = settings.darkModeEnabled
                         debugOutlinesWhenSettingsOpened = settings.showDebugOutlines
+                        disableUIAnimationsWhenSettingsOpened = settings.disableUIAnimations
                         showSettings = true
                     },
                     colors = IconButtonDefaults.colors(
@@ -1231,7 +1253,8 @@ fun JellyfinHomeScreen(
                                             },
                                             enableCaching = cacheLibraryImages,
                                             reducePosterResolution = reducePosterResolution,
-                                            unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null
+                                            unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null,
+                                            disableAnimations = disableUIAnimations.value
                                         )
                                         // Item name below the card
                                         Text(
@@ -1545,7 +1568,8 @@ fun JellyfinHomeScreen(
                                                 onFocusChanged = { },
                                                 enableCaching = cacheLibraryImages,
                                                 reducePosterResolution = reducePosterResolution,
-                                                unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null
+                                                unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null,
+                                                disableAnimations = disableUIAnimations.value
                                             )
                                             // Item name below the card
                                             Text(
@@ -1614,13 +1638,18 @@ fun JellyfinHomeScreen(
                             LazyRow(
                                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)), // Bottom increased by another 20% (15.87 * 1.05 * 1.05 * 1.1 * 1.2 = 19.24 * 1.2 = 23.09)
                                 horizontalArrangement = Arrangement.spacedBy(26.dp), // Increased by 30%: 20 * 1.3 = 26.dp
+                                flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                 modifier = if (debugOutlinesEnabled) {
                                     Modifier.border(2.dp, Color.Magenta)
                                 } else {
                                     Modifier
                                 }
                             ) {
-                                items(continueWatchingItems) { item ->
+                                items(
+                                    items = continueWatchingItems,
+                                    key = { it.Id },
+                                    contentType = { "horizontal_card_progress" }
+                                ) { item ->
                                     // For episodes, use series info for highlighting; for movies, use item itself
                                     val itemForHighlight = if (item.Type == "Episode" && item.SeriesId != null) {
                                         // For episodes, we'll fetch series details when focused
@@ -1677,13 +1706,18 @@ fun JellyfinHomeScreen(
                             LazyRow(
                                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)),
                                 horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                 modifier = if (debugOutlinesEnabled) {
                                     Modifier.border(2.dp, Color.Magenta)
                                 } else {
                                     Modifier
                                 }
                             ) {
-                                items(nextUpItems) { item ->
+                                items(
+                                    items = nextUpItems,
+                                    key = { it.Id },
+                                    contentType = { "horizontal_card_progress" }
+                                ) { item ->
                                     // For episodes, use series info for highlighting; for movies, use item itself
                                     val itemForHighlight = if (item.Type == "Episode" && item.SeriesId != null) {
                                         // For episodes, we'll fetch series details when focused
@@ -1747,6 +1781,7 @@ fun JellyfinHomeScreen(
                                     LazyRow(
                                         contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)), // Bottom increased by another 20% (15.87 * 1.05 * 1.05 * 1.1 * 1.2 = 19.24 * 1.2 = 23.09)
                                         horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                        flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                         modifier = if (debugOutlinesEnabled) {
                                             Modifier.border(2.dp, Color.Magenta)
                                         } else {
@@ -1842,6 +1877,7 @@ fun JellyfinHomeScreen(
                                     LazyRow(
                                         contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)), // Bottom increased by another 20% (15.87 * 1.05 * 1.05 * 1.1 * 1.2 = 19.24 * 1.2 = 23.09)
                                         horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                        flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                         modifier = if (debugOutlinesEnabled) {
                                             Modifier.border(2.dp, Color.Magenta)
                                         } else {
@@ -1892,6 +1928,7 @@ fun JellyfinHomeScreen(
                                     LazyRow(
                                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.4f * 1.3f)), // Bottom increased by another 30%: (15.87 * 1.4553 * 1.4) * 1.3 = 42.024.dp
                                         horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                        flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                         modifier = if (debugOutlinesEnabled) {
                                             Modifier.border(2.dp, Color.Magenta)
                                         } else {
@@ -1976,6 +2013,11 @@ fun JellyfinHomeScreen(
                 if (debugOutlinesChanged) {
                     debugOutlinesEnabled = settings.showDebugOutlines
                 }
+                // Check if UI animations setting changed and refresh UI if needed
+                val animationsChanged = settings.disableUIAnimations != disableUIAnimationsWhenSettingsOpened
+                if (animationsChanged) {
+                    disableUIAnimations.value = settings.disableUIAnimations
+                }
                 showSettings = false 
             },
             properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -2007,6 +2049,11 @@ fun JellyfinHomeScreen(
                             val debugOutlinesChanged = settings.showDebugOutlines != debugOutlinesWhenSettingsOpened
                             if (debugOutlinesChanged) {
                                 debugOutlinesEnabled = settings.showDebugOutlines
+                            }
+                            // Check if UI animations setting changed and refresh UI if needed
+                            val animationsChanged = settings.disableUIAnimations != disableUIAnimationsWhenSettingsOpened
+                            if (animationsChanged) {
+                                disableUIAnimations.value = settings.disableUIAnimations
                             }
                             showSettings = false 
                         }
@@ -2334,10 +2381,13 @@ fun JellyfinCard(
     onClick: () -> Unit,
     onFocusChanged: ((Boolean) -> Unit)? = null,
     enableCaching: Boolean = true,
-    reducePosterResolution: Boolean = false
+    reducePosterResolution: Boolean = false,
+    disableAnimations: Boolean = false
 ) {
     // Use reduced resolution (600x900 for 2:3 aspect ratio) or 4K resolution (3840x5760) based on setting
-    val imageUrl = if (reducePosterResolution) {
+    // When animations disabled, force reduced resolution for better performance
+    val effectiveReduceResolution = reducePosterResolution || disableAnimations
+    val imageUrl = if (effectiveReduceResolution) {
         apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 600, maxHeight = 900, quality = 90) ?: ""
     } else {
         apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90) ?: ""
@@ -2391,7 +2441,8 @@ fun JellyfinCardWithProgress(
     onClick: () -> Unit,
     onFocusChanged: ((Boolean) -> Unit)? = null,
     enableCaching: Boolean = true,
-    reducePosterResolution: Boolean = false
+    reducePosterResolution: Boolean = false,
+    disableAnimations: Boolean = false
 ) {
     // Use reduced resolution (600x900 for 2:3 aspect ratio) or 4K resolution (3840x5760) based on setting
     val imageUrl = if (reducePosterResolution) {
@@ -2473,20 +2524,23 @@ fun JellyfinHorizontalCard(
     enableCaching: Boolean = true,
     reducePosterResolution: Boolean = false,
     useSeriesPosterForEpisodes: Boolean = false,
-    unwatchedEpisodeCount: Int? = null
+    unwatchedEpisodeCount: Int? = null,
+    disableAnimations: Boolean = false
 ) {
     // For episodes, use series poster (Primary) if requested; otherwise use poster (Primary) for movies/shows
-    val imageUrl = remember(item.Id, item.Type, item.SeriesId, useSeriesPosterForEpisodes, reducePosterResolution) {
+    // When animations disabled, force reduced resolution for better performance
+    val effectiveReduceResolution = reducePosterResolution || disableAnimations
+    val imageUrl = remember(item.Id, item.Type, item.SeriesId, useSeriesPosterForEpisodes, effectiveReduceResolution) {
         if (item.Type == "Episode" && useSeriesPosterForEpisodes && item.SeriesId != null) {
             // Use series poster (Primary) for episodes
-            if (reducePosterResolution) {
+            if (effectiveReduceResolution) {
                 apiService?.getImageUrl(item.SeriesId, "Primary", null, maxWidth = 600, maxHeight = 900, quality = 90) ?: ""
             } else {
                 apiService?.getImageUrl(item.SeriesId, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90) ?: ""
             }
         } else {
             // Use poster (Primary) for movies and shows
-            if (reducePosterResolution) {
+            if (effectiveReduceResolution) {
                 apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 600, maxHeight = 900, quality = 90) ?: ""
             } else {
                 apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90) ?: ""
@@ -2594,10 +2648,16 @@ fun JellyfinEpisodeCard(
     item: JellyfinItem,
     apiService: JellyfinApiService?,
     onClick: () -> Unit,
-    onFocusChanged: ((Boolean) -> Unit)? = null
+    onFocusChanged: ((Boolean) -> Unit)? = null,
+    disableAnimations: Boolean = false
 ) {
     // For episodes, use series backdrop if available, otherwise use episode backdrop or primary
-    val imageUrl = remember(item.SeriesId, item.Id) {
+    // When animations disabled, force reduced resolution for better performance
+    val imageUrl = remember(item.SeriesId, item.Id, disableAnimations) {
+        val maxWidth = if (disableAnimations) 600 else 3840
+        val maxHeight = if (disableAnimations) 900 else 5760
+        val quality = 90
+        
         if (item.SeriesId != null) {
             // First try to get series backdrop
             val seriesBackdrop = apiService?.getImageUrl(item.SeriesId, "Backdrop") ?: ""
@@ -2610,8 +2670,7 @@ fun JellyfinEpisodeCard(
                     episodeBackdrop
                 } else {
                     // Last resort: episode primary
-                    // Use 4K resolution for library cards (3840x5760 for 2:3 aspect ratio, quality 90)
-                    apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90) ?: ""
+                    apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = maxWidth, maxHeight = maxHeight, quality = quality) ?: ""
                 }
             }
             } else {
@@ -2620,8 +2679,7 @@ fun JellyfinEpisodeCard(
                 if (episodeBackdrop.isNotEmpty()) {
                     episodeBackdrop
                 } else {
-                    // Use 4K resolution for library cards (3840x5760 for 2:3 aspect ratio, quality 90)
-                    apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90) ?: ""
+                    apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = maxWidth, maxHeight = maxHeight, quality = quality) ?: ""
                 }
             }
     }
@@ -2680,7 +2738,8 @@ fun JellyfinHorizontalCardWithProgress(
     item: JellyfinItem,
     apiService: JellyfinApiService?,
     onClick: () -> Unit,
-    onFocusChanged: ((Boolean) -> Unit)? = null
+    onFocusChanged: ((Boolean) -> Unit)? = null,
+    disableAnimations: Boolean = false
 ) {
     // Use thumbnail (Thumb) images for both episodes and movies
     // For episodes, prioritize series/parent thumb image (like official Jellyfin Android TV app)

@@ -89,6 +89,7 @@ import androidx.tv.material3.StandardCardContainer
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.request.CachePolicy
 import com.flex.elefin.JellyfinVideoPlayerActivity
 import com.flex.elefin.MovieDetailsActivity
 import androidx.activity.ComponentActivity
@@ -166,12 +167,13 @@ fun MovieDetailsScreen(
     // For episodes, try to get backdrop from the episode first, then fallback to series backdrop
     val backdropUrl = remember(displayItem) {
         // First, check if the item itself has a backdrop
-        val itemBackdrop = apiService?.getImageUrl(displayItem.Id, "Backdrop")
+        // Use 1080p resolution - sufficient for background images and faster loading
+        val itemBackdrop = apiService?.getImageUrl(displayItem.Id, "Backdrop", null, maxWidth = 1920, maxHeight = 1080, quality = 90)
         if (itemBackdrop?.isNotEmpty() == true) {
             itemBackdrop
         } else if (displayItem.Type == "Episode" && displayItem.SeriesId != null) {
             // For episodes, try to get backdrop from parent series
-            apiService?.getImageUrl(displayItem.SeriesId, "Backdrop") ?: ""
+            apiService?.getImageUrl(displayItem.SeriesId, "Backdrop", null, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
         } else {
             ""
         }
@@ -189,12 +191,13 @@ fun MovieDetailsScreen(
                 backdropUrl
             } else {
                 // Fallback to primary image (from item or series)
-                val primaryUrl = apiService?.getImageUrl(displayItem.Id, "Primary")
+                // Use 1080p resolution for backgrounds
+                val primaryUrl = apiService?.getImageUrl(displayItem.Id, "Primary", null, maxWidth = 1920, maxHeight = 1080, quality = 90)
                 if (primaryUrl?.isNotEmpty() == true) {
                     primaryUrl
                 } else if (displayItem.Type == "Episode" && displayItem.SeriesId != null) {
                     // For episodes, try primary from series as last resort
-                    apiService?.getImageUrl(displayItem.SeriesId, "Primary") ?: ""
+                    apiService?.getImageUrl(displayItem.SeriesId, "Primary", null, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
                 } else {
                     ""
                 }
@@ -214,6 +217,10 @@ fun MovieDetailsScreen(
                             model = ImageRequest.Builder(context)
                                 .data(currentUrl)
                                 .headers(headerMap)
+                                .memoryCachePolicy(CachePolicy.ENABLED)
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .crossfade(300) // Smooth 300ms crossfade when loading
+                                .allowHardware(true) // Use GPU memory for faster rendering
                                 .build(),
                             contentDescription = displayItem.Name,
                             modifier = Modifier.fillMaxSize(),

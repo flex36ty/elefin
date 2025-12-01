@@ -47,6 +47,9 @@ class AppSettings(context: Context) {
         private const val KEY_ENABLE_SHARPENING = "enable_sharpening"
         private const val KEY_HDR_STRENGTH = "hdr_strength"
         private const val KEY_SHARPEN_STRENGTH = "sharpen_strength"
+        
+        // UI performance settings
+        private const val KEY_DISABLE_UI_ANIMATIONS = "disable_ui_animations"
     }
 
     var isMpvEnabled: Boolean
@@ -240,5 +243,10 @@ class AppSettings(context: Context) {
     var sharpenStrength: Float
         get() = prefs.getFloat(KEY_SHARPEN_STRENGTH, 0.5f).coerceIn(0.0f, 1.0f)
         set(value) = prefs.edit().putFloat(KEY_SHARPEN_STRENGTH, value.coerceIn(0.0f, 1.0f)).apply()
+    
+    // UI performance settings
+    var disableUIAnimations: Boolean
+        get() = prefs.getBoolean(KEY_DISABLE_UI_ANIMATIONS, false) // Disabled by default (animations enabled)
+        set(value) = prefs.edit().putBoolean(KEY_DISABLE_UI_ANIMATIONS, value).apply()
 }
 

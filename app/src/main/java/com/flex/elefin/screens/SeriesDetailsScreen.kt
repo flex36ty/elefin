@@ -96,6 +96,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.width
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.request.CachePolicy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.Image
 import com.flex.elefin.JellyfinVideoPlayerActivity
@@ -360,8 +361,9 @@ fun SeriesDetailsScreen(
     } else null
     
     // Get backdrop URL - same pattern as MovieDetailsScreen
+    // Use 1080p resolution - sufficient for background images and faster loading
     val backdropUrl = remember(displayItem) {
-        apiService?.getImageUrl(displayItem.Id, "Backdrop") ?: ""
+        apiService?.getImageUrl(displayItem.Id, "Backdrop", null, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -374,7 +376,8 @@ fun SeriesDetailsScreen(
             val imageUrl = if (backdropUrl.isNotEmpty()) {
                 backdropUrl
             } else {
-                apiService?.getImageUrl(displayItem.Id, "Primary") ?: ""
+                // Fallback to primary image with 1080p resolution
+                apiService?.getImageUrl(displayItem.Id, "Primary", null, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
             }
             
             // In dark mode, don't show background image - use Material dark background instead
@@ -390,6 +393,10 @@ fun SeriesDetailsScreen(
                             model = ImageRequest.Builder(context)
                                 .data(currentUrl)
                                 .headers(headerMap)
+                                .memoryCachePolicy(CachePolicy.ENABLED)
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .crossfade(300) // Smooth 300ms crossfade when loading
+                                .allowHardware(true) // Use GPU memory for faster rendering
                                 .build(),
                             contentDescription = displayItem.Name,
                             modifier = Modifier.fillMaxSize(),
