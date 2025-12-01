@@ -45,6 +45,8 @@ class SeriesDetailsActivity : ComponentActivity() {
         val itemName = intent.getStringExtra(EXTRA_ITEM_NAME) ?: ""
         val fromLibrary = intent.getBooleanExtra(EXTRA_FROM_LIBRARY, false)
         val episodeId = intent.getStringExtra(EXTRA_EPISODE_ID)
+        
+        android.util.Log.d("SeriesDetailsActivity", "onCreate: seriesId=$itemId, episodeId=$episodeId")
 
         // Get Jellyfin configuration and API service
         val config = JellyfinConfig(this)

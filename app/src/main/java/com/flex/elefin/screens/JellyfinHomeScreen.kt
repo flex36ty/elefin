@@ -105,6 +105,7 @@ import com.flex.elefin.jellyfin.JellyfinApiService
 import com.flex.elefin.jellyfin.JellyfinConfig
 import com.flex.elefin.jellyfin.AppSettings
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import com.flex.elefin.jellyfin.JellyfinItem
 import com.flex.elefin.jellyfin.JellyfinLibrary
 import com.flex.elefin.jellyfin.JellyfinRepository
@@ -132,6 +133,12 @@ fun JellyfinHomeScreen(
     var showServerEntry by remember { mutableStateOf(config.serverUrl.isBlank()) }
     var showLoginScreen by remember { mutableStateOf(!config.isConfigured() && !config.serverUrl.isBlank()) }
     val scope = rememberCoroutineScope()
+    
+    // GL Pipeline warmup for NVIDIA Shield - prevents initial frame stutter and ANR
+    // Allows the GPU to warm up and UI to render before loading heavy data
+    LaunchedEffect(Unit) {
+        delay(100) // 100ms delay to prevent ANR and warm up GL pipeline
+    }
     
     // Dark mode setting - read from settings and update when screen resumes
     var darkModeEnabled by remember { mutableStateOf(settings.darkModeEnabled) }
@@ -279,6 +286,8 @@ fun JellyfinHomeScreen(
     LaunchedEffect(repository, config.isConfigured()) {
         // Only fetch data if properly configured
         if (config.isConfigured() && repository != null) {
+            // Small delay to allow UI to render first and prevent ANR
+            delay(150)
             repository.fetchContinueWatching()
             repository.fetchNextUp()
             repository.fetchRecentlyAddedMovies()
@@ -576,6 +585,14 @@ fun JellyfinHomeScreen(
                                 isRefreshing = true
                                 scope.launch {
                                     try {
+                                        // Clear image cache for home screen cards so new images can be downloaded
+                                        withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            val imageLoader = context.imageLoader
+                                            imageLoader.diskCache?.clear()
+                                            imageLoader.memoryCache?.clear()
+                                            Log.d("JellyfinHomeScreen", "Image cache cleared for home screen refresh")
+                                        }
+                                        
                                         // Trigger server-side library scan and refresh all media rows
                                         repository.triggerLibraryScanAndRefresh()
                                         

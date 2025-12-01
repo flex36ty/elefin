@@ -183,7 +183,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             response.Items
         } catch (e: Exception) {
@@ -204,7 +204,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             response.Items
         } catch (e: Exception) {
@@ -227,7 +227,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             response.Items
         } catch (e: Exception) {
@@ -250,7 +250,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             response.Items
         } catch (e: Exception) {
@@ -274,7 +274,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             response.Items
         } catch (e: Exception) {
@@ -298,7 +298,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             response.Items
         } catch (e: Exception) {
@@ -321,7 +321,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             // Return all items - filtering based on settings will be done in UI layer
             response.Items
@@ -346,7 +346,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             response.Items
         } catch (e: Exception) {
@@ -370,7 +370,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             response.Items
         } catch (e: Exception) {
@@ -394,7 +394,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             response.Items
         } catch (e: Exception) {
@@ -424,7 +424,7 @@ class JellyfinApiService(
     fun getImageRequestHeaders(): Headers {
         return Headers.Builder()
             .add("Authorization", "MediaBrowser Token=\"$accessToken\"")
-            .add("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+            .add("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             .build()
     }
 
@@ -441,7 +441,7 @@ class JellyfinApiService(
             
             val response = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }
             val item: JellyfinItem = response.body()
             android.util.Log.d("JellyfinAPI", "Item details fetched: ${item.Name}, Type: ${item.Type}, MediaSources: ${item.MediaSources?.size ?: 0}")
@@ -752,7 +752,7 @@ class JellyfinApiService(
         // Build X-Emby-Authorization header with Token and DeviceId
         // Format: MediaBrowser Client="...", Device="...", DeviceId="...", Version="...", Token="..."
         // CRITICAL: Token MUST be included in X-Emby-Authorization header for MPV/FFmpeg
-        val embyAuthHeader = "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"$deviceId\", Version=\"1.0.0\", Token=\"$accessToken\""
+        val embyAuthHeader = "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"$deviceId\", Version=\"1.1.5\", Token=\"$accessToken\""
         
         return mapOf(
             "Authorization" to "MediaBrowser Token=\"$accessToken\"",
@@ -779,7 +779,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             
             // Convert JellyfinItems to JellyfinLibraries
@@ -811,7 +811,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             // Return all items - filtering based on settings will be done in UI layer
             response
@@ -832,7 +832,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             
             response.Items
@@ -874,7 +874,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             response.Items.sortedBy { it.IndexNumber ?: 0 }
         } catch (e: Exception) {
@@ -895,7 +895,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             response.Items.sortedBy { it.IndexNumber ?: 0 }
         } catch (e: Exception) {
@@ -932,7 +932,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             
             android.util.Log.d("JellyfinAPI", "Found ${response.Items.size} episodes starting from index $startIndex")
@@ -969,7 +969,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             
             val nextEpisode = response.Items.firstOrNull()
@@ -1026,7 +1026,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             response.Items
         } catch (e: Exception) {
@@ -1049,7 +1049,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             response.Items
         } catch (e: Exception) {
@@ -1072,7 +1072,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             response.Items
         } catch (e: Exception) {
@@ -1094,9 +1094,9 @@ class JellyfinApiService(
             
             val deviceId = config?.deviceId ?: ""
             val authHeader = if (deviceId.isNotEmpty()) {
-                "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"$deviceId\", Token=\"$accessToken\", Version=\"1.0.0\""
+                "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"$deviceId\", Token=\"$accessToken\", Version=\"1.1.5\""
             } else {
-                "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\""
+                "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\""
             }
             
             client.post(url) {
@@ -1124,9 +1124,9 @@ class JellyfinApiService(
             
             val deviceId = config?.deviceId ?: ""
             val authHeader = if (deviceId.isNotEmpty()) {
-                "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"$deviceId\", Token=\"$accessToken\", Version=\"1.0.0\""
+                "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"$deviceId\", Token=\"$accessToken\", Version=\"1.1.5\""
             } else {
-                "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\""
+                "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\""
             }
             
             client.delete(url) {
@@ -1168,9 +1168,9 @@ class JellyfinApiService(
             
             val deviceId = config?.deviceId ?: ""
             val authHeader = if (deviceId.isNotEmpty()) {
-                "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"$deviceId\", Token=\"$accessToken\", Version=\"1.0.0\""
+                "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"$deviceId\", Token=\"$accessToken\", Version=\"1.1.5\""
             } else {
-                "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\""
+                "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\""
             }
             
             // Build request body as JSON string
@@ -1215,9 +1215,9 @@ class JellyfinApiService(
             
             val deviceId = config?.deviceId ?: ""
             val authHeader = if (deviceId.isNotEmpty()) {
-                "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"$deviceId\", Token=\"$accessToken\", Version=\"1.0.0\""
+                "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"$deviceId\", Token=\"$accessToken\", Version=\"1.1.5\""
             } else {
-                "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\""
+                "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\""
             }
             
             // Build request body as JSON string
@@ -1264,7 +1264,7 @@ class JellyfinApiService(
             
             client.post(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }
             android.util.Log.d("JellyfinAPI", "Library refresh triggered successfully")
             true
@@ -1295,7 +1295,7 @@ class JellyfinApiService(
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
             
             response.Items

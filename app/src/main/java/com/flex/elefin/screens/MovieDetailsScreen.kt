@@ -114,6 +114,11 @@ fun MovieDetailsScreen(
     val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
     var darkModeEnabled by remember { mutableStateOf(settings.darkModeEnabled) }
     
+    // GL Pipeline warmup for NVIDIA Shield - prevents initial frame stutter and ANR
+    LaunchedEffect(Unit) {
+        delay(100) // 100ms delay to prevent ANR and warm up GL pipeline
+    }
+    
     // Handle back button press
     if (onBackPressed != null) {
         BackHandler(onBack = onBackPressed)

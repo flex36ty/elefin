@@ -131,8 +131,8 @@ class JellyfinAuthService(
             
             val deviceId = getDeviceId()
             val deviceName = "Android TV"
-            val clientName = "Android TV Material Catalog"
-            val clientVersion = "1.0.0"
+            val clientName = "Elefin"
+            val clientVersion = "1.1.5"
             
             val embyAuthHeader = "MediaBrowser Client=\"$clientName\", Device=\"$deviceName\", DeviceId=\"$deviceId\", Version=\"$clientVersion\""
             

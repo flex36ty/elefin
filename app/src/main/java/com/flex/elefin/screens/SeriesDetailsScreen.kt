@@ -3,6 +3,7 @@ package com.flex.elefin.screens
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -131,6 +132,11 @@ fun SeriesDetailsScreen(
     val context = LocalContext.current
     val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
     var darkModeEnabled by remember { mutableStateOf(settings.darkModeEnabled) }
+    
+    // GL Pipeline warmup for NVIDIA Shield - prevents initial frame stutter and ANR
+    LaunchedEffect(Unit) {
+        delay(100) // 100ms delay to prevent ANR and warm up GL pipeline
+    }
     
     // Handle back button press
     if (onBackPressed != null) {
@@ -591,7 +597,7 @@ fun SeriesTopContainer(
                 Text(
                     text = focusedEpisode.Name,
                     style = MaterialTheme.typography.bodyLarge.copy(
-                        fontSize = MaterialTheme.typography.bodyLarge.fontSize * 1.1f
+                        fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f // Match home screen size
                     ),
                     color = Color.White.copy(alpha = 0.9f),
                     modifier = Modifier
@@ -626,31 +632,72 @@ fun SeriesTopContainer(
                     )
                 }
                 
-                // Synopsis (from episode) - reduced padding
+                // Synopsis (from episode) - single line with ellipsis, clickable to show full text
                 focusedEpisode.Overview?.let { synopsis ->
                     if (synopsis.isNotEmpty()) {
-                        Box(
+                        var showSynopsisDialog by remember { mutableStateOf(false) }
+                        
+                        Text(
+                            text = synopsis,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
+                            ),
+                            color = Color.White.copy(alpha = 0.9f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier
-                                .heightIn(min = 180.dp) // Increased height to allow more synopsis text to be visible
-                                .then(
-                                    if (showDebugOutlines) {
-                                        Modifier.border(1.dp, Color.Magenta)
-                                    } else {
-                                        Modifier
+                                .padding(top = 4.dp)
+                                .clickable { showSynopsisDialog = true }
+                        )
+                        
+                        // Synopsis dialog popup
+                        if (showSynopsisDialog) {
+                            Dialog(
+                                onDismissRequest = { showSynopsisDialog = false },
+                                properties = DialogProperties(usePlatformDefaultWidth = false)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.85f))
+                                        .clickable { showSynopsisDialog = false },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth(0.7f)
+                                            .fillMaxHeight(0.6f),
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = androidx.tv.material3.SurfaceDefaults.colors(
+                                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+                                        )
+                                    ) {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(32.dp)
+                                                .verticalScroll(rememberScrollState())
+                                        ) {
+                                            Text(
+                                                text = "Synopsis",
+                                                style = MaterialTheme.typography.headlineMedium,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.padding(bottom = 16.dp)
+                                            )
+                                            Text(
+                                                text = synopsis,
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+                                                lineHeight = MaterialTheme.typography.bodyLarge.fontSize * 1.5f
+                                            )
+                                        }
                                     }
-                                )
-                        ) {
-                            Text(
-                                text = synopsis,
-                                style = MaterialTheme.typography.bodyLarge.copy(
-                                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f,
-                                    lineHeight = MaterialTheme.typography.bodyLarge.fontSize * 0.8f * 1.1f // Reduced line spacing (10% of font size)
-                                ),
-                                color = Color.White.copy(alpha = 0.9f),
-                                maxLines = Int.MAX_VALUE,
-                                modifier = Modifier
-                                    .padding(top = 4.dp) // Only top padding, no bottom padding
-                            )
+                                }
+                                
+                                BackHandler(enabled = showSynopsisDialog) {
+                                    showSynopsisDialog = false
+                                }
+                            }
                         }
                     }
                 }

@@ -40,6 +40,13 @@ class AppSettings(context: Context) {
         private const val KEY_EXO_SUBTITLE_BG_COLOR = "exo_subtitle_bg_color"
         private const val KEY_EXO_SUBTITLE_BG_TRANSPARENT = "exo_subtitle_bg_transparent"
         private const val KEY_EXO_SUBTITLE_TEXT_SIZE = "exo_subtitle_text_size"
+        
+        // Video enhancement settings
+        private const val KEY_USE_GL_ENHANCEMENTS = "use_gl_enhancements"
+        private const val KEY_ENABLE_FAKE_HDR = "enable_fake_hdr"
+        private const val KEY_ENABLE_SHARPENING = "enable_sharpening"
+        private const val KEY_HDR_STRENGTH = "hdr_strength"
+        private const val KEY_SHARPEN_STRENGTH = "sharpen_strength"
     }
 
     var isMpvEnabled: Boolean
@@ -210,5 +217,28 @@ class AppSettings(context: Context) {
     var exoSubtitleTextSize: Int
         get() = prefs.getInt(KEY_EXO_SUBTITLE_TEXT_SIZE, 30).coerceIn(20, 100)
         set(value) = prefs.edit().putInt(KEY_EXO_SUBTITLE_TEXT_SIZE, value.coerceIn(20, 100)).apply()
+    
+    // Video enhancement settings
+    var useGLEnhancements: Boolean
+        get() = prefs.getBoolean(KEY_USE_GL_ENHANCEMENTS, false) // Disabled by default
+        set(value) = prefs.edit().putBoolean(KEY_USE_GL_ENHANCEMENTS, value).apply()
+    
+    var enableFakeHDR: Boolean
+        get() = prefs.getBoolean(KEY_ENABLE_FAKE_HDR, false) // Disabled by default
+        set(value) = prefs.edit().putBoolean(KEY_ENABLE_FAKE_HDR, value).apply()
+    
+    var enableSharpening: Boolean
+        get() = prefs.getBoolean(KEY_ENABLE_SHARPENING, false) // Disabled by default
+        set(value) = prefs.edit().putBoolean(KEY_ENABLE_SHARPENING, value).apply()
+    
+    // HDR strength (1.0 - 2.0, default: 1.3)
+    var hdrStrength: Float
+        get() = prefs.getFloat(KEY_HDR_STRENGTH, 1.3f).coerceIn(1.0f, 2.0f)
+        set(value) = prefs.edit().putFloat(KEY_HDR_STRENGTH, value.coerceIn(1.0f, 2.0f)).apply()
+    
+    // Sharpening strength (0.0 - 1.0, default: 0.5)
+    var sharpenStrength: Float
+        get() = prefs.getFloat(KEY_SHARPEN_STRENGTH, 0.5f).coerceIn(0.0f, 1.0f)
+        set(value) = prefs.edit().putFloat(KEY_SHARPEN_STRENGTH, value.coerceIn(0.0f, 1.0f)).apply()
 }
 

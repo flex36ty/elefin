@@ -47,6 +47,13 @@ Elefin is an Android TV jellyfin client. It's built from the ground up using Jet
   - **Additional Codecs**: FLAC, ALAC, Vorbis, Opus, and 30+ more formats
   - Powered by Jellyfin's FFmpeg decoder extension
   - Automatic hardware acceleration when available
+- **OpenGL Video Enhancements** (optional):
+  - Custom GL pipeline for real-time video post-processing
+  - **Fake HDR** simulation with tone mapping and brightness boost
+  - **Image Sharpening** using edge detection (unsharp mask)
+  - Adjustable strength controls for both effects
+  - Zero performance impact when disabled
+  - Inspired by VLC, Kodi, and MPV rendering techniques
 - **MPV Player** option (experimental) for alternative playback
 - Automatic playback position tracking and resume functionality
 - **Enhanced Subtitle Support**:
@@ -77,6 +84,7 @@ Elefin is an Android TV jellyfin client. It's built from the ground up using Jet
 
 ### Settings
 - Player selection (ExoPlayer with FFmpeg / MPV experimental)
+- **Video Enhancements** (fake HDR, sharpening with adjustable strength)
 - Subtitle customization (size, color, background transparency)
 - Image loading preferences (Coil/Glide)
 - Auto-refresh intervals for home screen
@@ -133,6 +141,7 @@ _Add screenshots here to showcase the app interface_
 - **Material Design 3** - Design system
 - **ExoPlayer/Media3** - Video playback engine with full codec support
 - **Jellyfin FFmpeg Decoder** - Advanced audio codec support (DTS, TrueHD, AC3, etc.)
+- **OpenGL ES 2.0** - Custom video post-processing pipeline (fake HDR, sharpening)
 - **MPV** - Alternative video player (experimental)
 - **Ktor** - HTTP client for Jellyfin API
 - **Coil/Glide** - Image loading libraries

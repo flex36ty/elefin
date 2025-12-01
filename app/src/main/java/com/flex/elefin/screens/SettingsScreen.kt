@@ -99,6 +99,13 @@ fun SettingsScreen(
     var exoSubtitleBgTransparent by remember { mutableStateOf(settings.exoSubtitleBgTransparent) }
     var showExoSubtitleColorDialog by remember { mutableStateOf(false) }
     var showExoSubtitleBgColorDialog by remember { mutableStateOf(false) }
+    
+    // Video Enhancement settings
+    var useGLEnhancements by remember { mutableStateOf(settings.useGLEnhancements) }
+    var enableFakeHDR by remember { mutableStateOf(settings.enableFakeHDR) }
+    var enableSharpening by remember { mutableStateOf(settings.enableSharpening) }
+    var hdrStrength by remember { mutableStateOf(settings.hdrStrength) }
+    var sharpenStrength by remember { mutableStateOf(settings.sharpenStrength) }
 
     Box(
         modifier = Modifier
@@ -493,6 +500,240 @@ fun SettingsScreen(
                             onClick = { showExoSubtitleBgColorDialog = true }
                         ) {
                             Text("Choose Color")
+                        }
+                    }
+                }
+            }
+            
+            // Video Enhancements section
+            if (!isMpvEnabled) {
+                Text(
+                    text = "Video Enhancements",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                )
+                
+                // Enable GL Enhancements toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "Enable GL Video Processing",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Use OpenGL for advanced video effects (HDR simulation, sharpening)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    
+                    Button(
+                        onClick = {
+                            useGLEnhancements = !useGLEnhancements
+                            settings.useGLEnhancements = useGLEnhancements
+                            // Reset effects when disabling
+                            if (!useGLEnhancements) {
+                                enableFakeHDR = false
+                                enableSharpening = false
+                                settings.enableFakeHDR = false
+                                settings.enableSharpening = false
+                            }
+                        },
+                        colors = ButtonDefaults.colors(
+                            containerColor = if (useGLEnhancements) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            }
+                        )
+                    ) {
+                        Text(if (useGLEnhancements) "ON" else "OFF")
+                    }
+                }
+                
+                // Fake HDR toggle (only visible when GL enhancements enabled)
+                if (useGLEnhancements) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "Fake HDR",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Simulate HDR with tone mapping and brightness boost",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                        
+                        Button(
+                            onClick = {
+                                enableFakeHDR = !enableFakeHDR
+                                settings.enableFakeHDR = enableFakeHDR
+                            },
+                            colors = ButtonDefaults.colors(
+                                containerColor = if (enableFakeHDR) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant
+                                }
+                            )
+                        ) {
+                            Text(if (enableFakeHDR) "ON" else "OFF")
+                        }
+                    }
+                    
+                    // HDR Strength slider
+                    if (enableFakeHDR) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = "HDR Strength",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Strength: %.1f (range: 1.0-2.0, default: 1.3)".format(hdrStrength),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                            
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        hdrStrength = (hdrStrength - 0.1f).coerceAtLeast(1.0f)
+                                        settings.hdrStrength = hdrStrength
+                                    },
+                                    enabled = hdrStrength > 1.0f
+                                ) {
+                                    Text("-")
+                                }
+                                
+                                Button(
+                                    onClick = {
+                                        hdrStrength = (hdrStrength + 0.1f).coerceAtMost(2.0f)
+                                        settings.hdrStrength = hdrStrength
+                                    },
+                                    enabled = hdrStrength < 2.0f
+                                ) {
+                                    Text("+")
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Sharpening toggle
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "Sharpening",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Enhance image sharpness using edge detection",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                        
+                        Button(
+                            onClick = {
+                                enableSharpening = !enableSharpening
+                                settings.enableSharpening = enableSharpening
+                            },
+                            colors = ButtonDefaults.colors(
+                                containerColor = if (enableSharpening) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant
+                                }
+                            )
+                        ) {
+                            Text(if (enableSharpening) "ON" else "OFF")
+                        }
+                    }
+                    
+                    // Sharpening Strength slider
+                    if (enableSharpening) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = "Sharpening Strength",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Strength: %.1f (range: 0.0-1.0, default: 0.5)".format(sharpenStrength),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                            
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        sharpenStrength = (sharpenStrength - 0.1f).coerceAtLeast(0.0f)
+                                        settings.sharpenStrength = sharpenStrength
+                                    },
+                                    enabled = sharpenStrength > 0.0f
+                                ) {
+                                    Text("-")
+                                }
+                                
+                                Button(
+                                    onClick = {
+                                        sharpenStrength = (sharpenStrength + 0.1f).coerceAtMost(1.0f)
+                                        settings.sharpenStrength = sharpenStrength
+                                    },
+                                    enabled = sharpenStrength < 1.0f
+                                ) {
+                                    Text("+")
+                                }
+                            }
                         }
                     }
                 }

@@ -44,7 +44,7 @@ class ThemeLoader(
                 
                 val cssResponse: HttpResponse = client.get(cssUrl) {
                     header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                    header("X-Emby-Authorization", "MediaBrowser Client=\"Android TV\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.0.0\"")
+                    header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
                 }
                 
                 val cssStatus = cssResponse.status

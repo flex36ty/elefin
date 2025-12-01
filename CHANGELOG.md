@@ -1,8 +1,24 @@
-# Changelog v1.1.5 
+# Changelog
 
 All notable changes to Elefin will be documented in this file.
 
+---
+
+## [1.1.5] - 2025-11-30
+
 ### Added
+- **ExoPlayer - Video Enhancements (OpenGL Post-Processing)**
+  - NEW: Custom GL video pipeline with post-processing effects
+  - Fake HDR simulation with tone mapping and brightness boost
+  - Image sharpening using edge detection (unsharp mask technique)
+  - Adjustable strength controls for both HDR (1.0-2.0) and sharpening (0.0-1.0)
+  - OpenGL ES 2.0 pipeline intercepts ExoPlayer video frames for shader processing
+  - Maintains full ExoPlayer compatibility (no decoder changes needed)
+  - Settings located under "Video Enhancements" section
+  - Toggle individual effects on/off or disable GL processing entirely
+  - Inspired by VLC, Kodi, and MPV professional video rendering pipelines
+  - Zero performance impact when disabled (uses standard PlayerView)
+
 - **ExoPlayer - Advanced Audio Codec Support**
   - Added Jellyfin FFmpeg decoder extension for comprehensive audio codec support
   - Now supports DTS, DTS-HD Master Audio, Dolby TrueHD, AC3, E-AC3
@@ -18,6 +34,12 @@ All notable changes to Elefin will be documented in this file.
   - Semi-transparent background allows viewing content while adjusting settings
   - Optimized for Android TV remote navigation
 
+- **Library Refresh - Image Cache Clearing**
+  - Library refresh button now clears image cache before refreshing
+  - Ensures new thumbnails and artwork are downloaded immediately
+  - Fixes issue where cached images would prevent new media art from appearing
+  - Both memory and disk caches are cleared for complete refresh
+
 ### Fixed
 - **Subtitle Language Selection**
   - Fixed subtitle selection choosing wrong language in ExoPlayer
@@ -26,22 +48,58 @@ All notable changes to Elefin will be documented in this file.
   - Prevents mismatches when tracks have similar characteristics
   - More robust matching algorithm with exact and fallback strategies
 
-- **Subtitle Preference UI Refresh**
+- **Subtitle Preference UI Refresh** - will be in 1.1.6 release
   - Subtitle selection now immediately updates on series/movie info screens
   - No longer requires navigating away and back to see updated subtitle preference
   - Fixed state management to trigger immediate Compose recomposition
   - Improved user experience with instant visual feedback
 
+- **Series Info Screen - Synopsis Clipping**
+  - Fixed synopsis text being cut off at the bottom on series info screen
+  - Added vertical scrolling to series details container
+  - Works correctly with smaller logo sizes (30% reduction)
+  - Matches behavior of movie details screen
+
 ### Changed
+- **Client Identification**
+  - Changed client name from "Android TV Material Catalog" to "Elefin"
+  - Updated version reporting to match app version (1.1.5)
+  - Server dashboards now properly display "Elefin" as the client name
+  - Easier to identify and track Elefin sessions in Jellyfin server
+
+- **ExoPlayer - Subtitle Settings**
+  - Default subtitle size reduced from 55 to 30 for better readability
+  - Expanded size range from 30-100 to 20-100
+  - Added smaller size options: 20, 25, and 30
+  - More granular control over subtitle appearance
+
+- **Continue Watching - Sorting**
+  - Now explicitly sorts by date and time played (descending)
+  - Most recently watched items appear first
+  - Consistent ordering based on last playback time
+  - Uses Jellyfin's DatePlayed sorting for accurate chronological order
+
+- **Series Info Screen - UI Adjustments**
+  - Logo size reduced by 30% (from 45dp to 31.5dp)
+  - Episode name text size matches home screen (bodyLarge * 0.8f)
+  - More consistent visual hierarchy across screens
+  - Better balance between title, episode name, and synopsis
+
 - **ExoPlayer - Subtitle Mapper**
   - Updated to prevent duplicate Jellyfin index registrations
   - Only stores first occurrence of each Jellyfin index for correct mapping
   - Added detailed logging for track registration debugging
   - Improved reliability of subtitle and audio track selection
 
+- **MPV Player - Experimental Status**
+  - Marked MPV player as experimental in settings
+  - Updated description to warn about potential instability
+  - ExoPlayer with FFmpeg is now the recommended default player
+  - MPV remains available for advanced users and specific use cases
+
 ---
 
-# Changelog v1.1.3
+## [1.1.3] - Previous Release
 
 ### Fixed
 - **Subtitle Auto-Selection from Info Page**

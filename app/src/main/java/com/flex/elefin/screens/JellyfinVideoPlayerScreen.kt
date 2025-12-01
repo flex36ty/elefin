@@ -47,6 +47,8 @@ import com.flex.elefin.jellyfin.JellyfinApiService
 import com.flex.elefin.jellyfin.JellyfinItem
 import com.flex.elefin.jellyfin.MediaStream
 import com.flex.elefin.player.SubtitleMapper
+import com.flex.elefin.player.GLVideoSurfaceView
+import android.widget.FrameLayout
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -106,6 +108,13 @@ fun JellyfinVideoPlayerScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
+    
+    // GL Enhancement settings
+    val useGLEnhancements = remember { settings.useGLEnhancements }
+    val enableFakeHDR = remember { settings.enableFakeHDR }
+    val enableSharpening = remember { settings.enableSharpening }
+    val hdrStrength = remember { settings.hdrStrength }
+    val sharpenStrength = remember { settings.sharpenStrength }
     
     // Load stored audio preference if not provided
     val storedAudioPreference = remember(item.Id) {
@@ -185,6 +194,7 @@ fun JellyfinVideoPlayerScreen(
         }
     }
     val playerViewRef = remember { mutableStateOf<PlayerView?>(null) }
+    val glSurfaceViewRef = remember { mutableStateOf<GLVideoSurfaceView?>(null) }
     var mediaUrl by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var playerInitialized by remember { mutableStateOf(false) }
@@ -1729,6 +1739,13 @@ fun JellyfinVideoPlayerScreen(
                     Log.w("JellyfinPlayer", "Error reporting final playback position", e)
                 }
             }
+            
+            // Clean up GL surface if using enhancements
+            glSurfaceViewRef.value?.release()
+            glSurfaceViewRef.value = null
+            
+            // Clear video surface before releasing player
+            player.clearVideoSurface()
             player.release()
         }
     }
@@ -1899,8 +1916,181 @@ fun JellyfinVideoPlayerScreen(
                 Box(modifier = Modifier.fillMaxSize()) {
                     AndroidView(
                         factory = { ctx ->
-                            PlayerView(ctx).apply {
-                                this.player = player
+                            if (useGLEnhancements) {
+                                // GL Enhancement mode: Use FrameLayout with GL surface + overlaid PlayerView
+                                FrameLayout(ctx).apply {
+                                    // Create GL surface for video rendering with effects
+                                    val glSurface = GLVideoSurfaceView(ctx).apply {
+                                        layoutParams = FrameLayout.LayoutParams(
+                                            FrameLayout.LayoutParams.MATCH_PARENT,
+                                            FrameLayout.LayoutParams.MATCH_PARENT
+                                        )
+                                        this.enableFakeHDR = settings.enableFakeHDR
+                                        this.enableSharpening = settings.enableSharpening
+                                        this.hdrStrength = settings.hdrStrength
+                                        this.sharpeningStrength = settings.sharpenStrength
+                                        glSurfaceViewRef.value = this
+                                        
+                                        // Set the GL surface on the player
+                                        val surface = getCodecSurface()
+                                        if (surface != null) {
+                                            player.setVideoSurface(surface)
+                                            Log.d("JellyfinPlayer", "GL surface attached to player")
+                                        }
+                                    }
+                                    addView(glSurface)
+                                    
+                                    // Create PlayerView WITHOUT video surface (just for controls and subtitles)
+                                    val playerView = PlayerView(ctx).apply {
+                                        this.player = player
+                                        // Disable video surface since GL surface handles it
+                                        useController = true
+                                        controllerShowTimeoutMs = 5000
+                                        controllerAutoShow = true
+                                        setShowSubtitleButton(false)
+                                        controllerHideOnTouch = false
+                                        isFocusable = true
+                                        isFocusableInTouchMode = false
+                                        
+                                        // Make video surface area transparent so GL surface shows through
+                                        setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                                        
+                                        layoutParams = FrameLayout.LayoutParams(
+                                            FrameLayout.LayoutParams.MATCH_PARENT,
+                                            FrameLayout.LayoutParams.MATCH_PARENT
+                                        )
+                                        
+                                        playerViewRef.value = this
+                                        
+                                        // Hide next/previous track buttons
+                                        post {
+                                            findViewById<android.view.View>(androidx.media3.ui.R.id.exo_prev)?.visibility = android.view.View.GONE
+                                            findViewById<android.view.View>(androidx.media3.ui.R.id.exo_next)?.visibility = android.view.View.GONE
+                                            
+                                            // Apply ExoPlayer subtitle customization settings
+                                            subtitleView?.apply {
+                                                val textSizePx = settings.exoSubtitleTextSize.toFloat()
+                                                setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, textSizePx)
+                                                
+                                                setStyle(
+                                                    androidx.media3.ui.CaptionStyleCompat(
+                                                        settings.exoSubtitleTextColor,
+                                                        if (settings.exoSubtitleBgTransparent) android.graphics.Color.TRANSPARENT else settings.exoSubtitleBgColor,
+                                                        android.graphics.Color.TRANSPARENT,
+                                                        androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                                                        android.graphics.Color.BLACK,
+                                                        null
+                                                    )
+                                                )
+                                            }
+                                            
+                                            setShowSubtitleButton(true)
+                                            
+                                            // Get the PlayerControlView for custom settings button
+                                            val controller = findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
+                                            controller?.let { controlView ->
+                                                // ⭐ CUSTOM SETTINGS BUTTON
+                                                val existingSubtitleButton = controlView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_subtitle)
+                                                existingSubtitleButton?.let { existingBtn ->
+                                                    existingBtn.visibility = android.view.View.GONE
+                                                    
+                                                    val customSettingsButton = android.widget.ImageButton(ctx).apply {
+                                                        setImageResource(android.R.drawable.ic_menu_sort_by_size)
+                                                        background = android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
+                                                        scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+                                                        setPadding(16, 16, 16, 16)
+                                                        contentDescription = "Player Settings"
+                                                        isFocusable = true
+                                                        isClickable = true
+                                                        layoutParams = android.view.ViewGroup.LayoutParams(
+                                                            resources.getDimensionPixelSize(androidx.media3.ui.R.dimen.exo_small_icon_width),
+                                                            resources.getDimensionPixelSize(androidx.media3.ui.R.dimen.exo_small_icon_height)
+                                                        )
+                                                        setOnClickListener { showSettingsMenu = true }
+                                                    }
+                                                    
+                                                    (existingBtn.parent as? android.view.ViewGroup)?.let { parent ->
+                                                        val existingBtnIndex = parent.indexOfChild(existingBtn)
+                                                        parent.addView(customSettingsButton, existingBtnIndex + 1)
+                                                    }
+                                                }
+                                                
+                                                // ⭐ PURPLE FOCUS STYLING
+                                                val transparentPurple = android.graphics.Color.argb(150, 156, 39, 176)
+                                                
+                                                val buttonIds = listOf(
+                                                    androidx.media3.ui.R.id.exo_play,
+                                                    androidx.media3.ui.R.id.exo_pause,
+                                                    androidx.media3.ui.R.id.exo_ffwd,
+                                                    androidx.media3.ui.R.id.exo_rew,
+                                                    androidx.media3.ui.R.id.exo_subtitle,
+                                                    androidx.media3.ui.R.id.exo_settings,
+                                                    androidx.media3.ui.R.id.exo_progress,
+                                                    androidx.media3.ui.R.id.exo_position,
+                                                    androidx.media3.ui.R.id.exo_duration,
+                                                    androidx.media3.ui.R.id.exo_repeat_toggle,
+                                                    androidx.media3.ui.R.id.exo_shuffle
+                                                )
+                                                
+                                                fun applyPurpleFocus(view: android.view.View) {
+                                                    val originalBackground = view.background
+                                                    view.setOnFocusChangeListener { v, hasFocus ->
+                                                        if (hasFocus) {
+                                                            v.post {
+                                                                val width = v.width
+                                                                val height = v.height
+                                                                if (width > 0 && height > 0) {
+                                                                    val drawable = android.graphics.drawable.GradientDrawable().apply {
+                                                                        setColor(transparentPurple)
+                                                                        val maxDimension = maxOf(width, height)
+                                                                        val cornerRadius = maxDimension * 0.5f
+                                                                        setCornerRadius(cornerRadius)
+                                                                    }
+                                                                    val padding = (maxOf(width, height) * 0.05f).toInt()
+                                                                    val layerDrawable = android.graphics.drawable.LayerDrawable(arrayOf(drawable))
+                                                                    layerDrawable.setLayerInset(0, -padding, -padding, -padding, -padding)
+                                                                    v.background = layerDrawable
+                                                                } else {
+                                                                    v.setBackgroundColor(transparentPurple)
+                                                                }
+                                                            }
+                                                        } else {
+                                                            v.background = originalBackground
+                                                        }
+                                                    }
+                                                }
+                                                
+                                                buttonIds.forEach { buttonId ->
+                                                    findViewById<android.view.View>(buttonId)?.let { button ->
+                                                        applyPurpleFocus(button)
+                                                    }
+                                                }
+                                                
+                                                fun applyToAllChildren(parent: android.view.ViewGroup) {
+                                                    for (i in 0 until parent.childCount) {
+                                                        val child = parent.getChildAt(i)
+                                                        if (child is android.view.ViewGroup) {
+                                                            applyToAllChildren(child)
+                                                        } else if (child is android.widget.Button || 
+                                                                  child is android.widget.ImageButton ||
+                                                                  (child.isFocusable && child.isClickable)) {
+                                                            applyPurpleFocus(child)
+                                                        }
+                                                    }
+                                                }
+                                                
+                                                applyToAllChildren(controlView)
+                                                controlView.invalidate()
+                                                Log.d("ExoPlayer", "GL Mode: PlayerControlView initialized with purple focus styling")
+                                            }
+                                        }
+                                    }
+                                    addView(playerView)
+                                }
+                            } else {
+                                // Standard mode: Regular PlayerView
+                                PlayerView(ctx).apply {
+                                    this.player = player
                                 // Enable built-in controller for proper Android TV support
                                 useController = true
                                 // Show controller automatically
@@ -2088,40 +2278,52 @@ fun JellyfinVideoPlayerScreen(
                                     requestLayout()
                                 }
                             }
+                            } // end else (standard PlayerView mode)
                         },
                         modifier = Modifier.fillMaxSize(),
                         update = { view ->
-                            // Update player reference when view changes
-                            if (view.player != player) {
-                                view.player = player
+                            // Handle both FrameLayout (GL mode) and PlayerView (standard mode)
+                            val playerView = if (view is FrameLayout) {
+                                // GL mode: find the PlayerView inside the FrameLayout
+                                view.getChildAt(1) as? PlayerView
+                            } else {
+                                // Standard mode: view is the PlayerView
+                                view as? PlayerView
                             }
-                            // Ensure view is focusable and can receive key events
-                            if (!view.isFocusable) {
-                                view.isFocusable = true
-                            }
-                            // Ensure view is visible
-                            if (view.visibility != android.view.View.VISIBLE) {
-                                view.visibility = android.view.View.VISIBLE
-                            }
-                            if (view.alpha != 1f) {
-                                view.alpha = 1f
-                            }
-                            // Explicitly show subtitle button - this ensures it's visible when tracks are available
-                            view.setShowSubtitleButton(true)
                             
-                            // Hide next/previous track buttons whenever controller is shown
-                            view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_prev)?.visibility = android.view.View.GONE
-                            view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_next)?.visibility = android.view.View.GONE
-                            
-                            // Ensure subtitle button is visible when tracks are available
-                            val controller = view.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
-                            controller?.let { controlView ->
-                                // Force refresh to show subtitle button
-                                controlView.invalidate()
+                            playerView?.let { pv ->
+                                // Update player reference when view changes
+                                if (pv.player != player) {
+                                    pv.player = player
+                                }
+                                // Ensure view is focusable and can receive key events
+                                if (!pv.isFocusable) {
+                                    pv.isFocusable = true
+                                }
+                                // Ensure view is visible
+                                if (pv.visibility != android.view.View.VISIBLE) {
+                                    pv.visibility = android.view.View.VISIBLE
+                                }
+                                if (pv.alpha != 1f) {
+                                    pv.alpha = 1f
+                                }
+                                // Explicitly show subtitle button - this ensures it's visible when tracks are available
+                                pv.setShowSubtitleButton(true)
                                 
-                                // ⚠️ Keep default subtitle button hidden (we're using custom settings button)
-                                val subtitleButton = controlView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_subtitle)
-                                subtitleButton?.visibility = android.view.View.GONE
+                                // Hide next/previous track buttons whenever controller is shown
+                                pv.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_prev)?.visibility = android.view.View.GONE
+                                pv.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_next)?.visibility = android.view.View.GONE
+                                
+                                // Ensure subtitle button is visible when tracks are available
+                                val controller = pv.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
+                                controller?.let { controlView ->
+                                    // Force refresh to show subtitle button
+                                    controlView.invalidate()
+                                    
+                                    // ⚠️ Keep default subtitle button hidden (we're using custom settings button)
+                                    val subtitleButton = controlView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_subtitle)
+                                    subtitleButton?.visibility = android.view.View.GONE
+                                }
                             }
                         }
                     )
