@@ -6,10 +6,13 @@ All notable changes to Elefin will be documented in this file.
 
 ## 2025-12-02
 
+### Added
+
+- **Auto Detect** - Automatically discover Jellyfin servers on your local network
+
 ### Fixed
 
-- **Reverse Proxy Support** 
-  - Fixed login issues with servers behind reverse proxies (Nginx, Caddy, Cloudflare, etc.)
+- **Reverse Proxy Support** - Fixed login issues with servers behind reverse proxies (Nginx, Caddy, Cloudflare, etc.)
 
 ---
 

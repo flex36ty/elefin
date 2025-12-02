@@ -3,8 +3,14 @@ package com.flex.elefin.jellyfin
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
 /**
@@ -18,10 +24,18 @@ import java.util.concurrent.TimeUnit
  * ✅ Non-standard ports
  * ✅ Path-rewriting proxies
  * ✅ Custom domain hosting (orbyt.link, duckdns, etc.)
+ * ✅ Local network auto-discovery via UDP broadcast
  */
 object ServerDiscovery {
     
     private const val TAG = "ServerDiscovery"
+    
+    // Jellyfin UDP discovery port
+    private const val DISCOVERY_PORT = 7359
+    private const val DISCOVERY_MESSAGE = "who is JellyfinServer?"
+    private const val DISCOVERY_TIMEOUT_MS = 5000L
+    
+    private val json = Json { ignoreUnknownKeys = true }
     
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -30,6 +44,27 @@ object ServerDiscovery {
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
+    
+    /**
+     * Discovered server information from UDP broadcast
+     */
+    @Serializable
+    data class DiscoveredServer(
+        val Address: String? = null,
+        val Id: String? = null,
+        val Name: String? = null,
+        val EndpointAddress: String? = null,
+        val LocalAddress: String? = null
+    )
+    
+    /**
+     * Result of local network discovery
+     */
+    data class LocalServer(
+        val name: String,
+        val address: String,
+        val id: String
+    )
     
     /**
      * Build all possible URL candidates from user input.
@@ -199,5 +234,89 @@ object ServerDiscovery {
             Log.w(TAG, "Server validation failed: ${e.message}")
             false
         }
+    }
+    
+    /**
+     * Discover Jellyfin servers on the local network using UDP broadcast.
+     * This uses Jellyfin's built-in discovery protocol on port 7359.
+     * 
+     * @param onServerFound Callback invoked for each server found (allows real-time updates)
+     * @return List of discovered servers
+     */
+    suspend fun discoverLocalServers(
+        onServerFound: ((LocalServer) -> Unit)? = null
+    ): List<LocalServer> = withContext(Dispatchers.IO) {
+        val servers = mutableListOf<LocalServer>()
+        val seenIds = mutableSetOf<String>()
+        
+        Log.d(TAG, "Starting local network discovery on port $DISCOVERY_PORT")
+        
+        var socket: DatagramSocket? = null
+        try {
+            socket = DatagramSocket()
+            socket.broadcast = true
+            socket.soTimeout = 1000 // 1 second timeout for each receive attempt
+            
+            // Send discovery broadcast
+            val message = DISCOVERY_MESSAGE.toByteArray()
+            val broadcastAddress = InetAddress.getByName("255.255.255.255")
+            val sendPacket = DatagramPacket(message, message.size, broadcastAddress, DISCOVERY_PORT)
+            
+            Log.d(TAG, "Sending UDP broadcast: $DISCOVERY_MESSAGE")
+            socket.send(sendPacket)
+            
+            // Listen for responses with timeout
+            val buffer = ByteArray(4096)
+            val startTime = System.currentTimeMillis()
+            
+            while (System.currentTimeMillis() - startTime < DISCOVERY_TIMEOUT_MS) {
+                try {
+                    val receivePacket = DatagramPacket(buffer, buffer.size)
+                    socket.receive(receivePacket)
+                    
+                    val response = String(receivePacket.data, 0, receivePacket.length)
+                    Log.d(TAG, "Received response from ${receivePacket.address}: $response")
+                    
+                    // Parse the JSON response
+                    try {
+                        val serverInfo = json.decodeFromString<DiscoveredServer>(response)
+                        
+                        // Get the best address to use
+                        val address = serverInfo.LocalAddress 
+                            ?: serverInfo.Address 
+                            ?: "http://${receivePacket.address.hostAddress}:8096"
+                        
+                        val serverId = serverInfo.Id ?: receivePacket.address.hostAddress ?: ""
+                        
+                        // Avoid duplicates
+                        if (serverId !in seenIds) {
+                            seenIds.add(serverId)
+                            
+                            val server = LocalServer(
+                                name = serverInfo.Name ?: "Jellyfin Server",
+                                address = address.removeSuffix("/"),
+                                id = serverId
+                            )
+                            
+                            servers.add(server)
+                            Log.i(TAG, "✅ Found server: ${server.name} at ${server.address}")
+                            
+                            onServerFound?.invoke(server)
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to parse server response: ${e.message}")
+                    }
+                } catch (e: java.net.SocketTimeoutException) {
+                    // Timeout is expected, continue listening until overall timeout
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during local discovery: ${e.message}")
+        } finally {
+            socket?.close()
+        }
+        
+        Log.d(TAG, "Local discovery complete. Found ${servers.size} server(s)")
+        return@withContext servers
     }
 }

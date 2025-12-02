@@ -50,6 +50,8 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import com.flex.elefin.components.TvTextField
 import com.flex.elefin.jellyfin.JellyfinAuthService
 import com.flex.elefin.jellyfin.JellyfinConfig
@@ -65,15 +67,19 @@ fun ServerEntryScreen(
     
     var serverAddress by remember { mutableStateOf(prefillAddress ?: config.serverUrl.ifEmpty { "" }) }
     var isConnecting by remember { mutableStateOf(false) }
+    var isScanning by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
+    var discoveredServers by remember { mutableStateOf<List<ServerDiscovery.LocalServer>>(emptyList()) }
     
     val addressFocusRequester = remember { FocusRequester() }
     val connectButtonFocusRequester = remember { FocusRequester() }
+    val autoDetectButtonFocusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var addressFocused by remember { mutableStateOf(false) }
     var connectButtonFocused by remember { mutableStateOf(false) }
+    var autoDetectButtonFocused by remember { mutableStateOf(false) }
     
     val coroutineScope = rememberCoroutineScope()
     
@@ -124,6 +130,33 @@ fun ServerEntryScreen(
                 onServerConnected(config.serverUrl) // Use discovered URL
             } else {
                 errorMessage = message
+            }
+        }
+    }
+    
+    fun autoDetect() {
+        isScanning = true
+        errorMessage = null
+        statusMessage = "Scanning local network..."
+        discoveredServers = emptyList()
+        
+        coroutineScope.launch {
+            val servers = ServerDiscovery.discoverLocalServers { server ->
+                // Real-time update as servers are found
+                discoveredServers = discoveredServers + server
+            }
+            
+            isScanning = false
+            
+            if (servers.isEmpty()) {
+                statusMessage = null
+                errorMessage = "No servers found on local network"
+            } else if (servers.size == 1) {
+                // Auto-fill if only one server found
+                serverAddress = servers.first().address
+                statusMessage = "Found: ${servers.first().name}"
+            } else {
+                statusMessage = "Found ${servers.size} servers - select one below"
             }
         }
     }
@@ -184,7 +217,7 @@ fun ServerEntryScreen(
                 modifier = Modifier.fillMaxWidth()
             )
             
-            // Connect button
+            // Connect and Auto Detect buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -192,12 +225,12 @@ fun ServerEntryScreen(
             ) {
                 Button(
                     onClick = { connect() },
-                    enabled = !isConnecting && prefillAddress == null,
+                    enabled = !isConnecting && !isScanning && prefillAddress == null,
                     modifier = Modifier
                         .focusRequester(connectButtonFocusRequester)
                         .onFocusChanged { connectButtonFocused = it.isFocused }
                         .onKeyEvent { keyEvent ->
-                            if (keyEvent.type == KeyEventType.KeyUp && keyEvent.key == Key.Enter && !isConnecting && prefillAddress == null) {
+                            if (keyEvent.type == KeyEventType.KeyUp && keyEvent.key == Key.Enter && !isConnecting && !isScanning && prefillAddress == null) {
                                 connect()
                                 true
                             } else {
@@ -221,21 +254,111 @@ fun ServerEntryScreen(
                     )
                 }
                 
-                // Status/Error message
-                if (statusMessage != null) {
-                    Text(
-                        text = statusMessage ?: "",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 8.dp)
+                // Auto Detect button
+                Button(
+                    onClick = { autoDetect() },
+                    enabled = !isConnecting && !isScanning && prefillAddress == null,
+                    modifier = Modifier
+                        .focusRequester(autoDetectButtonFocusRequester)
+                        .onFocusChanged { autoDetectButtonFocused = it.isFocused }
+                        .onKeyEvent { keyEvent ->
+                            if (keyEvent.type == KeyEventType.KeyUp && keyEvent.key == Key.Enter && !isConnecting && !isScanning && prefillAddress == null) {
+                                autoDetect()
+                                true
+                            } else {
+                                false
+                            }
+                        },
+                    colors = ButtonDefaults.colors(
+                        containerColor = if (autoDetectButtonFocused) 
+                            MaterialTheme.colorScheme.secondary
+                        else 
+                            MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = if (autoDetectButtonFocused)
+                            MaterialTheme.colorScheme.onSecondary
+                        else
+                            MaterialTheme.colorScheme.onSecondaryContainer
                     )
-                } else if (errorMessage != null) {
+                ) {
                     Text(
-                        text = errorMessage ?: "",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(start = 8.dp)
+                        text = if (isScanning) "Scanning..." else "Auto Detect",
+                        style = MaterialTheme.typography.labelLarge
                     )
+                }
+            }
+            
+            // Status/Error message
+            if (statusMessage != null) {
+                Text(
+                    text = statusMessage ?: "",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            } else if (errorMessage != null) {
+                Text(
+                    text = errorMessage ?: "",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            
+            // Discovered servers list
+            if (discoveredServers.isNotEmpty()) {
+                Text(
+                    text = "Discovered Servers",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                )
+                
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    discoveredServers.forEach { server ->
+                        var serverItemFocused by remember { mutableStateOf(false) }
+                        
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    color = if (serverItemFocused) 
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    else 
+                                        MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .clickable {
+                                    serverAddress = server.address
+                                    discoveredServers = emptyList()
+                                    statusMessage = "Selected: ${server.name}"
+                                }
+                                .onFocusChanged { serverItemFocused = it.isFocused }
+                                .focusable()
+                                .padding(12.dp)
+                        ) {
+                            Column {
+                                Text(
+                                    text = server.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = if (serverItemFocused)
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    else
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = server.address,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (serverItemFocused)
+                                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                    else
+                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
