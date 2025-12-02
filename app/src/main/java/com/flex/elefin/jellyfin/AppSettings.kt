@@ -47,14 +47,16 @@ class AppSettings(context: Context) {
         private const val KEY_ENABLE_SHARPENING = "enable_sharpening"
         private const val KEY_HDR_STRENGTH = "hdr_strength"
         private const val KEY_SHARPEN_STRENGTH = "sharpen_strength"
+        private const val KEY_ENABLE_FRAME_BLENDING = "enable_frame_blending"
+        private const val KEY_FRAME_BLEND_STRENGTH = "frame_blend_strength"
         
         // UI performance settings
         private const val KEY_DISABLE_UI_ANIMATIONS = "disable_ui_animations"
     }
 
     var isMpvEnabled: Boolean
-        get() = prefs.getBoolean(KEY_MPV_ENABLED, false) // Disabled by default
-        set(value) = prefs.edit().putBoolean(KEY_MPV_ENABLED, value).apply()
+        get() = false // Temporarily disabled
+        set(value) { /* No-op - MPV temporarily disabled */ }
 
     var showDebugOutlines: Boolean
         get() = prefs.getBoolean(KEY_DEBUG_OUTLINES, false) // Disabled by default
@@ -243,6 +245,17 @@ class AppSettings(context: Context) {
     var sharpenStrength: Float
         get() = prefs.getFloat(KEY_SHARPEN_STRENGTH, 0.5f).coerceIn(0.0f, 1.0f)
         set(value) = prefs.edit().putFloat(KEY_SHARPEN_STRENGTH, value.coerceIn(0.0f, 1.0f)).apply()
+    
+    // Frame blending (fake soap opera effect) - disabled by default
+    var enableFrameBlending: Boolean
+        get() = prefs.getBoolean(KEY_ENABLE_FRAME_BLENDING, false)
+        set(value) = prefs.edit().putBoolean(KEY_ENABLE_FRAME_BLENDING, value).apply()
+    
+    // Frame blend strength (0.0 - 1.0, default: 0.5)
+    // 0.0 = no blending (current frame only), 1.0 = full blend (50/50 with previous frame)
+    var frameBlendStrength: Float
+        get() = prefs.getFloat(KEY_FRAME_BLEND_STRENGTH, 0.5f).coerceIn(0.0f, 1.0f)
+        set(value) = prefs.edit().putFloat(KEY_FRAME_BLEND_STRENGTH, value.coerceIn(0.0f, 1.0f)).apply()
     
     // UI performance settings
     var disableUIAnimations: Boolean

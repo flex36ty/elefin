@@ -53,6 +53,7 @@ import androidx.tv.material3.Text
 import com.flex.elefin.components.TvTextField
 import com.flex.elefin.jellyfin.JellyfinAuthService
 import com.flex.elefin.jellyfin.JellyfinConfig
+import com.flex.elefin.jellyfin.ServerDiscovery
 
 @Composable
 fun ServerEntryScreen(
@@ -79,12 +80,20 @@ fun ServerEntryScreen(
     // Auto-connect if address is prefilled
     LaunchedEffect(prefillAddress) {
         if (prefillAddress != null && prefillAddress.isNotBlank()) {
-            connectToServer(serverAddress, context, config, coroutineScope) { success, message ->
+            isConnecting = true
+            connectToServer(
+                address = serverAddress,
+                context = context,
+                config = config,
+                scope = coroutineScope,
+                onStatusUpdate = { status -> statusMessage = status }
+            ) { success, message ->
+                isConnecting = false
+                statusMessage = null
                 if (success) {
-                    onServerConnected(serverAddress.trim())
+                    onServerConnected(config.serverUrl) // Use discovered URL
                 } else {
                     errorMessage = message
-                    isConnecting = false
                 }
             }
         } else {
@@ -100,15 +109,20 @@ fun ServerEntryScreen(
         
         isConnecting = true
         errorMessage = null
-        statusMessage = "Connecting to ${serverAddress.trim()}..."
+        statusMessage = "Discovering server..."
         
-        connectToServer(serverAddress, context, config, coroutineScope) { success, message ->
+        connectToServer(
+            address = serverAddress,
+            context = context,
+            config = config,
+            scope = coroutineScope,
+            onStatusUpdate = { status -> statusMessage = status }
+        ) { success, message ->
             isConnecting = false
+            statusMessage = null
             if (success) {
-                statusMessage = null
-                onServerConnected(serverAddress.trim())
+                onServerConnected(config.serverUrl) // Use discovered URL
             } else {
-                statusMessage = null
                 errorMessage = message
             }
         }
@@ -229,51 +243,24 @@ fun ServerEntryScreen(
 }
 
 /**
- * Normalize server URL to include protocol and port if missing
- * Examples:
- * - "192.168.1.181" -> "http://192.168.1.181:8096"
- * - "192.168.1.181:8096" -> "http://192.168.1.181:8096"
- * - "http://192.168.1.181" -> "http://192.168.1.181:8096"
- * - "http://192.168.1.181:8096" -> "http://192.168.1.181:8096"
+ * Connect to a Jellyfin server using smart discovery.
+ * Handles reverse proxies, subpaths, and various configurations automatically.
+ * 
+ * Supports:
+ * ✅ Reverse proxies (Nginx, Caddy, Traefik, Cloudflare)
+ * ✅ HTTPS-only servers
+ * ✅ Subpath installs (/jellyfin)
+ * ✅ Root installs (/)
+ * ✅ Non-standard ports
+ * ✅ Path-rewriting proxies
+ * ✅ Custom domain hosting (orbyt.link, duckdns, etc.)
  */
-private fun normalizeServerUrl(address: String): String {
-    var url = address.trim().removeSuffix("/")
-    
-    // Add protocol if missing
-    if (!url.startsWith("http://") && !url.startsWith("https://")) {
-        url = "http://$url"
-    }
-    
-    // Extract host and port
-    val urlObj = try {
-        java.net.URL(url)
-    } catch (e: Exception) {
-        // If URL parsing fails, assume it's just an IP/hostname
-        // Check if it contains a port
-        val parts = url.replaceFirst("http://", "").replaceFirst("https://", "").split(":")
-        if (parts.size == 2) {
-            java.net.URL("http://${parts[0]}:${parts[1]}")
-        } else {
-            java.net.URL("http://$url:8096")
-        }
-    }
-    
-    // Add default port if missing
-    val port = urlObj.port
-    if (port == -1 || port == urlObj.defaultPort) {
-        val host = urlObj.host
-        val protocol = urlObj.protocol
-        return "$protocol://$host:8096"
-    }
-    
-    return url
-}
-
 private fun connectToServer(
     address: String,
     context: android.content.Context,
     config: JellyfinConfig,
     scope: kotlinx.coroutines.CoroutineScope,
+    onStatusUpdate: ((String) -> Unit)? = null,
     onResult: (Boolean, String) -> Unit
 ) {
     scope.launch {
@@ -283,24 +270,27 @@ private fun connectToServer(
                 return@launch
             }
             
-            // Normalize the URL (add protocol and port if missing)
-            val normalizedUrl = normalizeServerUrl(address)
-            android.util.Log.d("ServerEntry", "Normalized server URL: $address -> $normalizedUrl")
+            onStatusUpdate?.invoke("Discovering server...")
+            android.util.Log.d("ServerEntry", "Starting server discovery for: $address")
             
-            // Save the normalized server address
-            config.serverUrl = normalizedUrl
+            // Use smart discovery to find the server
+            val discoveredUrl = ServerDiscovery.discoverServer(address)
             
-            // Test connection by trying to get public system info
-            try {
-                val authService = JellyfinAuthService(normalizedUrl, context)
-                // Just verify the URL is accessible - we'll do actual auth in login screen
+            if (discoveredUrl != null) {
+                android.util.Log.i("ServerEntry", "✅ Found server at: $discoveredUrl")
+                
+                // Save the discovered URL (this is the working URL)
+                config.serverUrl = discoveredUrl
+                
+                onStatusUpdate?.invoke("Connected!")
                 onResult(true, "")
-            } catch (e: Exception) {
-                android.util.Log.e("ServerEntry", "Connection test failed", e)
-                onResult(false, "Unable to connect: ${e.message ?: "Connection failed"}")
+            } else {
+                android.util.Log.w("ServerEntry", "❌ Server discovery failed for: $address")
+                
+                onResult(false, "Could not connect to Jellyfin server.\n\nPlease verify:\n• The address is correct\n• The server is running\n• You can access it from this network")
             }
         } catch (e: Exception) {
-            android.util.Log.e("ServerEntry", "Error connecting to server", e)
+            android.util.Log.e("ServerEntry", "Error during server discovery", e)
             onResult(false, "Error: ${e.message ?: e.javaClass.simpleName}")
         }
     }

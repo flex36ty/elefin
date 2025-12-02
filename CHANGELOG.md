@@ -4,6 +4,15 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2025-12-02
+
+### Fixed
+
+- **Reverse Proxy Support** 
+  - Fixed login issues with servers behind reverse proxies (Nginx, Caddy, Cloudflare, etc.)
+
+---
+
 ## 2025-12-01
 
 ### Added

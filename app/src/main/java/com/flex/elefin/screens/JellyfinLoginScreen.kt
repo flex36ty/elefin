@@ -694,34 +694,15 @@ private fun String.formatCode(): String {
     }
 }
 
+/**
+ * Normalize the server URL.
+ * The URL should already be properly formatted by ServerDiscovery,
+ * so we just clean it up (remove trailing slash).
+ * 
+ * DO NOT add default ports - reverse proxies use standard ports (80/443).
+ */
 private fun normalizeServerUrl(url: String): String {
-    var normalized = url.trim().removeSuffix("/")
-    
-    // Add protocol if missing
-    if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
-        normalized = "http://$normalized"
-    }
-    
-    // Add default port if missing
-    return try {
-        val urlObj = java.net.URL(normalized)
-        val port = urlObj.port
-        if (port == -1 || port == urlObj.defaultPort) {
-            val host = urlObj.host
-            val protocol = urlObj.protocol
-            "$protocol://$host:8096"
-        } else {
-            normalized
-        }
-    } catch (e: Exception) {
-        // If URL parsing fails, check if it contains a port
-        val parts = normalized.replaceFirst("http://", "").replaceFirst("https://", "").split(":")
-        if (parts.size == 2) {
-            normalized
-        } else {
-            "$normalized:8096"
-        }
-    }
+    return url.trim().removeSuffix("/")
 }
 
 private fun performCredentialsLogin(

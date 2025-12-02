@@ -70,6 +70,7 @@ data class JellyfinPlaybackInfo(
 data class MediaSource(
     val Id: String? = null,
     val Protocol: String? = null,
+    val Container: String? = null,
     val MediaStreams: List<MediaStream>? = null
 )
 
@@ -590,76 +591,6 @@ class JellyfinApiService(
      * @param preferredMethod Optional preferred playback method (null = auto-detect)
      * @return URL for MPV playback using the best available method
      */
-    fun getVideoPlaybackUrlForMpv(
-        itemId: String,
-        mediaSourceId: String? = null,
-        subtitleStreamIndex: Int? = null,
-        preferredMethod: String? = null // "direct", "direct_stream", "mp4", "hls"
-    ): String {
-        val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
-        val sourceId = mediaSourceId ?: itemId
-        
-        // Strategy: Try direct play first, then fall back to transcoding if needed
-        when (preferredMethod ?: "direct") {
-            "direct" -> {
-                // Method 1: Direct Play - bypasses transcoder completely
-                // MPV can handle any container natively, so this is the best option
-                val url = URLBuilder().takeFrom("${base}Videos/$itemId/original").apply {
-                    parameters.append("mediaSourceId", sourceId)
-                    parameters.append("api_key", accessToken)
-                    subtitleStreamIndex?.let {
-                        parameters.append("SubtitleStreamIndex", it.toString())
-                    }
-                }.buildString()
-                android.util.Log.d("JellyfinAPI", "Generated MPV video playback URL (Direct Play): $url")
-                return url
-            }
-            "direct_stream" -> {
-                // Method 2: Direct Stream (remux) - copies streams without transcoding
-                // This is more stable than transcoding but requires compatible codecs
-                val url = URLBuilder().takeFrom("${base}Videos/$itemId/stream").apply {
-                    parameters.append("static", "true")
-                    parameters.append("Container", "ts")
-                    parameters.append("VideoCodec", "copy")
-                    parameters.append("AudioCodec", "copy")
-                    parameters.append("mediaSourceId", sourceId)
-                    parameters.append("api_key", accessToken)
-                    subtitleStreamIndex?.let {
-                        parameters.append("SubtitleStreamIndex", it.toString())
-                    }
-                }.buildString()
-                android.util.Log.d("JellyfinAPI", "Generated MPV video playback URL (Direct Stream/Remux): $url")
-                return url
-            }
-            "mp4" -> {
-                // Method 3: MP4 Transcode - more stable than HLS transcoder
-                val url = URLBuilder().takeFrom("${base}Videos/$itemId/stream.mp4").apply {
-                    parameters.append("VideoCodec", "h264")
-                    parameters.append("AudioCodec", "aac")
-                    parameters.append("mediaSourceId", sourceId)
-                    parameters.append("api_key", accessToken)
-                    subtitleStreamIndex?.let {
-                        parameters.append("SubtitleStreamIndex", it.toString())
-                    }
-                }.buildString()
-                android.util.Log.d("JellyfinAPI", "Generated MPV video playback URL (MP4 Transcode): $url")
-                return url
-            }
-            else -> {
-                // Method 4: HLS - last resort, can crash Jellyfin's transcoder
-                val url = URLBuilder().takeFrom("${base}Videos/$itemId/master.m3u8").apply {
-                    parameters.append("mediaSourceId", sourceId)
-                    parameters.append("api_key", accessToken)
-                    subtitleStreamIndex?.let {
-                        parameters.append("SubtitleStreamIndex", it.toString())
-                    }
-                }.buildString()
-                android.util.Log.w("JellyfinAPI", "Generated MPV video playback URL (HLS - last resort): $url")
-                return url
-            }
-        }
-    }
-    
     /**
      * Build correct Jellyfin subtitle URL based on subtitle type
      * Production-safe URL builder matching official Jellyfin clients

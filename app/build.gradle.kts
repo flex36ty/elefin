@@ -16,8 +16,8 @@ android {
         targetSdk = 36
 
         // Version code: major * 10000 + minor * 100 + patch
-        versionCode = 10108
-        versionName = "1.1.8"
+        versionCode = 10109
+        versionName = "1.1.9"
 
         ndk {
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
@@ -56,7 +56,7 @@ android {
     buildFeatures {
         compose = true
     }
-
+    
     sourceSets {
         getByName("main") {
             jniLibs.srcDirs("lib")

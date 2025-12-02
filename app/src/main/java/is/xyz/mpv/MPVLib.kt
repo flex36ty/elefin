@@ -5,51 +5,15 @@ import android.graphics.Bitmap
 import android.view.Surface
 
 // Wrapper for native library
+// Source: https://github.com/mpv-android/mpv-android/blob/master/app/src/main/java/is/xyz/mpv/MPVLib.kt
 
+@Suppress("unused")
 object MPVLib {
-    private var isAvailable: Boolean = false
-    private var loadAttempted: Boolean = false
-    
     init {
-        android.util.Log.i("MPVLib", "MPVLib object initialization started")
-        try {
-            android.util.Log.d("MPVLib", "Attempting to load MPV native libraries...")
-            // Load libraries in order: player (JNI bridge) first, then mpv
-            val libs = arrayOf("player", "mpv")
-            var allLoaded = true
-            for (lib in libs) {
-                try {
-                    android.util.Log.d("MPVLib", "Loading library: $lib")
-                    System.loadLibrary(lib)
-                    android.util.Log.i("MPVLib", "Successfully loaded library: $lib")
-                } catch (e: UnsatisfiedLinkError) {
-                    // MPV libraries may not be available on all devices/emulators - this is expected
-                    android.util.Log.d("MPVLib", "Library '$lib' not available (expected on emulators/unsupported devices): ${e.message}")
-                    allLoaded = false
-                    break
-                }
-            }
-            // If all libraries loaded successfully
-            isAvailable = allLoaded
-            loadAttempted = true
-            if (isAvailable) {
-                android.util.Log.i("MPVLib", "MPV libraries loaded successfully! isAvailable=true")
-            } else {
-                android.util.Log.w("MPVLib", "MPV libraries failed to load. isAvailable=false")
-            }
-        } catch (e: Exception) {
-            // MPV libraries may not be available - this is expected
-            android.util.Log.d("MPVLib", "MPV initialization failed (expected on emulators/unsupported devices): ${e.message}")
-            isAvailable = false
-            loadAttempted = true
+        val libs = arrayOf("mpv", "player")
+        for (lib in libs) {
+            System.loadLibrary(lib)
         }
-        android.util.Log.i("MPVLib", "MPVLib object initialization completed. isAvailable=$isAvailable, loadAttempted=$loadAttempted")
-    }
-    
-    fun isAvailable(): Boolean {
-        val result = isAvailable && loadAttempted
-        android.util.Log.d("MPVLib", "isAvailable() called, returning: $result (isAvailable=$isAvailable, loadAttempted=$loadAttempted)")
-        return result
     }
 
     external fun create(appctx: Context)
@@ -224,4 +188,5 @@ object MPVLib {
         const val MPV_LOG_LEVEL_TRACE: Int = 70
     }
 }
+
 

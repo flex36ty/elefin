@@ -12,16 +12,15 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
- * Unified Subtitle Downloader for both ExoPlayer and MPV
+ * Unified Subtitle Downloader for ExoPlayer
  * 
  * Downloads subtitles to local cache when selected from the list,
- * then provides file:// URLs to both players.
+ * then provides file:// URLs to the player.
  * 
  * Benefits:
- * - Fixes MPV authentication issues
  * - Makes ExoPlayer faster (no network delay)
  * - Enables offline subtitle switching
- * - Unified approach for both players
+ * - Unified approach for subtitle handling
  */
 object SubtitleDownloader {
     private const val TAG = "SubtitleDownloader"

@@ -17,9 +17,9 @@ class MpvUrlSelector(
             append("User-Agent: MPV-Android\r\n")
             append("Authorization: MediaBrowser Token=\"$accessToken\"\r\n")
             val authHeader = if (deviceId.isNotEmpty()) {
-                "MediaBrowser Client=\"Elefin\", Device=\"AndroidTV\", DeviceId=\"$deviceId\", Token=\"$accessToken\", Version=\"1.0\""
+                "MediaBrowser Client=\"Elefin\", Device=\"AndroidTV\", DeviceId=\"$deviceId\", Token=\"$accessToken\", Version=\"1.1.9\""
             } else {
-                "MediaBrowser Client=\"Elefin\", Device=\"AndroidTV\", DeviceId=\"\", Version=\"1.0\""
+                "MediaBrowser Client=\"Elefin\", Device=\"AndroidTV\", DeviceId=\"\", Version=\"1.1.9\""
             }
             append("X-Emby-Authorization: $authHeader\r\n")
             append("Accept: */*\r\n")
@@ -28,6 +28,8 @@ class MpvUrlSelector(
 
     /** ----------------------------
      *  DIRECT PLAY (BEST)
+     *  Uses /Videos/{id}/stream?static=true
+     *  This is the CORRECT URL format for MPV
      *  ---------------------------- */
     fun buildDirectPlay(itemId: String, mediaSourceId: String? = null): MpvUrlResult {
         val msId = mediaSourceId ?: itemId
@@ -41,25 +43,11 @@ class MpvUrlSelector(
 
     /** ----------------------------
      *  DIRECT PLAY (ORIGINAL)
+     *  Fallback option
      *  ---------------------------- */
     fun buildDirectPlayOriginal(itemId: String, mediaSourceId: String? = null): MpvUrlResult {
         val msId = mediaSourceId ?: itemId
-        // ⭐ CRITICAL: Use lowercase "static" - MPV lowercases query params, must match Jellyfin's expectation
-        // Using capital "Static=false" causes MPV to rewrite to "static=false" which Jellyfin treats differently
-        val url = "$server/Videos/$itemId/stream" +
-                "?static=false" +
-                "&mediaSourceId=$msId" +
-                "&api_key=$accessToken"
-
-        return MpvUrlResult(url = url, headers = buildHeaders())
-    }
-
-    /** ----------------------------
-     *  DIRECT STREAM (HLS)
-     *  ---------------------------- */
-    fun buildHls(itemId: String, mediaSourceId: String? = null): MpvUrlResult {
-        val msId = mediaSourceId ?: itemId
-        val url = "$server/Videos/$itemId/master.m3u8" +
+        val url = "$server/Videos/$itemId/original" +
                 "?mediaSourceId=$msId" +
                 "&api_key=$accessToken"
 
@@ -67,37 +55,10 @@ class MpvUrlSelector(
     }
 
     /** ----------------------------
-     *  TRANSCODE (HLS)
-     *  ---------------------------- */
-    fun buildTranscodeHls(
-        itemId: String,
-        mediaSourceId: String? = null,
-        maxBitrate: Int = 20000000,
-        audioStream: Int? = null,
-        subtitleStream: Int? = null
-    ): MpvUrlResult {
-        val msId = mediaSourceId ?: itemId
-        val sb = StringBuilder()
-        sb.append("$server/Videos/$itemId/master.m3u8")
-        sb.append("?api_key=$accessToken")
-        sb.append("&mediaSourceId=$msId")
-        sb.append("&transcodingProtocol=hls")
-        sb.append("&maxVideoBitrate=$maxBitrate")
-
-        audioStream?.let { sb.append("&audioStreamIndex=$it") }
-        subtitleStream?.let { sb.append("&subtitleStreamIndex=$it") }
-
-        return MpvUrlResult(url = sb.toString(), headers = buildHeaders())
-    }
-
-    /** ----------------------------
      *  UNIVERSAL AUTO-SELECTOR
-     *  (DirectPlay → DirectStream → Transcode)
+     *  (DirectPlay by default)
      *  ---------------------------- */
     fun auto(itemId: String, mediaSourceId: String? = null): MpvUrlResult {
-        // Use DirectPlay Stream by default (more reliable than /original)
-        // The /original endpoint may not exist for all media items and can return 404
-        // Fallback logic will handle trying /original if needed
         return buildDirectPlay(itemId, mediaSourceId)
     }
 }

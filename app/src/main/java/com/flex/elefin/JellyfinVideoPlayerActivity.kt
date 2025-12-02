@@ -17,7 +17,6 @@ import com.flex.elefin.jellyfin.JellyfinConfig
 import com.flex.elefin.jellyfin.JellyfinItem
 import com.flex.elefin.jellyfin.AppSettings
 import com.flex.elefin.screens.JellyfinVideoPlayerScreen
-import com.flex.elefin.screens.MPVVideoPlayerScreen
 
 @UnstableApi
 class JellyfinVideoPlayerActivity : ComponentActivity() {
@@ -120,63 +119,20 @@ class JellyfinVideoPlayerActivity : ComponentActivity() {
             Name = ""
         )
 
-        val useMpv = settings.isMpvEnabled
-        // Force MPVLib initialization by accessing it (only if MPV is enabled)
-        val mpvAvailable = if (useMpv) {
-            try {
-                // Check MPV availability - the library should auto-detect .so files
-                val available = `is`.xyz.mpv.MPVLib.isAvailable()
-                android.util.Log.d("VideoPlayer", "MPV availability check: $available")
-                if (!available) {
-                    // If not available, log more details for debugging
-                    android.util.Log.w("VideoPlayer", "MPV libraries exist but isAvailable() returned false - this may indicate a library loading issue")
-                }
-                available
-            } catch (e: UnsatisfiedLinkError) {
-                android.util.Log.e("VideoPlayer", "MPV native libraries not found (UnsatisfiedLinkError)", e)
-                false
-            } catch (e: NoClassDefFoundError) {
-                android.util.Log.e("VideoPlayer", "MPV classes not found (NoClassDefFoundError)", e)
-                false
-            } catch (e: Exception) {
-                android.util.Log.e("VideoPlayer", "Error checking MPV availability", e)
-                false
-            }
-        } else {
-            false
-        }
-        
-        android.util.Log.d("VideoPlayer", "MPV enabled: $useMpv, MPV available: $mpvAvailable")
-
         setContent {
             JellyfinAppTheme {
-                if (useMpv && mpvAvailable) {
-                    // Use MPV if explicitly enabled and available
-                        MPVVideoPlayerScreen(
-                            item = item,
-                            apiService = apiService,
-                            onBack = {
-                                finish()
-                            },
-                            resumePositionMs = resumePositionMs,
-                            subtitleStreamIndex = subtitleStreamIndex
-                        )
-                } else {
-                    // Default to ExoPlayer (when MPV is disabled or not available)
-                    if (useMpv && !mpvAvailable) {
-                        android.util.Log.w("VideoPlayer", "MPV enabled but libraries not available, falling back to ExoPlayer")
-                    }
-                        JellyfinVideoPlayerScreen(
-                            item = item,
-                            apiService = apiService,
-                            onBack = {
-                                finish()
-                            },
-                            resumePositionMs = resumePositionMs,
-                            subtitleStreamIndex = subtitleStreamIndex,
-                            audioStreamIndex = audioStreamIndex
-                        )
-                }
+                // Use ExoPlayer with FFmpeg for comprehensive codec support
+                // MPV is temporarily disabled
+                JellyfinVideoPlayerScreen(
+                    item = item,
+                    apiService = apiService,
+                    onBack = {
+                        finish()
+                    },
+                    resumePositionMs = resumePositionMs,
+                    subtitleStreamIndex = subtitleStreamIndex,
+                    audioStreamIndex = audioStreamIndex
+                )
             }
         }
     }

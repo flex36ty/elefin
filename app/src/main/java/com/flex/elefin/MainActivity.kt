@@ -40,19 +40,6 @@ class MainActivity : ComponentActivity() {
             settings.isFirstLaunch = false
         }
         
-        // Check MPV availability (initialization happens lazily when class is first accessed)
-        // This is expected to fail on emulators/devices without MPV libraries - app will use ExoPlayer instead
-        try {
-            val available = `is`.xyz.mpv.MPVLib.isAvailable()
-            if (available) {
-                android.util.Log.d("MainActivity", "MPV libraries available")
-            } else {
-                android.util.Log.d("MainActivity", "MPV libraries not available - will use ExoPlayer")
-            }
-        } catch (e: Exception) {
-            android.util.Log.d("MainActivity", "MPV check failed - will use ExoPlayer: ${e.message}")
-        }
-        
         val appSettings = AppSettings(this)
         
         // Get version code from package manager

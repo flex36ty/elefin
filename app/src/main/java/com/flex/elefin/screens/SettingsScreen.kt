@@ -62,7 +62,6 @@ fun SettingsScreen(
     val context = LocalContext.current
     val settings = remember { AppSettings(context) }
     val scope = rememberCoroutineScope()
-    var mpvEnabled by remember { mutableStateOf(settings.isMpvEnabled) }
     var debugOutlinesEnabled by remember { mutableStateOf(settings.showDebugOutlines) }
     var preloadLibraryImagesEnabled by remember { mutableStateOf(settings.preloadLibraryImages) }
     var cacheLibraryImagesEnabled by remember { mutableStateOf(settings.cacheLibraryImages) }
@@ -86,27 +85,22 @@ fun SettingsScreen(
     var latestRelease by remember { mutableStateOf<com.flex.elefin.updater.GitHubRelease?>(null) }
     var checkingForUpdates by remember { mutableStateOf(false) }
     var updateCheckMessage by remember { mutableStateOf<String?>(null) }
-    var isMpvEnabled by remember { mutableStateOf(settings.isMpvEnabled) }
-    
-    // MPV Subtitle customization settings
-    var subtitleTextSize by remember { mutableStateOf(settings.subtitleTextSize) }
-    var subtitleBgTransparent by remember { mutableStateOf(settings.subtitleBgTransparent) }
-    var showSubtitleColorDialog by remember { mutableStateOf(false) }
-    var showSubtitleBgColorDialog by remember { mutableStateOf(false) }
-    
+
     // ExoPlayer Subtitle customization settings
     var exoSubtitleTextSize by remember { mutableStateOf(settings.exoSubtitleTextSize) }
     var exoSubtitleBgTransparent by remember { mutableStateOf(settings.exoSubtitleBgTransparent) }
     var showExoSubtitleColorDialog by remember { mutableStateOf(false) }
     var showExoSubtitleBgColorDialog by remember { mutableStateOf(false) }
-    
+
     // Video Enhancement settings
     var useGLEnhancements by remember { mutableStateOf(settings.useGLEnhancements) }
     var enableFakeHDR by remember { mutableStateOf(settings.enableFakeHDR) }
     var enableSharpening by remember { mutableStateOf(settings.enableSharpening) }
     var hdrStrength by remember { mutableStateOf(settings.hdrStrength) }
     var sharpenStrength by remember { mutableStateOf(settings.sharpenStrength) }
-    
+    var enableFrameBlending by remember { mutableStateOf(settings.enableFrameBlending) }
+    var frameBlendStrength by remember { mutableStateOf(settings.frameBlendStrength) }
+
     // UI Performance settings
     var disableUIAnimations by remember { mutableStateOf(settings.disableUIAnimations) }
 
@@ -140,7 +134,7 @@ fun SettingsScreen(
                         contentDescription = "Back"
                     )
                 }
-                
+
                 Text(
                     text = "Settings",
                     style = MaterialTheme.typography.headlineLarge,
@@ -150,7 +144,16 @@ fun SettingsScreen(
             }
 
             // Settings options
-            // MPV Player setting
+            // ExoPlayer Subtitle Customization section
+            // Section header
+            Text(
+                text = "ExoPlayer Subtitle Customization",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+            )
+
+            // ExoPlayer subtitle text size
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -160,46 +163,116 @@ fun SettingsScreen(
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(
-                        text = "Use MPV Player (Experimental)",
+                        text = "ExoPlayer Subtitle Text Size",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Use MPV player instead of ExoPlayer for video playback. Note: MPV is experimental and may be unstable.",
+                        text = "Size: $exoSubtitleTextSize (range: 20-100, default: 30)",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            if (exoSubtitleTextSize > 20) {
+                                exoSubtitleTextSize -= 5
+                                settings.exoSubtitleTextSize = exoSubtitleTextSize
+                            }
+                        },
+                        enabled = exoSubtitleTextSize > 20
+                    ) {
+                        Text("-")
+                    }
+                    Button(
+                        onClick = {
+                            if (exoSubtitleTextSize < 100) {
+                                exoSubtitleTextSize += 5
+                                settings.exoSubtitleTextSize = exoSubtitleTextSize
+                            }
+                        },
+                        enabled = exoSubtitleTextSize < 100
+                    ) {
+                        Text("+")
+                    }
+                }
+            }
+
+            // ExoPlayer subtitle text color
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "ExoPlayer Subtitle Text Color",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Choose ExoPlayer subtitle text color",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
+                Button(
+                    onClick = { showExoSubtitleColorDialog = true }
+                ) {
+                    Text("Choose Color")
+                }
+            }
+
+            // ExoPlayer subtitle background transparency
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "Transparent ExoPlayer Subtitle Background",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Make ExoPlayer subtitle background transparent or opaque",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
                 Button(
                     onClick = {
-                        mpvEnabled = !mpvEnabled
-                        settings.isMpvEnabled = mpvEnabled
+                        exoSubtitleBgTransparent = !exoSubtitleBgTransparent
+                        settings.exoSubtitleBgTransparent = exoSubtitleBgTransparent
                     },
                     colors = ButtonDefaults.colors(
-                        containerColor = if (mpvEnabled) {
+                        containerColor = if (exoSubtitleBgTransparent) {
                             MaterialTheme.colorScheme.primary
                         } else {
                             MaterialTheme.colorScheme.surfaceVariant
                         }
                     )
                 ) {
-                    Text(if (mpvEnabled) "ON" else "OFF")
+                    Text(if (exoSubtitleBgTransparent) "Transparent" else "Opaque")
                 }
             }
-            
-            // ===== SUBTITLE CUSTOMIZATION SECTION =====
-            if (mpvEnabled) {
-                // Section header
-                Text(
-                    text = "Subtitle Appearance",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-                )
-                
-                // Subtitle text size
+
+            // ExoPlayer subtitle background color (only if not transparent)
+            if (!exoSubtitleBgTransparent) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -209,315 +282,84 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f)
                     ) {
                         Text(
-                            text = "Subtitle Text Size",
+                            text = "ExoPlayer Subtitle Background Color",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Size: $subtitleTextSize (range: 30-100)",
+                            text = "Choose ExoPlayer subtitle background color",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }
-                    
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                if (subtitleTextSize > 30) {
-                                    subtitleTextSize -= 5
-                                    settings.subtitleTextSize = subtitleTextSize
-                                }
-                            },
-                            enabled = subtitleTextSize > 30
-                        ) {
-                            Text("-")
-                        }
-                        Button(
-                            onClick = {
-                                if (subtitleTextSize < 100) {
-                                    subtitleTextSize += 5
-                                    settings.subtitleTextSize = subtitleTextSize
-                                }
-                            },
-                            enabled = subtitleTextSize < 100
-                        ) {
-                            Text("+")
-                        }
-                    }
-                }
-                
-                // Subtitle text color
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = "Subtitle Text Color",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Choose subtitle text color",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                    
+
                     Button(
-                        onClick = { showSubtitleColorDialog = true }
+                        onClick = { showExoSubtitleBgColorDialog = true }
                     ) {
                         Text("Choose Color")
                     }
                 }
-                
-                // Subtitle background transparency
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = "Transparent Subtitle Background",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Make subtitle background transparent or opaque",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                    
-                    Button(
-                        onClick = {
-                            subtitleBgTransparent = !subtitleBgTransparent
-                            settings.subtitleBgTransparent = subtitleBgTransparent
-                        },
-                        colors = ButtonDefaults.colors(
-                            containerColor = if (subtitleBgTransparent) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant
-                            }
-                        )
-                    ) {
-                        Text(if (subtitleBgTransparent) "Transparent" else "Opaque")
-                    }
-                }
-                
-                // Subtitle background color (only if not transparent)
-                if (!subtitleBgTransparent) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "Subtitle Background Color",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Choose subtitle background color",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-                        
-                        Button(
-                            onClick = { showSubtitleBgColorDialog = true }
-                        ) {
-                            Text("Choose Color")
-                        }
-                    }
-                }
             }
-            
-            // ExoPlayer Subtitle Customization section
-            if (!isMpvEnabled) {
-                Text(
-                    text = "ExoPlayer Subtitle Customization",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-                )
-                
-                // ExoPlayer subtitle text size
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = "ExoPlayer Subtitle Text Size",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Size: $exoSubtitleTextSize (range: 20-100, default: 30)",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                    
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                if (exoSubtitleTextSize > 20) {
-                                    exoSubtitleTextSize -= 5
-                                    settings.exoSubtitleTextSize = exoSubtitleTextSize
-                                }
-                            },
-                            enabled = exoSubtitleTextSize > 20
-                        ) {
-                            Text("-")
-                        }
-                        Button(
-                            onClick = {
-                                if (exoSubtitleTextSize < 100) {
-                                    exoSubtitleTextSize += 5
-                                    settings.exoSubtitleTextSize = exoSubtitleTextSize
-                                }
-                            },
-                            enabled = exoSubtitleTextSize < 100
-                        ) {
-                            Text("+")
-                        }
-                    }
-                }
-                
-                // ExoPlayer subtitle text color
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = "ExoPlayer Subtitle Text Color",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Choose ExoPlayer subtitle text color",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                    
-                    Button(
-                        onClick = { showExoSubtitleColorDialog = true }
-                    ) {
-                        Text("Choose Color")
-                    }
-                }
-                
-                // ExoPlayer subtitle background transparency
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = "Transparent ExoPlayer Subtitle Background",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Make ExoPlayer subtitle background transparent or opaque",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                    
-                    Button(
-                        onClick = {
-                            exoSubtitleBgTransparent = !exoSubtitleBgTransparent
-                            settings.exoSubtitleBgTransparent = exoSubtitleBgTransparent
-                        },
-                        colors = ButtonDefaults.colors(
-                            containerColor = if (exoSubtitleBgTransparent) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant
-                            }
-                        )
-                    ) {
-                        Text(if (exoSubtitleBgTransparent) "Transparent" else "Opaque")
-                    }
-                }
-                
-                // ExoPlayer subtitle background color (only if not transparent)
-                if (!exoSubtitleBgTransparent) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "ExoPlayer Subtitle Background Color",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Choose ExoPlayer subtitle background color",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-                        
-                        Button(
-                            onClick = { showExoSubtitleBgColorDialog = true }
-                        ) {
-                            Text("Choose Color")
-                        }
-                    }
-                }
-            }
-            
+
             // Video Enhancements section
-            if (!isMpvEnabled) {
-                Text(
-                    text = "Video Enhancements",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-                )
-                
-                // Enable GL Enhancements toggle
+            Text(
+                text = "Video Enhancements",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+            )
+
+            // Enable GL Enhancements toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "Enable GL Video Processing",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Use OpenGL for advanced video effects (HDR simulation, sharpening)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        useGLEnhancements = !useGLEnhancements
+                        settings.useGLEnhancements = useGLEnhancements
+                        // Reset effects when disabling
+                        if (!useGLEnhancements) {
+                            enableFakeHDR = false
+                            enableSharpening = false
+                            enableFrameBlending = false
+                            settings.enableFakeHDR = false
+                            settings.enableSharpening = false
+                            settings.enableFrameBlending = false
+                        }
+                    },
+                    colors = ButtonDefaults.colors(
+                        containerColor = if (useGLEnhancements) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        }
+                    )
+                ) {
+                    Text(if (useGLEnhancements) "ON" else "OFF")
+                }
+            }
+
+            // Fake HDR toggle (only visible when GL enhancements enabled)
+            if (useGLEnhancements) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -527,44 +369,217 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f)
                     ) {
                         Text(
-                            text = "Enable GL Video Processing",
+                            text = "Fake HDR",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Use OpenGL for advanced video effects (HDR simulation, sharpening)",
+                            text = "Simulate HDR with tone mapping and brightness boost",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }
-                    
+
                     Button(
                         onClick = {
-                            useGLEnhancements = !useGLEnhancements
-                            settings.useGLEnhancements = useGLEnhancements
-                            // Reset effects when disabling
-                            if (!useGLEnhancements) {
-                                enableFakeHDR = false
-                                enableSharpening = false
-                                settings.enableFakeHDR = false
-                                settings.enableSharpening = false
-                            }
+                            enableFakeHDR = !enableFakeHDR
+                            settings.enableFakeHDR = enableFakeHDR
                         },
                         colors = ButtonDefaults.colors(
-                            containerColor = if (useGLEnhancements) {
+                            containerColor = if (enableFakeHDR) {
                                 MaterialTheme.colorScheme.primary
                             } else {
                                 MaterialTheme.colorScheme.surfaceVariant
                             }
                         )
                     ) {
-                        Text(if (useGLEnhancements) "ON" else "OFF")
+                        Text(if (enableFakeHDR) "ON" else "OFF")
+                    }
+                }
+
+                // HDR Strength slider
+                if (enableFakeHDR) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "HDR Strength",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Strength: %.1f (range: 1.0-2.0, default: 1.3)".format(
+                                    hdrStrength
+                                ),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    hdrStrength = (hdrStrength - 0.1f).coerceAtLeast(1.0f)
+                                    settings.hdrStrength = hdrStrength
+                                },
+                                enabled = hdrStrength > 1.0f
+                            ) {
+                                Text("-")
+                            }
+
+                            Button(
+                                onClick = {
+                                    hdrStrength = (hdrStrength + 0.1f).coerceAtMost(2.0f)
+                                    settings.hdrStrength = hdrStrength
+                                },
+                                enabled = hdrStrength < 2.0f
+                            ) {
+                                Text("+")
+                            }
+                        }
+                    }
+                }
+
+                // Sharpening toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "Sharpening",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Enhance image sharpness using edge detection",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            enableSharpening = !enableSharpening
+                            settings.enableSharpening = enableSharpening
+                        },
+                        colors = ButtonDefaults.colors(
+                            containerColor = if (enableSharpening) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            }
+                        )
+                    ) {
+                        Text(if (enableSharpening) "ON" else "OFF")
+                    }
+                }
+
+                // Sharpening Strength slider
+                if (enableSharpening) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "Sharpening Strength",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Strength: %.1f (range: 0.0-1.0, default: 0.5)".format(
+                                    sharpenStrength
+                                ),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    sharpenStrength = (sharpenStrength - 0.1f).coerceAtLeast(0.0f)
+                                    settings.sharpenStrength = sharpenStrength
+                                },
+                                enabled = sharpenStrength > 0.0f
+                            ) {
+                                Text("-")
+                            }
+
+                            Button(
+                                onClick = {
+                                    sharpenStrength = (sharpenStrength + 0.1f).coerceAtMost(1.0f)
+                                    settings.sharpenStrength = sharpenStrength
+                                },
+                                enabled = sharpenStrength < 1.0f
+                            ) {
+                                Text("+")
+                            }
+                        }
                     }
                 }
                 
-                // Fake HDR toggle (only visible when GL enhancements enabled)
-                if (useGLEnhancements) {
+                // Frame Blending (Soap Opera Effect) toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "Frame Blending",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Simulates smooth motion by blending frames (soap opera effect)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            enableFrameBlending = !enableFrameBlending
+                            settings.enableFrameBlending = enableFrameBlending
+                        },
+                        colors = ButtonDefaults.colors(
+                            containerColor = if (enableFrameBlending) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            }
+                        )
+                    ) {
+                        Text(if (enableFrameBlending) "ON" else "OFF")
+                    }
+                }
+
+                // Frame Blend Strength slider
+                if (enableFrameBlending) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -574,168 +589,41 @@ fun SettingsScreen(
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(
-                                text = "Fake HDR",
+                                text = "Blend Strength",
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Simulate HDR with tone mapping and brightness boost",
+                                text = "Strength: %.1f (range: 0.0-1.0, default: 0.5)".format(
+                                    frameBlendStrength
+                                ),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                                 modifier = Modifier.padding(top = 4.dp)
                             )
                         }
-                        
-                        Button(
-                            onClick = {
-                                enableFakeHDR = !enableFakeHDR
-                                settings.enableFakeHDR = enableFakeHDR
-                            },
-                            colors = ButtonDefaults.colors(
-                                containerColor = if (enableFakeHDR) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceVariant
-                                }
-                            )
-                        ) {
-                            Text(if (enableFakeHDR) "ON" else "OFF")
-                        }
-                    }
-                    
-                    // HDR Strength slider
-                    if (enableFakeHDR) {
+
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Column(
-                                modifier = Modifier.weight(1f)
+                            Button(
+                                onClick = {
+                                    frameBlendStrength = (frameBlendStrength - 0.1f).coerceAtLeast(0.0f)
+                                    settings.frameBlendStrength = frameBlendStrength
+                                },
+                                enabled = frameBlendStrength > 0.0f
                             ) {
-                                Text(
-                                    text = "HDR Strength",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Strength: %.1f (range: 1.0-2.0, default: 1.3)".format(hdrStrength),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                    modifier = Modifier.padding(top = 4.dp)
-                                )
+                                Text("-")
                             }
-                            
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+
+                            Button(
+                                onClick = {
+                                    frameBlendStrength = (frameBlendStrength + 0.1f).coerceAtMost(1.0f)
+                                    settings.frameBlendStrength = frameBlendStrength
+                                },
+                                enabled = frameBlendStrength < 1.0f
                             ) {
-                                Button(
-                                    onClick = {
-                                        hdrStrength = (hdrStrength - 0.1f).coerceAtLeast(1.0f)
-                                        settings.hdrStrength = hdrStrength
-                                    },
-                                    enabled = hdrStrength > 1.0f
-                                ) {
-                                    Text("-")
-                                }
-                                
-                                Button(
-                                    onClick = {
-                                        hdrStrength = (hdrStrength + 0.1f).coerceAtMost(2.0f)
-                                        settings.hdrStrength = hdrStrength
-                                    },
-                                    enabled = hdrStrength < 2.0f
-                                ) {
-                                    Text("+")
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Sharpening toggle
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "Sharpening",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Enhance image sharpness using edge detection",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-                        
-                        Button(
-                            onClick = {
-                                enableSharpening = !enableSharpening
-                                settings.enableSharpening = enableSharpening
-                            },
-                            colors = ButtonDefaults.colors(
-                                containerColor = if (enableSharpening) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceVariant
-                                }
-                            )
-                        ) {
-                            Text(if (enableSharpening) "ON" else "OFF")
-                        }
-                    }
-                    
-                    // Sharpening Strength slider
-                    if (enableSharpening) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(
-                                    text = "Sharpening Strength",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Strength: %.1f (range: 0.0-1.0, default: 0.5)".format(sharpenStrength),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                    modifier = Modifier.padding(top = 4.dp)
-                                )
-                            }
-                            
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = {
-                                        sharpenStrength = (sharpenStrength - 0.1f).coerceAtLeast(0.0f)
-                                        settings.sharpenStrength = sharpenStrength
-                                    },
-                                    enabled = sharpenStrength > 0.0f
-                                ) {
-                                    Text("-")
-                                }
-                                
-                                Button(
-                                    onClick = {
-                                        sharpenStrength = (sharpenStrength + 0.1f).coerceAtMost(1.0f)
-                                        settings.sharpenStrength = sharpenStrength
-                                    },
-                                    enabled = sharpenStrength < 1.0f
-                                ) {
-                                    Text("+")
-                                }
+                                Text("+")
                             }
                         }
                     }
@@ -763,7 +651,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         debugOutlinesEnabled = !debugOutlinesEnabled
@@ -802,7 +690,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         preloadLibraryImagesEnabled = !preloadLibraryImagesEnabled
@@ -841,7 +729,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         cacheLibraryImagesEnabled = !cacheLibraryImagesEnabled
@@ -880,7 +768,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         useGlideEnabled = !useGlideEnabled
@@ -919,7 +807,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         reducePosterResolutionEnabled = !reducePosterResolutionEnabled
@@ -958,7 +846,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         disableUIAnimations = !disableUIAnimations
@@ -997,7 +885,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         animatedPlayButtonEnabled = !animatedPlayButtonEnabled
@@ -1036,7 +924,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         use24HourTimeEnabled = !use24HourTimeEnabled
@@ -1053,7 +941,7 @@ fun SettingsScreen(
                     Text(if (use24HourTimeEnabled) "ON" else "OFF")
                 }
             }
-            
+
             // Long Press Duration setting
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1075,7 +963,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -1115,13 +1003,13 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Load custom theme from server's Custom CSS (Admin → General → Custom CSS)",
+                        text = "Load custom theme from server'''s Custom CSS (Admin → General → Custom CSS)",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         remoteThemingEnabled = !remoteThemingEnabled
@@ -1160,7 +1048,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         darkModeEnabled = !darkModeEnabled
@@ -1199,7 +1087,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         autoRefreshEnabled = !autoRefreshEnabled
@@ -1239,7 +1127,7 @@ fun SettingsScreen(
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }
-                    
+
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -1287,7 +1175,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         hideShowsWithZeroEpisodesEnabled = !hideShowsWithZeroEpisodesEnabled
@@ -1327,7 +1215,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         minimalBuffer4KEnabled = !minimalBuffer4KEnabled
@@ -1345,7 +1233,7 @@ fun SettingsScreen(
                 }
             }
             */
-            
+
             // Transcode AAC to AC3 setting
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1367,7 +1255,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         transcodeAacToAc3Enabled = !transcodeAacToAc3Enabled
@@ -1384,7 +1272,7 @@ fun SettingsScreen(
                     Text(if (transcodeAacToAc3Enabled) "ON" else "OFF")
                 }
             }
-            
+
             // Use Logo for Title setting
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1406,7 +1294,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         useLogoForTitleEnabled = !useLogoForTitleEnabled
@@ -1423,7 +1311,7 @@ fun SettingsScreen(
                     Text(if (useLogoForTitleEnabled) "ON" else "OFF")
                 }
             }
-            
+
             // Autoplay Next Episode setting
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1445,7 +1333,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         autoplayNextEpisodeEnabled = !autoplayNextEpisodeEnabled
@@ -1462,7 +1350,7 @@ fun SettingsScreen(
                     Text(if (autoplayNextEpisodeEnabled) "ON" else "OFF")
                 }
             }
-            
+
             // Autoplay Countdown Duration setting (only show if autoplay is enabled)
             if (autoplayNextEpisodeEnabled) {
                 Row(
@@ -1485,7 +1373,7 @@ fun SettingsScreen(
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }
-                    
+
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -1513,7 +1401,7 @@ fun SettingsScreen(
                     }
                 }
             }
-            
+
             // Auto-Update setting
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1535,7 +1423,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         autoUpdateEnabled = !autoUpdateEnabled
@@ -1552,7 +1440,7 @@ fun SettingsScreen(
                     Text(if (autoUpdateEnabled) "ON" else "OFF")
                 }
             }
-            
+
             // Clear Cache button
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1574,7 +1462,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         scope.launch {
@@ -1584,32 +1472,40 @@ fun SettingsScreen(
                                     val imageLoader: coil.ImageLoader = context.imageLoader
                                     imageLoader.diskCache?.clear()
                                     imageLoader.memoryCache?.clear()
-                                    
+
                                     // Clear Coil disk cache directory manually (in case)
                                     val coilCacheDir = context.filesDir.resolve("image_cache")
                                     if (coilCacheDir.exists()) {
                                         coilCacheDir.deleteRecursively()
                                     }
-                                    
+
                                     // Clear Glide cache directory manually
                                     val glideCacheDir = File(context.cacheDir, "glide_image_cache")
                                     if (glideCacheDir.exists()) {
                                         glideCacheDir.deleteRecursively()
                                     }
-                                    
+
                                     // Clear Glide disk cache (must be done on IO thread)
                                     Glide.get(context).clearDiskCache()
                                 }
-                                
+
                                 // Clear Glide memory cache on main thread
                                 withContext(Dispatchers.Main) {
                                     Glide.get(context).clearMemory()
-                                    Toast.makeText(context, "Cache cleared successfully", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(
+                                        context,
+                                        "Cache cleared successfully",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
                             } catch (e: Exception) {
                                 android.util.Log.e("SettingsScreen", "Error clearing cache", e)
                                 withContext(Dispatchers.Main) {
-                                    Toast.makeText(context, "Error clearing cache: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(
+                                        context,
+                                        "Error clearing cache: ${e.message}",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
                             }
                         }
@@ -1621,7 +1517,7 @@ fun SettingsScreen(
                     Text("Clear")
                 }
             }
-            
+
             // Check for Updates button
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1649,46 +1545,63 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                
+
                 Button(
                     onClick = {
                         scope.launch {
                             checkingForUpdates = true
                             updateCheckMessage = null
-                            
+
                             try {
                                 // Get current version code
                                 val versionCode = try {
                                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                                        context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode.toInt()
+                                        context.packageManager.getPackageInfo(
+                                            context.packageName,
+                                            0
+                                        ).longVersionCode.toInt()
                                     } else {
                                         @Suppress("DEPRECATION")
-                                        context.packageManager.getPackageInfo(context.packageName, 0).versionCode
+                                        context.packageManager.getPackageInfo(
+                                            context.packageName,
+                                            0
+                                        ).versionCode
                                     }
                                 } catch (e: Exception) {
                                     1
                                 }
-                                
+
                                 // Check for updates
                                 val release = withContext(Dispatchers.IO) {
                                     UpdateService.getLatestRelease()
                                 }
-                                
+
                                 if (release != null) {
-                                    val remoteVersionCode = UpdateService.parseVersion(release.tagName)
-                                    
-                                    if (UpdateService.updateAvailable(remoteVersionCode, versionCode)) {
+                                    val remoteVersionCode =
+                                        UpdateService.parseVersion(release.tagName)
+
+                                    if (UpdateService.updateAvailable(
+                                            remoteVersionCode,
+                                            versionCode
+                                        )
+                                    ) {
                                         latestRelease = release
                                         showUpdateDialog = true
                                         updateCheckMessage = "Update available: ${release.name}"
                                     } else {
-                                        updateCheckMessage = "You're on the latest version (${release.name})"
+                                        updateCheckMessage =
+                                            "You'''re on the latest version (${release.name})"
                                     }
                                 } else {
-                                    updateCheckMessage = "Failed to check for updates. Please try again later."
+                                    updateCheckMessage =
+                                        "Failed to check for updates. Please try again later."
                                 }
                             } catch (e: Exception) {
-                                android.util.Log.e("SettingsScreen", "Error checking for updates", e)
+                                android.util.Log.e(
+                                    "SettingsScreen",
+                                    "Error checking for updates",
+                                    e
+                                )
                                 updateCheckMessage = "Error checking for updates: ${e.message}"
                             } finally {
                                 checkingForUpdates = false
@@ -1704,7 +1617,7 @@ fun SettingsScreen(
                 }
             }
         }
-        
+
         // Show update dialog if update is found
         latestRelease?.let { release ->
             if (showUpdateDialog) {
@@ -1721,33 +1634,7 @@ fun SettingsScreen(
                 )
             }
         }
-        
-        // Subtitle text color picker dialog
-        if (showSubtitleColorDialog) {
-            SubtitleColorPickerDialog(
-                title = "Subtitle Text Color",
-                currentColor = settings.subtitleTextColor,
-                onColorSelected = { color ->
-                    settings.subtitleTextColor = color
-                    showSubtitleColorDialog = false
-                },
-                onDismiss = { showSubtitleColorDialog = false }
-            )
-        }
-        
-        // Subtitle background color picker dialog
-        if (showSubtitleBgColorDialog) {
-            SubtitleColorPickerDialog(
-                title = "Subtitle Background Color",
-                currentColor = settings.subtitleBgColor,
-                onColorSelected = { color ->
-                    settings.subtitleBgColor = color
-                    showSubtitleBgColorDialog = false
-                },
-                onDismiss = { showSubtitleBgColorDialog = false }
-            )
-        }
-        
+
         // ExoPlayer subtitle text color picker dialog
         if (showExoSubtitleColorDialog) {
             SubtitleColorPickerDialog(
@@ -1760,7 +1647,7 @@ fun SettingsScreen(
                 onDismiss = { showExoSubtitleColorDialog = false }
             )
         }
-        
+
         // ExoPlayer subtitle background color picker dialog
         if (showExoSubtitleBgColorDialog) {
             SubtitleColorPickerDialog(
@@ -1777,7 +1664,7 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SubtitleColorPickerDialog(
+fun SubtitleColorPickerDialog(
     title: String,
     currentColor: Int,
     onColorSelected: (Int) -> Unit,
@@ -1794,7 +1681,7 @@ private fun SubtitleColorPickerDialog(
         "Blue" to 0xFF0000FF.toInt(),
         "Magenta" to 0xFFFF00FF.toInt()
     )
-    
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -1817,7 +1704,7 @@ private fun SubtitleColorPickerDialog(
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                
+
                 // Color options
                 colorOptions.forEach { (name, color) ->
                     val isSelected = color == currentColor
@@ -1842,13 +1729,20 @@ private fun SubtitleColorPickerDialog(
                             Box(
                                 modifier = Modifier
                                     .size(24.dp)
-                                    .background(Color(color), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                                    .border(1.dp, Color.White, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                    .background(
+                                        Color(color),
+                                        androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                    )
+                                    .border(
+                                        1.dp,
+                                        Color.White,
+                                        androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                    )
                             )
                         }
                     }
                 }
-                
+
                 // Cancel button
                 Button(
                     onClick = onDismiss,
@@ -1863,4 +1757,3 @@ private fun SubtitleColorPickerDialog(
         }
     }
 }
-

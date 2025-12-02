@@ -10,49 +10,12 @@ class JellyfinConfig(context: Context) {
     )
 
     var serverUrl: String
-        get() {
-            val url = prefs.getString("server_url", "") ?: ""
-            // Normalize URL if it exists but is missing protocol/port
-            return if (url.isNotEmpty() && !url.startsWith("http://") && !url.startsWith("https://")) {
-                // Add http:// and default port if missing
-                val normalized = if (url.contains(":")) {
-                    "http://$url"
-                } else {
-                    "http://$url:8096"
-                }
-                // Save normalized URL back
-                prefs.edit().putString("server_url", normalized).apply()
-                normalized
-            } else {
-                url
-            }
-        }
+        get() = prefs.getString("server_url", "") ?: ""
         set(value) {
-            // Normalize URL before saving
-            val normalized = if (value.isNotEmpty()) {
-                when {
-                    value.startsWith("http://") || value.startsWith("https://") -> {
-                        // URL already has protocol, check if it has a port
-                        val protocolEnd = if (value.startsWith("https://")) 8 else 7
-                        val afterProtocol = value.substring(protocolEnd)
-                        if (!afterProtocol.contains(":")) {
-                            // No port specified, add default
-                            if (value.startsWith("https://")) {
-                                "$value:443"
-                            } else {
-                                "$value:8096"
-                            }
-                        } else {
-                            value
-                        }
-                    }
-                    value.contains(":") -> "http://$value" // Has port but no protocol
-                    else -> "http://$value:8096" // No protocol or port
-                }
-            } else {
-                value
-            }
-            prefs.edit().putString("server_url", normalized).apply()
+            // Store the URL as-is - ServerDiscovery handles normalization
+            // Remove trailing slash for consistency
+            val cleanUrl = value.trim().removeSuffix("/")
+            prefs.edit().putString("server_url", cleanUrl).apply()
         }
 
     var accessToken: String
@@ -79,8 +42,7 @@ class JellyfinConfig(context: Context) {
         val url = serverUrl
         // Validate that server URL is properly formatted
         val isValidUrl = url.isNotEmpty() && 
-            (url.startsWith("http://") || url.startsWith("https://")) &&
-            url.contains(":")
+            (url.startsWith("http://") || url.startsWith("https://"))
         return isValidUrl && accessToken.isNotEmpty() && userId.isNotEmpty()
     }
 

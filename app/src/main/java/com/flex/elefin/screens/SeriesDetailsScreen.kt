@@ -490,7 +490,7 @@ fun SeriesDetailsScreen(
                     }
                 )
             }
-            
+
             // New bottom container - takes up 30% of the bottom of the screen
             Box(
                 modifier = Modifier
@@ -644,15 +644,15 @@ fun SeriesTopContainer(
                     if (synopsis.isNotEmpty()) {
                         var showSynopsisDialog by remember { mutableStateOf(false) }
                         
-                        Text(
-                            text = synopsis,
-                            style = MaterialTheme.typography.bodyLarge.copy(
+                            Text(
+                                text = synopsis,
+                                style = MaterialTheme.typography.bodyLarge.copy(
                                 fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
-                            ),
-                            color = Color.White.copy(alpha = 0.9f),
+                                ),
+                                color = Color.White.copy(alpha = 0.9f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
+                                modifier = Modifier
                                 .padding(top = 4.dp)
                                 .clickable { showSynopsisDialog = true }
                         )
@@ -690,7 +690,7 @@ fun SeriesTopContainer(
                                                 style = MaterialTheme.typography.headlineMedium,
                                                 color = MaterialTheme.colorScheme.onSurface,
                                                 modifier = Modifier.padding(bottom = 16.dp)
-                                            )
+                            )
                                             Text(
                                                 text = synopsis,
                                                 style = MaterialTheme.typography.bodyLarge,
@@ -1040,7 +1040,7 @@ fun SeriesBottomContainer(
         ) {
             // Season selector row
             if (seasons.isNotEmpty()) {
-                item {
+            item {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1133,151 +1133,151 @@ fun SeriesBottomContainer(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     // Episodes row
-                    if (isLoadingEpisodes) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(200.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Loading episodes...",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                            )
-                        }
-                    } else if (episodes.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(200.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "No episodes available",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                            )
-                        }
-                    } else {
-                        Column(
-                            modifier = Modifier
-                                .padding(top = 16.dp)
-                                .then(
-                                    if (showDebugOutlines) {
-                                        Modifier.border(2.dp, Color.Green)
-                                    } else {
-                                        Modifier
-                                    }
-                                )
-                        ) {
-                            val lazyListState = rememberLazyListState()
-                            
-                            LazyRow(
-                                state = lazyListState,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .then(
-                                        if (showDebugOutlines) {
-                                            Modifier.border(1.dp, Color.LightGray)
-                                        } else {
-                                            Modifier
-                                        }
-                                    ),
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                contentPadding = PaddingValues(horizontal = 16.dp)
-                            ) {
-                            items(
-                                items = episodes,
-                                key = { episode -> episode.Id }
-                            ) { episode ->
-                                EpisodeCard(
-                                    episode = episode,
-                                    apiService = apiService,
-                                    onClick = {
-                                        // Get stored subtitle preference for this episode
-                                        val subtitlePreference = settings.getSubtitlePreference(episode.Id)
-                                        
-                                        // Check if episode is resumable
-                                        val isResumable = episode.UserData?.PositionTicks != null && episode.UserData?.PositionTicks!! > 0
-                                        if (isResumable) {
-                                            // Show resume dialog
-                                            showResumeDialog = episode
-                                        } else {
-                                            // Play from start
-                                        // Launch video player - keep SeriesDetailsActivity in back stack so back button returns here
-                                        val intent = JellyfinVideoPlayerActivity.createIntent(
-                                            context,
-                                            episode.Id,
-                                            0L,
-                                            subtitlePreference
-                                        )
-                                        context.startActivity(intent)
-                                        // Don't finish - let back button return to series details screen
-                                        }
-                                    },
-                                    onFocusChanged = { isFocused ->
-                                        if (isFocused) {
-                                            focusedEpisode = episode
-                                            lastFocusedEpisode = episode // Update last focused episode
-                                            onEpisodeFocused(episode)
-                                        } else {
-                                            focusedEpisode = null
-                                            // Don't clear lastFocusedEpisode - keep it for the buttons
-                                            // Don't call onEpisodeFocused(null) - keep showing the last focused episode's synopsis
-                                        }
-                                    },
-                                    onLongPress = {
-                                        showLongPressMenu = episode
-                                    },
-                                    focusRequester = lastFocusedEpisodeRequester.getOrPut(episode.Id) { FocusRequester() },
-                                    showDebugOutlines = showDebugOutlines
-                                )
-                            }
-                            }
-                            
-                            // Don't automatically request focus on first episode - let user navigate manually
-                        }
+                if (isLoadingEpisodes) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Loading episodes...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        )
                     }
-                    
-                    // Episode Action Buttons - always show for last focused episode
-                    // If no episode has been focused yet, use the first episode
-                    val episodeForButtons = lastFocusedEpisode ?: episodes.firstOrNull()
-                    episodeForButtons?.let { currentEpisode ->
-                        // Wrap in Box to handle up key event without interfering with button focus
-                        Box(
+                } else if (episodes.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No episodes available",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        )
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .padding(top = 16.dp)
+                            .then(
+                                if (showDebugOutlines) {
+                                    Modifier.border(2.dp, Color.Green)
+                                } else {
+                                    Modifier
+                                }
+                            )
+                    ) {
+                        val lazyListState = rememberLazyListState()
+                        
+                        LazyRow(
+                            state = lazyListState,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .onKeyEvent { keyEvent ->
-                                    if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionUp) {
-                                        // Restore focus to last focused episode
-                                        try {
-                                            lastFocusedEpisodeRequester[currentEpisode.Id]?.requestFocus()
-                                        } catch (e: IllegalStateException) {
-                                            Log.w("SeriesBottomContainer", "Failed to restore focus to episode: ${e.message}")
-                                        }
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
                                 .then(
                                     if (showDebugOutlines) {
-                                        Modifier.border(2.dp, Color.Cyan)
+                                        Modifier.border(1.dp, Color.LightGray)
                                     } else {
                                         Modifier
                                     }
-                                )
+                                ),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp)
                         ) {
-                            EpisodeActionButtonsRow(
-                                episode = currentEpisode,
+                        items(
+                            items = episodes,
+                            key = { episode -> episode.Id }
+                        ) { episode ->
+                            EpisodeCard(
+                                episode = episode,
                                 apiService = apiService,
-                                modifier = Modifier.fillMaxWidth(),
-                                onEpisodeUpdated = { updatedEpisode ->
-                                    // Trigger a full refresh of the episodes list from the API
-                                    onEpisodesRefreshRequested()
+                                onClick = {
+                                    // Get stored subtitle preference for this episode
+                                    val subtitlePreference = settings.getSubtitlePreference(episode.Id)
+                                    
+                                    // Check if episode is resumable
+                                    val isResumable = episode.UserData?.PositionTicks != null && episode.UserData?.PositionTicks!! > 0
+                                    if (isResumable) {
+                                        // Show resume dialog
+                                        showResumeDialog = episode
+                                    } else {
+                                        // Play from start
+                                    // Launch video player - keep SeriesDetailsActivity in back stack so back button returns here
+                                    val intent = JellyfinVideoPlayerActivity.createIntent(
+                                        context,
+                                        episode.Id,
+                                        0L,
+                                        subtitlePreference
+                                    )
+                                    context.startActivity(intent)
+                                    // Don't finish - let back button return to series details screen
+                                    }
+                                },
+                                onFocusChanged = { isFocused ->
+                                    if (isFocused) {
+                                        focusedEpisode = episode
+                                        lastFocusedEpisode = episode // Update last focused episode
+                                        onEpisodeFocused(episode)
+                                    } else {
+                                        focusedEpisode = null
+                                        // Don't clear lastFocusedEpisode - keep it for the buttons
+                                            // Don't call onEpisodeFocused(null) - keep showing the last focused episode's synopsis
+                                    }
+                                },
+                                onLongPress = {
+                                    showLongPressMenu = episode
+                                },
+                                focusRequester = lastFocusedEpisodeRequester.getOrPut(episode.Id) { FocusRequester() },
+                                showDebugOutlines = showDebugOutlines
+                            )
+                        }
+                        }
+                        
+                        // Don't automatically request focus on first episode - let user navigate manually
+                }
+            }
+            
+            // Episode Action Buttons - always show for last focused episode
+            // If no episode has been focused yet, use the first episode
+            val episodeForButtons = lastFocusedEpisode ?: episodes.firstOrNull()
+            episodeForButtons?.let { currentEpisode ->
+                    // Wrap in Box to handle up key event without interfering with button focus
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onKeyEvent { keyEvent ->
+                                if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionUp) {
+                                    // Restore focus to last focused episode
+                                    try {
+                                        lastFocusedEpisodeRequester[currentEpisode.Id]?.requestFocus()
+                                    } catch (e: IllegalStateException) {
+                                        Log.w("SeriesBottomContainer", "Failed to restore focus to episode: ${e.message}")
+                                    }
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            .then(
+                                if (showDebugOutlines) {
+                                    Modifier.border(2.dp, Color.Cyan)
+                                } else {
+                                    Modifier
                                 }
                             )
+                    ) {
+                        EpisodeActionButtonsRow(
+                            episode = currentEpisode,
+                            apiService = apiService,
+                            modifier = Modifier.fillMaxWidth(),
+                            onEpisodeUpdated = { updatedEpisode ->
+                                // Trigger a full refresh of the episodes list from the API
+                                onEpisodesRefreshRequested()
+                            }
+                        )
                         }
                     }
                 }

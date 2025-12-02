@@ -161,15 +161,14 @@ fun JellyfinVideoPlayerScreen(
     
     val player = remember {
         if (settings.minimalBuffer4K) {
-            // Configure LoadControl with minimal buffering
-            // Note: minBufferMs must be >= bufferForPlaybackMs
-            // Minimal buffer: 1 second to start playback, 1.5 seconds minimum buffer, 2 seconds max for playback
+            // Configure LoadControl for instant playback start
+            // Minimal buffering to start playing immediately
             val loadControl = DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
-                    1500,  // minBufferMs - minimum buffered duration before starting playback (1.5 seconds, must be >= bufferForPlaybackMs)
-                    2000,  // maxBufferMs - maximum buffered duration during playback (2 seconds)
-                    1000,  // bufferForPlaybackMs - buffered duration required to start playback (1 second)
-                    1500   // bufferForPlaybackAfterRebufferMs - buffered duration required after rebuffering (1.5 seconds)
+                    500,   // minBufferMs - minimum buffered duration (0.5 seconds)
+                    50000, // maxBufferMs - maximum buffered duration (50 seconds)
+                    250,   // bufferForPlaybackMs - start playback after just 250ms buffered
+                    500    // bufferForPlaybackAfterRebufferMs - resume after 500ms buffered
                 )
                 .build()
             
@@ -1929,6 +1928,8 @@ fun JellyfinVideoPlayerScreen(
                                         this.enableSharpening = settings.enableSharpening
                                         this.hdrStrength = settings.hdrStrength
                                         this.sharpeningStrength = settings.sharpenStrength
+                                        this.enableFrameBlending = settings.enableFrameBlending
+                                        this.frameBlendStrength = settings.frameBlendStrength
                                         glSurfaceViewRef.value = this
                                         
                                         // Set the GL surface on the player
@@ -2018,6 +2019,13 @@ fun JellyfinVideoPlayerScreen(
                                                 // ⭐ PURPLE FOCUS STYLING
                                                 val transparentPurple = android.graphics.Color.argb(150, 156, 39, 176)
                                                 
+                                                // Settings button should not be the default focus
+                                                findViewById<android.view.View>(androidx.media3.ui.R.id.exo_settings)?.let { settingsBtn ->
+                                                    // Keep it visible but not the first focus
+                                                    settingsBtn.isFocusable = true
+                                                    settingsBtn.isFocusableInTouchMode = false
+                                                }
+                                                
                                                 val buttonIds = listOf(
                                                     androidx.media3.ui.R.id.exo_play,
                                                     androidx.media3.ui.R.id.exo_pause,
@@ -2083,18 +2091,31 @@ fun JellyfinVideoPlayerScreen(
                                                 controlView.invalidate()
                                                 
                                                 // Auto-focus play/pause button when controller appears
-                                                controlView.post {
-                                                    val pauseButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_pause)
-                                                    val playButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_play)
+                                                // Set play/pause button as default next focus to prevent settings button from getting focus
+                                                val pauseButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_pause)
+                                                val playButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_play)
+                                                
+                                                // Make play/pause button the default focus
+                                                playButton?.let { play ->
+                                                    play.nextFocusDownId = android.view.View.NO_ID
+                                                    play.nextFocusUpId = android.view.View.NO_ID
+                                                    play.isFocusedByDefault = true
+                                                }
+                                                pauseButton?.let { pause ->
+                                                    pause.nextFocusDownId = android.view.View.NO_ID
+                                                    pause.nextFocusUpId = android.view.View.NO_ID  
+                                                    pause.isFocusedByDefault = true
+                                                }
+                                                
+                                                // Use postDelayed to ensure controller is fully rendered, then request focus
+                                                controlView.postDelayed({
                                                     val buttonToFocus = if (player.isPlaying && pauseButton != null) pauseButton else playButton
                                                     
                                                     buttonToFocus?.let { button ->
-                                                        if (button.isFocusable) {
-                                                            button.requestFocus()
-                                                            Log.d("ExoPlayer", "GL Mode: Auto-focused play/pause button")
-                                                        }
+                                                        button.requestFocus()
+                                                        Log.d("ExoPlayer", "GL Mode: Focused play/pause button (hasFocus=${button.hasFocus()})")
                                                     }
-                                                }
+                                                }, 200) // 200ms delay to ensure controller is ready
                                                 
                                                 Log.d("ExoPlayer", "GL Mode: PlayerControlView initialized with purple focus styling")
                                             }
@@ -2205,6 +2226,13 @@ fun JellyfinVideoPlayerScreen(
                                         // Customize control button focus color to purple (transparent)
                                         val transparentPurple = android.graphics.Color.argb(150, 156, 39, 176) // Purple with transparency
                                         
+                                        // Settings button should not be the default focus
+                                        findViewById<android.view.View>(androidx.media3.ui.R.id.exo_settings)?.let { settingsBtn ->
+                                            // Keep it visible but not the first focus
+                                            settingsBtn.isFocusable = true
+                                            settingsBtn.isFocusableInTouchMode = false
+                                        }
+                                        
                                         // Apply custom focus color to all control buttons and seekbar
                                         val buttonIds = listOf(
                                             androidx.media3.ui.R.id.exo_play,
@@ -2288,18 +2316,31 @@ fun JellyfinVideoPlayerScreen(
                                         controlView.invalidate()
                                         
                                         // Auto-focus play/pause button when controller appears
-                                        controlView.post {
-                                            val pauseButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_pause)
-                                            val playButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_play)
+                                        // Set play/pause button as default next focus to prevent settings button from getting focus
+                                        val pauseButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_pause)
+                                        val playButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_play)
+                                        
+                                        // Make play/pause button the default focus
+                                        playButton?.let { play ->
+                                            play.nextFocusDownId = android.view.View.NO_ID
+                                            play.nextFocusUpId = android.view.View.NO_ID
+                                            play.isFocusedByDefault = true
+                                        }
+                                        pauseButton?.let { pause ->
+                                            pause.nextFocusDownId = android.view.View.NO_ID
+                                            pause.nextFocusUpId = android.view.View.NO_ID  
+                                            pause.isFocusedByDefault = true
+                                        }
+                                        
+                                        // Use postDelayed to ensure controller is fully rendered, then request focus
+                                        controlView.postDelayed({
                                             val buttonToFocus = if (player.isPlaying && pauseButton != null) pauseButton else playButton
                                             
                                             buttonToFocus?.let { button ->
-                                                if (button.isFocusable) {
-                                                    button.requestFocus()
-                                                    Log.d("ExoPlayer", "Standard Mode: Auto-focused play/pause button")
-                                                }
+                                                button.requestFocus()
+                                                Log.d("ExoPlayer", "Standard Mode: Focused play/pause button (hasFocus=${button.hasFocus()})")
                                             }
-                                        }
+                                        }, 200) // 200ms delay to ensure controller is ready
                                         
                                         Log.d("ExoPlayer", "PlayerControlView initialized, subtitle button explicitly enabled, focus color set to purple for all controls")
                                     }
