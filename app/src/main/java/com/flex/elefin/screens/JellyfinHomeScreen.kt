@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -455,15 +456,16 @@ fun JellyfinHomeScreen(
         }
     }
     
+    // Main content (navigation drawer removed due to performance issues - using tab bar instead)
     Box(Modifier.fillMaxSize()) {
-        // Featured carousel with backdrop - extends behind bottom container
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-        ) {
-            // Get image URL for current highlighted item - use backdrop photo
-            // For episodes, use the series backdrop; for other items, use their own backdrop
-            val imageUrl = highlightedItem?.let { item ->
+            // Featured carousel with backdrop - extends behind bottom container
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+            ) {
+                // Get image URL for current highlighted item - use backdrop photo
+                // For episodes, use the series backdrop; for other items, use their own backdrop
+                val imageUrl = highlightedItem?.let { item ->
                 // If this is an episode, get the series backdrop
                 val itemId = if (item.Type == "Episode" && item.SeriesId != null) {
                     item.SeriesId
@@ -3000,10 +3002,12 @@ fun JellyfinHorizontalCardWithProgress(
 fun Modifier.carouselGradient(): Modifier = composed {
     val color = MaterialTheme.colorScheme.surface
 
-    val colorAlphaList = listOf(1.0f, 0.2f, 0.0f)
-    val colorStopList = listOf(0.2f, 0.8f, 0.9f)
+    // Stronger left-side gradient for navigation drawer readability
+    // Left side is fully opaque, fading to transparent on the right (30% darker than before)
+    val colorAlphaList = listOf(1.0f, 0.7f, 0.0f)
+    val colorStopList = listOf(0.0f, 0.35f, 0.7f)
 
-    val colorAlphaList2 = listOf(1.0f, 0.1f, 0.0f)
+    val colorAlphaList2 = listOf(1.0f, 0.4f, 0.0f)
     val colorStopList2 = listOf(0.1f, 0.4f, 0.9f)
     this
         .then(
@@ -3029,6 +3033,7 @@ fun Modifier.carouselGradient(): Modifier = composed {
             )
         )
 }
+
 
 // Metadata box component - matching MovieDetailsScreen/SeriesDetailsScreen
 @Composable
