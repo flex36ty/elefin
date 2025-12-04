@@ -109,6 +109,7 @@ import com.flex.elefin.screens.AnimatedPlayButton
 import com.flex.elefin.screens.JellyfinHorizontalCard
 import com.flex.elefin.screens.CastMemberCard
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.rememberCoroutineScope
@@ -156,17 +157,23 @@ fun SeriesDetailsScreen(
     // FocusRequester map for episodes (used for initial focus)
     val episodeFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
 
-    // Fetch full series details
+    // Fetch full series details - load in parallel for faster loading
     LaunchedEffect(item.Id, apiService) {
         if (apiService != null) {
             withContext(Dispatchers.IO) {
                 try {
-                    val details = apiService.getItemDetails(item.Id)
+                    // Load details and seasons in parallel
+                    val detailsDeferred = async { apiService.getItemDetails(item.Id) }
+                    val seasonsDeferred = async { apiService.getSeasons(item.Id) }
+                    
+                    val details = detailsDeferred.await()
                     itemDetails = details
-                    val seriesSeasons = apiService.getSeasons(item.Id)
+                    
+                    val seriesSeasons = seasonsDeferred.await()
                     seasons = seriesSeasons
                     isLoadingSeasons = false
-                    // Load first season's episodes
+                    
+                    // Load first season's episodes (already started loading while we awaited seasons)
                     if (seriesSeasons.isNotEmpty()) {
                         val seasonEpisodes = apiService.getEpisodes(item.Id, seriesSeasons[0].Id)
                         episodes = seasonEpisodes
@@ -186,7 +193,7 @@ fun SeriesDetailsScreen(
             isLoadingEpisodes = false
         }
     }
-
+    
     // Fetch episodes when selected season changes
     LaunchedEffect(selectedSeasonIndex, seasons, apiService) {
         if (apiService != null && seasons.isNotEmpty() && selectedSeasonIndex < seasons.size) {
@@ -436,7 +443,7 @@ fun SeriesDetailsScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.286875f) // Fixed at 28.6875% of screen height (decreased by another 10%)
+                    .fillMaxHeight(0.2581875f) // Fixed at 25.82% of screen height (decreased by 10%)
                     .then(
                         if (showDebugOutlines) {
                             Modifier.border(4.dp, Color.Red)
@@ -491,42 +498,47 @@ fun SeriesDetailsScreen(
                 )
             }
 
-            // New bottom container - takes up 30% of the bottom of the screen
-            Box(
+            // Bottom container - scrollable with Cast
+            val castMembers = displayItem.People?.filter { it.Type == "Actor" } ?: emptyList()
+            val bottomListState = rememberLazyListState()
+            
+            LazyColumn(
+                state = bottomListState,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.3f) // Fixed at 30% of screen height
+                    .fillMaxHeight(0.35f) // Slightly larger to accommodate scrolling
                     .then(
                         if (showDebugOutlines) {
                             Modifier.border(4.dp, Color.Green)
                         } else {
                             Modifier
                         }
-                    )
+                    ),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(start = 33.6.dp, end = 33.6.dp, top = 0.dp, bottom = 24.dp)
             ) {
-                // Cast row for TV show
-                val castMembers = displayItem.People?.filter { it.Type == "Actor" } ?: emptyList()
+                // Cast row
                 if (castMembers.isNotEmpty()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 33.6.dp, end = 33.6.dp, top = 0.dp, bottom = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(
-                            text = "Cast",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            contentPadding = PaddingValues(horizontal = 0.dp)
+                    item {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            items(castMembers) { person ->
-                                CastMemberCard(
-                                    person = person,
-                                    apiService = apiService
-                                )
+                            Text(
+                                text = "Cast",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                contentPadding = PaddingValues(horizontal = 0.dp)
+                            ) {
+                                items(castMembers) { person ->
+                                    CastMemberCard(
+                                        person = person,
+                                        apiService = apiService
+                                    )
+                                }
                             }
                         }
                     }
@@ -1134,18 +1146,8 @@ fun SeriesBottomContainer(
                 ) {
                     // Episodes row
                 if (isLoadingEpisodes) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Loading episodes...",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                        )
-                    }
+                    // Show empty space while loading (no text)
+                    Spacer(modifier = Modifier.height(200.dp))
                 } else if (episodes.isEmpty()) {
                     Box(
                         modifier = Modifier
@@ -1185,7 +1187,7 @@ fun SeriesBottomContainer(
                                     }
                                 ),
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp)
+                            contentPadding = PaddingValues(horizontal = 0.dp) // Removed padding - parent already has horizontal padding
                         ) {
                         items(
                             items = episodes,

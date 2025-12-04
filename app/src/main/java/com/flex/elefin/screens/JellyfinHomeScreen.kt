@@ -388,8 +388,12 @@ fun JellyfinHomeScreen(
         }
     }
     val focusRequester = remember { FocusRequester() }
+    // highlightedItem is used for background image (debounced)
     var highlightedItem by remember { mutableStateOf<JellyfinItem?>(null) }
     var highlightedItemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
+    // instantHighlightedItem is used for metadata text (updates immediately)
+    var instantHighlightedItem by remember { mutableStateOf<JellyfinItem?>(null) }
+    var instantHighlightedItemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     // Track the original episode item when highlighting a series from an episode
     var originalEpisodeItem by remember { mutableStateOf<JellyfinItem?>(null) }
     
@@ -403,11 +407,13 @@ fun JellyfinHomeScreen(
             val firstMovie = movieLibraries.firstOrNull()?.let { library ->
                 recentlyAddedMoviesByLibrary[library.Id]?.firstOrNull()
             }
-            highlightedItem = continueWatchingItems.firstOrNull() ?: firstMovie
+            val initialItem = continueWatchingItems.firstOrNull() ?: firstMovie
+            highlightedItem = initialItem
+            instantHighlightedItem = initialItem
         }
     }
     
-    // Fetch details for highlighted item
+    // Fetch details for highlighted item (for background)
     LaunchedEffect(highlightedItem?.Id, apiService) {
         highlightedItemDetails = null
         highlightedItem?.Id?.let { itemId ->
@@ -418,6 +424,32 @@ fun JellyfinHomeScreen(
                 } catch (e: Exception) {
                     // Silently fail - use basic item info
                     highlightedItemDetails = highlightedItem
+                }
+            }
+        }
+    }
+    
+    // For instant metadata: show item data immediately, then fetch full details for synopsis after a delay
+    // The delay prevents rapid API calls during fast scrolling, improving performance
+    LaunchedEffect(instantHighlightedItem?.Id, apiService) {
+        // Show item data immediately for instant response
+        instantHighlightedItemDetails = instantHighlightedItem
+        
+        // Wait before fetching full details - this debounces rapid navigation
+        instantHighlightedItem?.Id?.let { itemId ->
+            if (apiService != null) {
+                // Debounce: wait 300ms before fetching details
+                // If user navigates away, this coroutine is cancelled
+                kotlinx.coroutines.delay(300)
+                
+                try {
+                    val details = apiService.getItemDetails(itemId)
+                    // Only update if we're still showing the same item
+                    if (instantHighlightedItem?.Id == itemId) {
+                        instantHighlightedItemDetails = details
+                    }
+                } catch (e: Exception) {
+                    // Silently fail - keep using basic item info
                 }
             }
         }
@@ -710,17 +742,13 @@ fun JellyfinHomeScreen(
                                     }
                                 )
                     ) {
-                        val scaledFontSize = MaterialTheme.typography.labelLarge.fontSize * 1.17f // 30% bigger, then 10% smaller = 1.3 * 0.9
-                        // Add horizontal padding (20% increase from default 16dp = 19.2dp)
-                        val horizontalPadding = 16.dp * 1.2f
-                        Text(
-                            text = "Home",
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = scaledFontSize
-                            ),
-                            color = if (homeFocused) Color.Black else Color.White,
-                            modifier = Modifier.padding(horizontal = horizontalPadding, vertical = 6.dp)
+                        Icon(
+                            imageVector = Icons.Default.Home,
+                            contentDescription = "Home",
+                            tint = if (homeFocused) Color.Black else Color.White,
+                            modifier = Modifier
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                .size(28.dp)
                         )
                     }
                 }
@@ -844,153 +872,164 @@ fun JellyfinHomeScreen(
         
         // Item details section - below settings button (only show when not viewing a library)
         // Don't show highlighted item panel when viewing collections
+        // Use instantHighlightedItem for immediate metadata updates
+        // Use Crossfade to animate all metadata together when item changes
         if (selectedLibraryId == null && selectedCollectionId != "__COLLECTIONS__") {
-            highlightedItem?.let { item ->
-                val details = highlightedItemDetails ?: item
-            val runtimeText = formatRuntime(details.RunTimeTicks)
+            // Create a stable key for the current item to trigger crossfade
+            val metadataKey = instantHighlightedItem?.Id ?: ""
             
-            // For episodes from Continue Watching, Next Up, or Recently Added Episodes, show air date instead of ProductionYear
-            val yearText = if (originalEpisodeItem != null && originalEpisodeItem?.Type == "Episode") {
-                // Show episode air date formatted like on season info screen
-                formatDate(originalEpisodeItem?.PremiereDate ?: originalEpisodeItem?.DateCreated)
-            } else {
-                // For movies and series, show ProductionYear
-                details.ProductionYear?.toString() ?: ""
-            }
-            
-            val genreText = details.Genres?.take(3)?.joinToString(", ") ?: ""
-            // Only show episode info if this is an episode highlight (from Continue Watching, Next Up, or Recently Added Episodes row)
-            // For Series items in Recently Added Shows row, never show episode info
-            val isEpisodeHighlight = originalEpisodeItem != null && item.Type == "Series"
-            val isSeriesItem = item.Type == "Series" && originalEpisodeItem == null
-            
-            // Get season and episode number for episodes (only for episode highlights, not for series)
-            val seasonEpisodeText = if (isEpisodeHighlight && originalEpisodeItem != null && !isSeriesItem) {
-                val episode = originalEpisodeItem!!
-                val seasonNumber = episode.ParentIndexNumber
-                val episodeNumber = episode.IndexNumber
-                if (seasonNumber != null && episodeNumber != null) {
-                    "S${seasonNumber} E${episodeNumber}"
-                } else null
-            } else null
-            
-            Column(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 54.dp, top = 77.dp, end = 38.dp) // Increased by 10% (70 * 1.1 = 77)
-                    .fillMaxWidth(0.75f) // Increased by 50%: 0.5 * 1.5 = 0.75 (50% wider horizontally)
-            ) {
-                // Title (Series name for episodes, item name for others) or Logo
-                TitleOrLogo(
-                    item = details,
-                    apiService = apiService,
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f // Reduced by 20% (0.8 * 0.8 = 0.64)
-                    ),
-                    color = Color.White,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                
-                // Episode name below title (for recently added episodes only, not for series)
-                if (isEpisodeHighlight && originalEpisodeItem != null && !isSeriesItem) {
-                    Text(
-                        text = originalEpisodeItem!!.Name,
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f // Same size as synopsis
-                        ),
-                        color = Color.White.copy(alpha = 0.9f),
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                }
-                
-                // Metadata: Season/Episode, Year, Runtime, Genre (old text-based) + new MetadataBox items
-                Row(
-                    modifier = Modifier.padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Old text-based metadata (Season/Episode, Year, Runtime, Genre)
-                    if (seasonEpisodeText != null || yearText.isNotEmpty() || runtimeText.isNotEmpty() || genreText.isNotEmpty()) {
+            Crossfade(
+                targetState = metadataKey,
+                animationSpec = tween(durationMillis = 200),
+                label = "metadata_fade"
+            ) { currentKey ->
+                // Only render if we have a valid item
+                val item = instantHighlightedItem
+                if (item != null && currentKey == item.Id) {
+                    val details = instantHighlightedItemDetails ?: item
+                    val runtimeText = formatRuntime(details.RunTimeTicks)
+                    
+                    // For episodes from Continue Watching, Next Up, or Recently Added Episodes, show air date instead of ProductionYear
+                    val yearText = if (originalEpisodeItem != null && originalEpisodeItem?.Type == "Episode") {
+                        // Show episode air date formatted like on season info screen
+                        formatDate(originalEpisodeItem?.PremiereDate ?: originalEpisodeItem?.DateCreated)
+                    } else {
+                        // For movies and series, show ProductionYear
+                        details.ProductionYear?.toString() ?: ""
+                    }
+                    
+                    val genreText = details.Genres?.take(3)?.joinToString(", ") ?: ""
+                    // Only show episode info if this is an episode highlight (from Continue Watching, Next Up, or Recently Added Episodes row)
+                    // For Series items in Recently Added Shows row, never show episode info
+                    val isEpisodeHighlight = originalEpisodeItem != null && item.Type == "Series"
+                    val isSeriesItem = item.Type == "Series" && originalEpisodeItem == null
+                    
+                    // Get season and episode number for episodes (only for episode highlights, not for series)
+                    val seasonEpisodeText = if (isEpisodeHighlight && originalEpisodeItem != null && !isSeriesItem) {
+                        val episode = originalEpisodeItem!!
+                        val seasonNumber = episode.ParentIndexNumber
+                        val episodeNumber = episode.IndexNumber
+                        if (seasonNumber != null && episodeNumber != null) {
+                            "S${seasonNumber} E${episodeNumber}"
+                        } else null
+                    } else null
+                    
+                    Column(
+                        modifier = Modifier
+                            .padding(start = 54.dp, top = 77.dp, end = 38.dp) // Increased by 10% (70 * 1.1 = 77)
+                            .fillMaxWidth(0.75f) // Increased by 50%: 0.5 * 1.5 = 0.75 (50% wider horizontally)
+                    ) {
+                        // Title (Series name for episodes, item name for others) or Logo
+                        TitleOrLogo(
+                            item = details,
+                            apiService = apiService,
+                            style = MaterialTheme.typography.headlineMedium.copy(
+                                fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f // Reduced by 20% (0.8 * 0.8 = 0.64)
+                            ),
+                            color = Color.White,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        
+                        // Episode name below title (for recently added episodes only, not for series)
+                        if (isEpisodeHighlight && originalEpisodeItem != null && !isSeriesItem) {
+                            Text(
+                                text = originalEpisodeItem!!.Name,
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f // Same size as synopsis
+                                ),
+                                color = Color.White.copy(alpha = 0.9f),
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                        }
+                        
+                        // Metadata: Season/Episode, Year, Runtime, Genre (old text-based) + new MetadataBox items
                         Row(
+                            modifier = Modifier.padding(bottom = 12.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (seasonEpisodeText != null) {
-                                Text(
-                                    text = seasonEpisodeText,
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
-                                    ),
-                                    color = Color.White.copy(alpha = 0.9f)
-                                )
+                            // Old text-based metadata (Season/Episode, Year, Runtime, Genre)
+                            if (seasonEpisodeText != null || yearText.isNotEmpty() || runtimeText.isNotEmpty() || genreText.isNotEmpty()) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (seasonEpisodeText != null) {
+                                        Text(
+                                            text = seasonEpisodeText,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
+                                            ),
+                                            color = Color.White.copy(alpha = 0.9f)
+                                        )
+                                    }
+                                    if (yearText.isNotEmpty()) {
+                                        Text(
+                                            text = yearText,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
+                                            ),
+                                            color = Color.White.copy(alpha = 0.9f)
+                                        )
+                                    }
+                                    // Don't show runtime for Series items (shows)
+                                    if (runtimeText.isNotEmpty() && !isSeriesItem) {
+                                        Text(
+                                            text = runtimeText,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
+                                            ),
+                                            color = Color.White.copy(alpha = 0.9f)
+                                        )
+                                    }
+                                    if (genreText.isNotEmpty()) {
+                                        Text(
+                                            text = genreText,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
+                                            ),
+                                            color = Color.White.copy(alpha = 0.9f)
+                                        )
+                                    }
+                                }
                             }
-                            if (yearText.isNotEmpty()) {
-                                Text(
-                                    text = yearText,
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
-                                    ),
-                                    color = Color.White.copy(alpha = 0.9f)
+                            
+                            // New MetadataBox components (to the right of old text-based metadata)
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Get media information
+                                val videoStream = details.MediaSources?.firstOrNull()?.MediaStreams?.firstOrNull { it.Type == "Video" }
+                                val audioStream = details.MediaSources?.firstOrNull()?.MediaStreams?.firstOrNull { it.Type == "Audio" }
+                                
+                                // Maturity Rating
+                                details.OfficialRating?.let { rating ->
+                                    MetadataBox(text = rating)
+                                }
+                                
+                                // Review Rating with Rotten Tomatoes icons support
+                                RatingDisplay(
+                                    item = details,
+                                    communityRating = details.CommunityRating,
+                                    criticRating = details.CriticRating
                                 )
-                            }
-                            // Don't show runtime for Series items (shows)
-                            if (runtimeText.isNotEmpty() && !isSeriesItem) {
-                                Text(
-                                    text = runtimeText,
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
-                                    ),
-                                    color = Color.White.copy(alpha = 0.9f)
-                                )
-                            }
-                            if (genreText.isNotEmpty()) {
-                                Text(
-                                    text = genreText,
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
-                                    ),
-                                    color = Color.White.copy(alpha = 0.9f)
-                                )
+                                
+                                // Language
+                                audioStream?.Language?.let { lang ->
+                                    MetadataBox(text = lang.uppercase())
+                                }
                             }
                         }
-                    }
-                    
-                    // New MetadataBox components (to the right of old text-based metadata)
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Get media information
-                        val videoStream = details.MediaSources?.firstOrNull()?.MediaStreams?.firstOrNull { it.Type == "Video" }
-                        val audioStream = details.MediaSources?.firstOrNull()?.MediaStreams?.firstOrNull { it.Type == "Audio" }
                         
-                        // Maturity Rating
-                        details.OfficialRating?.let { rating ->
-                            MetadataBox(text = rating)
+                        // Synopsis - use episode synopsis if available, otherwise use series/movie synopsis
+                        val synopsisText = if (isEpisodeHighlight && originalEpisodeItem != null && !isSeriesItem) {
+                            originalEpisodeItem!!.Overview ?: details.Overview
+                        } else {
+                            details.Overview
                         }
                         
-                        // Review Rating with Rotten Tomatoes icons support
-                        RatingDisplay(
-                            item = details,
-                            communityRating = details.CommunityRating,
-                            criticRating = details.CriticRating
-                        )
-                        
-                        // Language
-                        audioStream?.Language?.let { lang ->
-                            MetadataBox(text = lang.uppercase())
-                        }
-                    }
-                }
-                
-                // Synopsis - use episode synopsis if available, otherwise use series/movie synopsis
-                val synopsisText = if (isEpisodeHighlight && originalEpisodeItem != null && !isSeriesItem) {
-                    originalEpisodeItem!!.Overview ?: details.Overview
-                } else {
-                    details.Overview
-                }
-                
-                synopsisText?.let { synopsis ->
+                        synopsisText?.let { synopsis ->
                     if (synopsis.isNotEmpty()) {
                         Text(
                             text = synopsis,
@@ -1005,7 +1044,8 @@ fun JellyfinHomeScreen(
                         )
                     }
                 }
-            }
+                    }
+                }
             }
         }
         
@@ -1252,6 +1292,10 @@ fun JellyfinHomeScreen(
                                             },
                                             onFocusChanged = { isFocused ->
                                                 if (isFocused) {
+                                                    // Update metadata text immediately
+                                                    instantHighlightedItem = item
+                                                    originalEpisodeItem = null
+                                                    
                                                     // Cancel any pending background change
                                                     backgroundChangeJob?.cancel()
                                                     
@@ -1578,6 +1622,10 @@ fun JellyfinHomeScreen(
                                                 },
                                                 onFocusChanged = { isFocused ->
                                                     if (isFocused) {
+                                                        // Update metadata text immediately
+                                                        instantHighlightedItem = item
+                                                        originalEpisodeItem = null
+                                                        
                                                         // Cancel any pending background change
                                                         backgroundChangeJob?.cancel()
                                                         
@@ -1692,28 +1740,28 @@ fun JellyfinHomeScreen(
                                         },
                                         onFocusChanged = { isFocused ->
                                             if (isFocused) {
+                                                // Update metadata text immediately - keep episode data for Continue Watching
+                                                instantHighlightedItem = item
+                                                originalEpisodeItem = if (item.Type == "Episode") item else null
+                                                
                                                 // Cancel any pending background change
                                                 backgroundChangeJob?.cancel()
                                                 
-                                                // Debounce: wait 1 second before changing background
+                                                // Debounce: wait 1 second before changing background only
                                                 backgroundChangeJob = scope.launch {
                                                     delay(1000)
                                                     
-                                                    // For episodes, highlight the series instead of the episode
+                                                    // For episodes, use series backdrop for background image
                                                     if (item.Type == "Episode" && item.SeriesId != null) {
-                                                        // Store the original episode item to show its name
-                                                        originalEpisodeItem = item
-                                                        // Fetch series details for highlighting
                                                         val seriesDetails = apiService?.getItemDetails(item.SeriesId)
                                                         if (seriesDetails != null) {
                                                             highlightedItem = seriesDetails
+                                                            // Don't update instantHighlightedItem - keep showing episode data
                                                         } else {
                                                             highlightedItem = item
-                                                            originalEpisodeItem = null
                                                         }
                                                     } else {
                                                         highlightedItem = item
-                                                        originalEpisodeItem = null
                                                     }
                                                 }
                                             }
@@ -1763,28 +1811,29 @@ fun JellyfinHomeScreen(
                                         },
                                         onFocusChanged = { isFocused ->
                                             if (isFocused) {
+                                                // Update metadata text immediately
+                                                // Update metadata text immediately - keep episode data for Next Up
+                                                instantHighlightedItem = item
+                                                originalEpisodeItem = if (item.Type == "Episode") item else null
+                                                
                                                 // Cancel any pending background change
                                                 backgroundChangeJob?.cancel()
                                                 
-                                                // Debounce: wait 1 second before changing background
+                                                // Debounce: wait 1 second before changing background only
                                                 backgroundChangeJob = scope.launch {
                                                     delay(1000)
                                                     
-                                                    // For episodes, highlight the series instead of the episode
+                                                    // For episodes, use series backdrop for background image
                                                     if (item.Type == "Episode" && item.SeriesId != null) {
-                                                        // Store the original episode item to show its name
-                                                        originalEpisodeItem = item
-                                                        // Fetch series details for highlighting
                                                         val seriesDetails = apiService?.getItemDetails(item.SeriesId)
                                                         if (seriesDetails != null) {
                                                             highlightedItem = seriesDetails
+                                                            // Don't update instantHighlightedItem - keep showing episode data
                                                         } else {
                                                             highlightedItem = item
-                                                            originalEpisodeItem = null
                                                         }
                                                     } else {
                                                         highlightedItem = item
-                                                        originalEpisodeItem = null
                                                     }
                                                 }
                                             }
@@ -1831,6 +1880,10 @@ fun JellyfinHomeScreen(
                                                 },
                                                 onFocusChanged = { isFocused ->
                                                     if (isFocused) {
+                                                        // Update metadata text immediately
+                                                        instantHighlightedItem = item
+                                                        originalEpisodeItem = null
+                                                        
                                                         // Cancel any pending background change
                                                         backgroundChangeJob?.cancel()
                                                         
@@ -1876,6 +1929,10 @@ fun JellyfinHomeScreen(
                                         },
                                         onFocusChanged = { isFocused ->
                                             if (isFocused) {
+                                                // Update metadata text immediately
+                                                instantHighlightedItem = item
+                                                originalEpisodeItem = null
+                                                
                                                 // Cancel any pending background change
                                                 backgroundChangeJob?.cancel()
                                                 
@@ -1941,6 +1998,10 @@ fun JellyfinHomeScreen(
                                                 },
                                                 onFocusChanged = { isFocused ->
                                                     if (isFocused) {
+                                                        // Update metadata text immediately
+                                                        instantHighlightedItem = item
+                                                        originalEpisodeItem = null
+                                                        
                                                         // Cancel any pending background change
                                                         backgroundChangeJob?.cancel()
                                                         
@@ -2004,23 +2065,30 @@ fun JellyfinHomeScreen(
                                                 },
                                                 onFocusChanged = { isFocused ->
                                                     if (isFocused) {
-                                                        // For episodes, highlight the series instead of the episode
-                                                        if (item.Type == "Episode" && item.SeriesId != null) {
-                                                            // Store the original episode item to show its name
-                                                            originalEpisodeItem = item
-                                                            // Fetch series details for highlighting
-                                                            scope.launch {
+                                                        // Update metadata text immediately
+                                                        // Update metadata text immediately - keep episode data for Recently Added Episodes
+                                                        instantHighlightedItem = item
+                                                        originalEpisodeItem = if (item.Type == "Episode") item else null
+                                                        
+                                                        // Cancel any pending background change
+                                                        backgroundChangeJob?.cancel()
+                                                        
+                                                        // Debounce: wait 1 second before changing background only
+                                                        backgroundChangeJob = scope.launch {
+                                                            delay(1000)
+                                                            
+                                                            // For episodes, use series backdrop for background image
+                                                            if (item.Type == "Episode" && item.SeriesId != null) {
                                                                 val seriesDetails = apiService?.getItemDetails(item.SeriesId)
                                                                 if (seriesDetails != null) {
                                                                     highlightedItem = seriesDetails
+                                                                    // Don't update instantHighlightedItem - keep showing episode data
                                                                 } else {
                                                                     highlightedItem = item
-                                                                    originalEpisodeItem = null
                                                                 }
+                                                            } else {
+                                                                highlightedItem = item
                                                             }
-                                                        } else {
-                                                            highlightedItem = item
-                                                            originalEpisodeItem = null
                                                         }
                                                     }
                                                 },

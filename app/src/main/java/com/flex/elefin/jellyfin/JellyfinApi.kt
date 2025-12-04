@@ -56,13 +56,65 @@ data class Person(
     val Id: String? = null,
     val Name: String,
     val Type: String? = null, // "Actor", "Director", "Writer", etc.
+    val Role: String? = null, // Character name played
     val PrimaryImageTag: String? = null // Image tag for person's photo
 )
+
+// Full person details from /Users/{userId}/Items/{personId}
+@Stable
+@Serializable
+data class PersonDetails(
+    val Id: String,
+    val Name: String,
+    val Overview: String? = null, // Biography
+    val PremiereDate: String? = null, // Birth date (Jellyfin uses PremiereDate for persons)
+    val EndDate: String? = null, // Death date
+    val ProductionLocations: List<String>? = null, // Place of birth
+    val ImageTags: Map<String, String>? = null,
+    val BackdropImageTags: List<String>? = null,
+    val Type: String? = null,
+    // Alternative field names that Jellyfin might use
+    val BirthDate: String? = null,
+    val DeathDate: String? = null
+) {
+    // Helper to get birth date from either field
+    val birthDateValue: String? get() = PremiereDate ?: BirthDate
+    // Helper to get death date from either field  
+    val deathDateValue: String? get() = EndDate ?: DeathDate
+}
 
 @Stable
 @Serializable
 data class JellyfinPlaybackInfo(
     val MediaSources: List<MediaSource>? = null
+)
+
+// Media Segments for Skip Intro / Skip Credits (Jellyfin 10.10+)
+@Stable
+@Serializable
+data class MediaSegment(
+    val Id: String? = null,
+    val ItemId: String? = null,
+    val Type: String? = null, // "Intro", "Outro", "Recap", "Preview", "Commercial"
+    val StartTicks: Long? = null, // Start time in ticks (1 tick = 100 nanoseconds)
+    val EndTicks: Long? = null // End time in ticks
+) {
+    // Convert ticks to milliseconds (1 tick = 100 nanoseconds = 0.0001 ms)
+    val startMs: Long get() = (StartTicks ?: 0) / 10000
+    val endMs: Long get() = (EndTicks ?: 0) / 10000
+}
+
+@Stable
+@Serializable
+data class MediaSegmentsResponse(
+    val Items: List<MediaSegment>? = null
+)
+
+// Simplified skip markers for the video player
+data class SkipMarkers(
+    val introStartMs: Long? = null,
+    val introEndMs: Long? = null,
+    val creditsStartMs: Long? = null
 )
 
 @Stable
@@ -171,12 +223,22 @@ class JellyfinApiService(
     val apiKey: String get() = accessToken
     fun getUserId(): String = userId
     fun getJellyfinConfig(): JellyfinConfig? = config
+    
+    // In-memory cache for episodes (keyed by seasonId)
+    private val episodeCache = mutableMapOf<String, Pair<Long, List<JellyfinItem>>>()
+    private val seasonCache = mutableMapOf<String, Pair<Long, List<JellyfinItem>>>()
+    private val CACHE_DURATION_MS = 5 * 60 * 1000L // 5 minutes cache
+    
     private val client = HttpClient(Android) {
         install(ContentNegotiation) {
             json(Json {
                 ignoreUnknownKeys = true
                 isLenient = true
             })
+        }
+        engine {
+            connectTimeout = 10_000
+            socketTimeout = 15_000
         }
     }
 
@@ -474,6 +536,70 @@ class JellyfinApiService(
         }
     }
 
+    // Get person details (biography, birthdate, etc.)
+    // Uses /Users/{userId}/Items/{personId} endpoint which returns full item details
+    suspend fun getPersonDetails(personId: String): PersonDetails? {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            // Use the Items endpoint with userId for full details including Overview
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items/$personId").buildString()
+            android.util.Log.d("JellyfinAPI", "Fetching person details from: $url")
+            
+            val response = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
+            }
+            val person: PersonDetails = response.body()
+            android.util.Log.d("JellyfinAPI", "Person details fetched: ${person.Name}, Overview length: ${person.Overview?.length ?: 0}, Type: ${person.Type}")
+            android.util.Log.d("JellyfinAPI", "Person birth: ${person.birthDateValue}, death: ${person.deathDateValue}, locations: ${person.ProductionLocations}")
+            person
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error fetching person details", e)
+            e.printStackTrace()
+            null
+        }
+    }
+
+    // Get all items (movies, series) that a person appears in (filmography)
+    suspend fun getPersonFilmography(personId: String, limit: Int = 50): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Items").apply {
+                parameters.append("UserId", userId)
+                parameters.append("PersonIds", personId)
+                parameters.append("Recursive", "true")
+                parameters.append("IncludeItemTypes", "Movie,Series")
+                parameters.append("SortBy", "PremiereDate,ProductionYear,SortName")
+                parameters.append("SortOrder", "Descending")
+                parameters.append("Fields", "PrimaryImageAspectRatio,MediaSourceCount,Overview,Genres,ProductionYear")
+                parameters.append("Limit", limit.toString())
+            }.buildString()
+            android.util.Log.d("JellyfinAPI", "Fetching person filmography from: $url")
+            
+            val response = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
+            }
+            val itemsResponse: ItemsResponse = response.body()
+            android.util.Log.d("JellyfinAPI", "Person filmography fetched: ${itemsResponse.Items.size} items")
+            itemsResponse.Items
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error fetching person filmography", e)
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    // Get person image URL
+    fun getPersonImageUrl(personId: String, imageType: String = "Primary", tag: String? = null, maxWidth: Int? = null, maxHeight: Int? = null): String {
+        val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+        return URLBuilder().takeFrom("${base}Items/$personId/Images/$imageType").apply {
+            tag?.let { parameters.append("tag", it) }
+            maxWidth?.let { parameters.append("maxWidth", it.toString()) }
+            maxHeight?.let { parameters.append("maxHeight", it.toString()) }
+        }.buildString()
+    }
+
     fun getVideoPlaybackUrl(
         itemId: String,
         mediaSourceId: String? = null,
@@ -699,6 +825,47 @@ class JellyfinApiService(
     }
     
     /**
+     * Get Media Segments for an item (Skip Intro / Skip Credits)
+     * Requires Jellyfin 10.10+ with Intro Skipper plugin
+     * Returns skip markers for intro and credits if available
+     */
+    suspend fun getMediaSegments(itemId: String): SkipMarkers {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}MediaSegments/$itemId").apply {
+                parameters.append("IncludeSegmentTypes", "Intro,Outro")
+            }.buildString()
+            
+            android.util.Log.d("JellyfinAPI", "Fetching MediaSegments for item: $itemId")
+            
+            val response: MediaSegmentsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
+            }.body()
+            
+            val segments = response.Items ?: emptyList()
+            android.util.Log.d("JellyfinAPI", "Found ${segments.size} media segments")
+            
+            // Extract intro and credits (outro) segments
+            val introSegment = segments.find { it.Type?.equals("Intro", ignoreCase = true) == true }
+            val outroSegment = segments.find { it.Type?.equals("Outro", ignoreCase = true) == true }
+            
+            val markers = SkipMarkers(
+                introStartMs = introSegment?.startMs,
+                introEndMs = introSegment?.endMs,
+                creditsStartMs = outroSegment?.startMs
+            )
+            
+            android.util.Log.d("JellyfinAPI", "Skip markers: intro=${markers.introStartMs}-${markers.introEndMs}ms, credits=${markers.creditsStartMs}ms")
+            markers
+        } catch (e: Exception) {
+            android.util.Log.d("JellyfinAPI", "MediaSegments not available (server may not support it): ${e.message}")
+            // Return empty markers if not supported
+            SkipMarkers()
+        }
+    }
+    
+    /**
      * Build correct Jellyfin subtitle URL for streaming subtitles.
      * Format: /Videos/{itemId}/{mediaSourceId}/Subtitles/{index}/Stream?api_key=xxx
      */
@@ -802,7 +969,17 @@ class JellyfinApiService(
         return allItems
     }
     
-    suspend fun getSeasons(seriesId: String): List<JellyfinItem> {
+    suspend fun getSeasons(seriesId: String, forceRefresh: Boolean = false): List<JellyfinItem> {
+        // Check cache first
+        if (!forceRefresh) {
+            seasonCache[seriesId]?.let { (timestamp, seasons) ->
+                if (System.currentTimeMillis() - timestamp < CACHE_DURATION_MS) {
+                    android.util.Log.d("JellyfinAPI", "Using cached seasons for series $seriesId")
+                    return seasons
+                }
+            }
+        }
+        
         return try {
             val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
             val url = URLBuilder().takeFrom("${base}Shows/${seriesId}/Seasons").apply {
@@ -814,7 +991,11 @@ class JellyfinApiService(
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
                 header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
-            response.Items.sortedBy { it.IndexNumber ?: 0 }
+            val seasons = response.Items.sortedBy { it.IndexNumber ?: 0 }
+            
+            // Cache the result
+            seasonCache[seriesId] = System.currentTimeMillis() to seasons
+            seasons
         } catch (e: Exception) {
             android.util.Log.e("JellyfinAPI", "Error fetching seasons for series $seriesId", e)
             e.printStackTrace()
@@ -822,7 +1003,17 @@ class JellyfinApiService(
         }
     }
     
-    suspend fun getEpisodes(seriesId: String, seasonId: String): List<JellyfinItem> {
+    suspend fun getEpisodes(seriesId: String, seasonId: String, forceRefresh: Boolean = false): List<JellyfinItem> {
+        // Check cache first
+        if (!forceRefresh) {
+            episodeCache[seasonId]?.let { (timestamp, episodes) ->
+                if (System.currentTimeMillis() - timestamp < CACHE_DURATION_MS) {
+                    android.util.Log.d("JellyfinAPI", "Using cached episodes for season $seasonId")
+                    return episodes
+                }
+            }
+        }
+        
         return try {
             val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
             val url = URLBuilder().takeFrom("${base}Shows/${seriesId}/Episodes").apply {
@@ -835,11 +1026,24 @@ class JellyfinApiService(
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
                 header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
-            response.Items.sortedBy { it.IndexNumber ?: 0 }
+            val episodes = response.Items.sortedBy { it.IndexNumber ?: 0 }
+            
+            // Cache the result
+            episodeCache[seasonId] = System.currentTimeMillis() to episodes
+            episodes
         } catch (e: Exception) {
             android.util.Log.e("JellyfinAPI", "Error fetching episodes for season $seasonId", e)
             e.printStackTrace()
             emptyList()
+        }
+    }
+    
+    // Clear episode cache for a specific season (useful after playback state changes)
+    fun invalidateEpisodeCache(seasonId: String? = null) {
+        if (seasonId != null) {
+            episodeCache.remove(seasonId)
+        } else {
+            episodeCache.clear()
         }
     }
     

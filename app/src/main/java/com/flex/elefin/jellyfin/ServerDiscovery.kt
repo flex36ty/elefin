@@ -240,6 +240,11 @@ object ServerDiscovery {
      * Discover Jellyfin servers on the local network using UDP broadcast.
      * This uses Jellyfin's built-in discovery protocol on port 7359.
      * 
+     * Per Jellyfin docs: https://jellyfin.org/docs/general/post-install/networking/
+     * "Client Discovery (7359/UDP): Allows clients to discover Jellyfin on the local network.
+     *  A broadcast message to this port will return detailed information about your server
+     *  that includes name, ip-address and ID."
+     * 
      * @param onServerFound Callback invoked for each server found (allows real-time updates)
      * @return List of discovered servers
      */
@@ -257,12 +262,12 @@ object ServerDiscovery {
             socket.broadcast = true
             socket.soTimeout = 1000 // 1 second timeout for each receive attempt
             
-            // Send discovery broadcast
-            val message = DISCOVERY_MESSAGE.toByteArray()
+            // Send discovery broadcast to global broadcast address
+            val message = DISCOVERY_MESSAGE.toByteArray(Charsets.UTF_8)
             val broadcastAddress = InetAddress.getByName("255.255.255.255")
             val sendPacket = DatagramPacket(message, message.size, broadcastAddress, DISCOVERY_PORT)
             
-            Log.d(TAG, "Sending UDP broadcast: $DISCOVERY_MESSAGE")
+            Log.d(TAG, "Sending UDP broadcast to 255.255.255.255:$DISCOVERY_PORT - \"$DISCOVERY_MESSAGE\"")
             socket.send(sendPacket)
             
             // Listen for responses with timeout

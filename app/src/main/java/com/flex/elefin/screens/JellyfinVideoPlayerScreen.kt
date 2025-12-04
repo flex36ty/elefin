@@ -46,6 +46,7 @@ import androidx.media3.ui.PlayerView
 import com.flex.elefin.jellyfin.JellyfinApiService
 import com.flex.elefin.jellyfin.JellyfinItem
 import com.flex.elefin.jellyfin.MediaStream
+import com.flex.elefin.jellyfin.SkipMarkers
 import com.flex.elefin.player.SubtitleMapper
 import com.flex.elefin.player.GLVideoSurfaceView
 import android.widget.FrameLayout
@@ -91,6 +92,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -221,7 +224,29 @@ fun JellyfinVideoPlayerScreen(
     var autoplayCountdown by remember { mutableStateOf(settings.autoplayCountdownSeconds) } // Countdown timer for autoplay
     var autoplayCancelled by remember { mutableStateOf(false) } // Track if user cancelled autoplay
     var hasFocusedPlayButtonOnStart by remember { mutableStateOf(false) } // Track if we've focused play button on initial start
+    
+    // Skip intro/credits state
+    var skipMarkers by remember { mutableStateOf(SkipMarkers()) }
+    var showSkipIntroButton by remember { mutableStateOf(false) }
+    var showSkipCreditsButton by remember { mutableStateOf(false) }
+    val skipIntroEnabled = remember { settings.skipIntroEnabled }
+    val skipCreditsEnabled = remember { settings.skipCreditsEnabled }
 
+    // Fetch skip markers for intro/credits (only for episodes)
+    LaunchedEffect(item.Id, apiService) {
+        if (item.Type == "Episode" && (skipIntroEnabled || skipCreditsEnabled)) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val markers = apiService.getMediaSegments(item.Id)
+                    skipMarkers = markers
+                    Log.d("JellyfinPlayer", "Skip markers loaded: intro=${markers.introStartMs}-${markers.introEndMs}ms, credits=${markers.creditsStartMs}ms")
+                } catch (e: Exception) {
+                    Log.d("JellyfinPlayer", "Skip markers not available: ${e.message}")
+                }
+            }
+        }
+    }
+    
     // Fetch item details and prepare video URL
     LaunchedEffect(item.Id, apiService, subtitleStreamIndex) {
         withContext(Dispatchers.IO) {
@@ -1495,6 +1520,44 @@ fun JellyfinVideoPlayerScreen(
         }
     }
 
+    // Monitor playback position for skip intro/credits buttons
+    LaunchedEffect(playerInitialized, skipMarkers) {
+        if (playerInitialized && (skipMarkers.introStartMs != null || skipMarkers.creditsStartMs != null)) {
+            Log.d("JellyfinPlayer", "Starting skip button monitoring")
+            while (true) {
+                delay(200) // Check every 200ms for responsive skip buttons
+                try {
+                    val currentPositionMs = player.currentPosition
+                    
+                    // Check for intro skip
+                    if (skipIntroEnabled && skipMarkers.introStartMs != null && skipMarkers.introEndMs != null) {
+                        val inIntro = currentPositionMs >= skipMarkers.introStartMs!! && currentPositionMs < skipMarkers.introEndMs!!
+                        if (inIntro != showSkipIntroButton) {
+                            showSkipIntroButton = inIntro
+                            if (inIntro) {
+                                Log.d("JellyfinPlayer", "Showing Skip Intro button (pos: ${currentPositionMs}ms, intro: ${skipMarkers.introStartMs}-${skipMarkers.introEndMs}ms)")
+                            }
+                        }
+                    }
+                    
+                    // Check for credits skip
+                    if (skipCreditsEnabled && skipMarkers.creditsStartMs != null) {
+                        val inCredits = currentPositionMs >= skipMarkers.creditsStartMs!!
+                        if (inCredits != showSkipCreditsButton) {
+                            showSkipCreditsButton = inCredits
+                            if (inCredits) {
+                                Log.d("JellyfinPlayer", "Showing Skip Credits button (pos: ${currentPositionMs}ms, credits start: ${skipMarkers.creditsStartMs}ms)")
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Player might be released
+                    break
+                }
+            }
+        }
+    }
+    
     // Monitor playback position to show Next Up overlay
     LaunchedEffect(nextEpisodeId, playerInitialized) {
         if (nextEpisodeId != null && playerInitialized && !autoplayCancelled && settings.autoplayNextEpisode) {
@@ -2398,6 +2461,34 @@ fun JellyfinVideoPlayerScreen(
                             }
                         }
                     )
+                    
+                    // Skip Intro Button
+                    if (showSkipIntroButton && skipMarkers.introEndMs != null) {
+                        SkipButton(
+                            text = "Skip Intro",
+                            onClick = {
+                                player.seekTo(skipMarkers.introEndMs!!)
+                                showSkipIntroButton = false
+                                Log.d("JellyfinPlayer", "Skipping intro to ${skipMarkers.introEndMs}ms")
+                            }
+                        )
+                    }
+                    
+                    // Skip Credits Button
+                    if (showSkipCreditsButton && !showNextUpOverlay) {
+                        SkipButton(
+                            text = "Skip Credits",
+                            onClick = {
+                                // Seek to near the end to trigger next episode
+                                val duration = player.duration
+                                if (duration > 0) {
+                                    player.seekTo(duration - 2000) // 2 seconds before end
+                                }
+                                showSkipCreditsButton = false
+                                Log.d("JellyfinPlayer", "Skipping credits")
+                            }
+                        )
+                    }
                     
                     // Next Up Overlay
                     if (showNextUpOverlay && nextEpisodeDetails != null) {
@@ -3731,6 +3822,72 @@ fun SimpleOptionItem(
             color = Color.White,
             modifier = Modifier.weight(1f)
         )
+    }
+}
+
+/**
+ * Netflix-style Skip Intro / Skip Credits button
+ * Positioned at bottom-right, D-pad focusable for Android TV
+ */
+@Composable
+fun SkipButton(
+    text: String,
+    onClick: () -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+    
+    // Auto-focus the skip button when it appears
+    LaunchedEffect(Unit) {
+        try {
+            focusRequester.requestFocus()
+        } catch (e: Exception) {
+            // Ignore focus errors
+        }
+    }
+    
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.BottomEnd
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(32.dp)
+                .focusRequester(focusRequester)
+                .onFocusChanged { isFocused = it.isFocused }
+                .focusable()
+                .background(
+                    color = if (isFocused) Color.White else Color.White.copy(alpha = 0.9f),
+                    shape = RoundedCornerShape(4.dp)
+                )
+                .then(
+                    if (isFocused) {
+                        Modifier.border(3.dp, Color.White, RoundedCornerShape(4.dp))
+                    } else {
+                        Modifier
+                    }
+                )
+                .clickable(onClick = onClick)
+                .padding(horizontal = 24.dp, vertical = 12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                androidx.compose.material3.Icon(
+                    imageVector = Icons.Default.SkipNext,
+                    contentDescription = null,
+                    tint = Color.Black,
+                    modifier = Modifier.size(24.dp)
+                )
+                androidx.compose.material3.Text(
+                    text = text,
+                    style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black
+                )
+            }
+        }
     }
 }
 

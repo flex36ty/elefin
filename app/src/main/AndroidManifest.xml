@@ -64,6 +64,10 @@
             android:name=".SeriesDetailsActivity"
             android:exported="false"
             android:screenOrientation="landscape" />
+        <activity
+            android:name=".CastInfoActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
         
         <provider
             android:name="androidx.core.content.FileProvider"

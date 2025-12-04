@@ -30,6 +30,8 @@ class AppSettings(context: Context) {
         private const val KEY_AUTOPLAY_NEXT_EPISODE = "autoplay_next_episode"
         private const val KEY_AUTOPLAY_COUNTDOWN_SECONDS = "autoplay_countdown_seconds"
         private const val KEY_AUTO_UPDATE_ENABLED = "auto_update_enabled"
+        private const val KEY_SKIP_INTRO_ENABLED = "skip_intro_enabled"
+        private const val KEY_SKIP_CREDITS_ENABLED = "skip_credits_enabled"
         
         // Subtitle customization
         private const val KEY_SUBTITLE_TEXT_COLOR = "subtitle_text_color"
@@ -184,6 +186,15 @@ class AppSettings(context: Context) {
     var autoUpdateEnabled: Boolean
         get() = prefs.getBoolean(KEY_AUTO_UPDATE_ENABLED, true) // Enabled by default
         set(value) = prefs.edit().putBoolean(KEY_AUTO_UPDATE_ENABLED, value).apply()
+    
+    // Skip intro/credits settings (enabled by default)
+    var skipIntroEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SKIP_INTRO_ENABLED, true) // Enabled by default
+        set(value) = prefs.edit().putBoolean(KEY_SKIP_INTRO_ENABLED, value).apply()
+    
+    var skipCreditsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SKIP_CREDITS_ENABLED, true) // Enabled by default
+        set(value) = prefs.edit().putBoolean(KEY_SKIP_CREDITS_ENABLED, value).apply()
     
     // Subtitle customization settings
     // Text color as ARGB int (default: White = 0xFFFFFFFF)

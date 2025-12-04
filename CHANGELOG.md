@@ -4,6 +4,23 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2025-12-04
+
+### Added
+
+- **Cast Info Screen** - View actor/director biographies, birth dates, and filmography by clicking on cast members
+
+### Improved
+
+- **Home Screen Performance** - Debounced synopsis loading to prevent lag during fast scrolling
+- **Smoother Scrolling** - Reduced API calls and recompositions when navigating between items
+
+### Fixed
+
+- **Settings Layout** - Redesigned to Google TV style with categories on the left
+
+---
+
 ## 2025-12-02
 
 ### Added

@@ -641,7 +641,8 @@ fun BottomContainer(
 @Composable
 fun CastMemberCard(
     person: com.flex.elefin.jellyfin.Person,
-    apiService: JellyfinApiService?
+    apiService: JellyfinApiService?,
+    onClick: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val imageUrl = person.Id?.let { personId ->
@@ -664,7 +665,21 @@ fun CastMemberCard(
             modifier = Modifier.size(cardSize),
             imageCard = { interactionSource ->
                 Card(
-                    onClick = { /* Cast cards are not clickable */ },
+                    onClick = {
+                        // Navigate to cast info screen if person has an ID
+                        if (person.Id != null && onClick != null) {
+                            onClick()
+                        } else if (person.Id != null) {
+                            // Default behavior: open CastInfoActivity
+                            val intent = com.flex.elefin.CastInfoActivity.createIntent(
+                                context,
+                                person.Id,
+                                person.Name,
+                                person.Type // Pass the type (Actor, Director, Writer, etc.)
+                            )
+                            context.startActivity(intent)
+                        }
+                    },
                     interactionSource = interactionSource,
                     colors = CardDefaults.colors(containerColor = Color.Transparent)
                 ) {
