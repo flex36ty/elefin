@@ -57,8 +57,8 @@ class AppSettings(context: Context) {
     }
 
     var isMpvEnabled: Boolean
-        get() = false // Temporarily disabled
-        set(value) { /* No-op - MPV temporarily disabled */ }
+        get() = prefs.getBoolean(KEY_MPV_ENABLED, false) // Disabled by default (ExoPlayer is default)
+        set(value) = prefs.edit().putBoolean(KEY_MPV_ENABLED, value).apply()
 
     var showDebugOutlines: Boolean
         get() = prefs.getBoolean(KEY_DEBUG_OUTLINES, false) // Disabled by default

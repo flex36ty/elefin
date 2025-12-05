@@ -901,16 +901,19 @@ fun JellyfinHomeScreen(
                     }
                     
                     val genreText = details.Genres?.take(3)?.joinToString(", ") ?: ""
-                    // Only show episode info if this is an episode highlight (from Continue Watching, Next Up, or Recently Added Episodes row)
-                    // For Series items in Recently Added Shows row, never show episode info
-                    val isEpisodeHighlight = originalEpisodeItem != null && item.Type == "Series"
+                    // Show episode info if:
+                    // 1. originalEpisodeItem is set and item is Series (from Recently Added Episodes where we fetch series)
+                    // 2. item itself is an Episode (from Continue Watching, Next Up where we keep the episode as highlighted)
+                    val isEpisodeHighlight = (originalEpisodeItem != null && item.Type == "Series") || item.Type == "Episode"
                     val isSeriesItem = item.Type == "Series" && originalEpisodeItem == null
                     
-                    // Get season and episode number for episodes (only for episode highlights, not for series)
-                    val seasonEpisodeText = if (isEpisodeHighlight && originalEpisodeItem != null && !isSeriesItem) {
-                        val episode = originalEpisodeItem!!
-                        val seasonNumber = episode.ParentIndexNumber
-                        val episodeNumber = episode.IndexNumber
+                    // Get the episode to use for metadata (either originalEpisodeItem or the item itself if it's an episode)
+                    val episodeForMetadata = if (item.Type == "Episode") item else originalEpisodeItem
+                    
+                    // Get season and episode number for episodes
+                    val seasonEpisodeText = if (isEpisodeHighlight && episodeForMetadata != null && !isSeriesItem) {
+                        val seasonNumber = episodeForMetadata.ParentIndexNumber
+                        val episodeNumber = episodeForMetadata.IndexNumber
                         if (seasonNumber != null && episodeNumber != null) {
                             "S${seasonNumber} E${episodeNumber}"
                         } else null
@@ -932,10 +935,10 @@ fun JellyfinHomeScreen(
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
                         
-                        // Episode name below title (for recently added episodes only, not for series)
-                        if (isEpisodeHighlight && originalEpisodeItem != null && !isSeriesItem) {
+                        // Episode name below title (for episodes from Continue Watching, Next Up, or Recently Added Episodes)
+                        if (isEpisodeHighlight && episodeForMetadata != null && !isSeriesItem) {
                             Text(
-                                text = originalEpisodeItem!!.Name,
+                                text = episodeForMetadata.Name,
                                 style = MaterialTheme.typography.bodyLarge.copy(
                                     fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f // Same size as synopsis
                                 ),
@@ -1025,8 +1028,8 @@ fun JellyfinHomeScreen(
                         }
                         
                         // Synopsis - use episode synopsis if available, otherwise use series/movie synopsis
-                        val synopsisText = if (isEpisodeHighlight && originalEpisodeItem != null && !isSeriesItem) {
-                            originalEpisodeItem!!.Overview ?: details.Overview
+                        val synopsisText = if (isEpisodeHighlight && episodeForMetadata != null && !isSeriesItem) {
+                            episodeForMetadata.Overview ?: details.Overview
                         } else {
                             details.Overview
                         }

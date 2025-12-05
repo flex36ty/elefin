@@ -5,6 +5,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Query for MPV players to check if installed (Android 11+ package visibility) -->
+    <queries>
+        <package android:name="com.flex.mpvelefin" />
+        <package android:name="is.xyz.mpv" />
+    </queries>
+
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
@@ -68,7 +74,12 @@
             android:name=".CastInfoActivity"
             android:exported="false"
             android:screenOrientation="landscape" />
-        
+        <activity
+            android:name=".player.mpv.MpvTvPlayerActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.flex.elefin.fileprovider"

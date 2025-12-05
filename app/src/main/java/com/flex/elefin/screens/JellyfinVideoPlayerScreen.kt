@@ -92,11 +92,36 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.compose.material.icons.filled.AspectRatio
+
+// Picture mode / aspect ratio options
+enum class AspectMode(val label: String) {
+    FIT("Fit"),              // Natural letterbox - fits video in screen with black bars
+    FILL("Fill"),            // Crop to fill screen - removes black bars by cropping
+    LETTERBOX("16:9"),       // Force 16:9 letterbox - maintains aspect ratio in 16:9 frame
+    CINEMA("Cinema"),        // Cinema scope 2.39:1 - movie theater style with wide black bars
+    STRETCH("Stretch"),      // Stretch both axes - distorts to fill screen
+    ORIGINAL("Original");    // Display at native resolution without scaling
+
+    fun next(): AspectMode {
+        val modes = values()
+        return modes[(ordinal + 1) % modes.size]
+    }
+}
 
 @UnstableApi
 @Composable
@@ -208,6 +233,9 @@ fun JellyfinVideoPlayerScreen(
     var hasRetriedWithHls by remember { mutableStateOf(false) } // Track if we've retried with HLS for parser errors
     var currentMediaSource by remember { mutableStateOf<MediaSource?>(null) }
     var showSettingsMenu by remember { mutableStateOf(false) }
+    var showControls by remember { mutableStateOf(false) } // Custom Compose controls overlay
+    var currentPosition by remember { mutableStateOf(0L) } // Current playback position in ms
+    var duration by remember { mutableStateOf(0L) } // Total duration in ms
     var currentSubtitleIndex by remember { mutableStateOf<Int?>(subtitleStreamIndex) }
     var lastSelectedSubtitleIndex by remember { mutableStateOf<Int?>(subtitleStreamIndex) } // Track last selected subtitle from controller
     var hasAppliedInitialSubtitlePreference by remember { mutableStateOf(false) } // Track if we've applied the saved preference once
@@ -217,13 +245,12 @@ fun JellyfinVideoPlayerScreen(
     var is4KContent by remember { mutableStateOf(false) } // Track if current content is 4K
     // Store subtitle streams list for composite key registration in onTracksChanged
     var jellyfinSubtitleStreams by remember { mutableStateOf<List<MediaStream>>(emptyList()) }
-    var shouldFocusPlayButton by remember { mutableStateOf(false) } // Track when to focus play button after controller is shown
     var nextEpisodeId by remember { mutableStateOf<String?>(null) } // Next episode ID for autoplay
     var nextEpisodeDetails by remember { mutableStateOf<JellyfinItem?>(null) } // Next episode details
     var showNextUpOverlay by remember { mutableStateOf(false) } // Show next up overlay
     var autoplayCountdown by remember { mutableStateOf(settings.autoplayCountdownSeconds) } // Countdown timer for autoplay
     var autoplayCancelled by remember { mutableStateOf(false) } // Track if user cancelled autoplay
-    var hasFocusedPlayButtonOnStart by remember { mutableStateOf(false) } // Track if we've focused play button on initial start
+    var currentAspectMode by remember { mutableStateOf(AspectMode.FIT) } // Picture mode / aspect ratio
     
     // Skip intro/credits state
     var skipMarkers by remember { mutableStateOf(SkipMarkers()) }
@@ -1672,46 +1699,6 @@ fun JellyfinVideoPlayerScreen(
         }
     }
     
-    // Monitor controller visibility and focus play button when it first appears after playback starts
-    LaunchedEffect(playerInitialized, isPlaying) {
-        if (playerInitialized && isPlaying && !hasFocusedPlayButtonOnStart) {
-            // Check periodically for controller visibility
-            var attempts = 0
-            while (attempts < 20 && !hasFocusedPlayButtonOnStart) { // Try for up to 2 seconds
-                kotlinx.coroutines.delay(100)
-                attempts++
-                
-                val playerView = playerViewRef.value
-                val controller = playerView?.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
-                
-                if (controller != null && controller.visibility == android.view.View.VISIBLE && controller.alpha > 0f) {
-                    // Focus on play/pause button (pause button when playing)
-                    val pauseButton = controller.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_pause)
-                    val playButton = controller.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_play)
-                    val buttonToFocus = if (pauseButton != null && isPlaying) pauseButton else playButton
-                    
-                    buttonToFocus?.let { button ->
-                        try {
-                            if (button.isFocusable) {
-                                button.requestFocus()
-                                hasFocusedPlayButtonOnStart = true
-                                Log.d("ExoPlayer", "Focused on play/pause button when controller appeared after playback started")
-                            }
-                        } catch (e: Exception) {
-                            Log.w("ExoPlayer", "Failed to focus play button when controller appeared: ${e.message}")
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    // Reset the flag when playback stops or player is reinitialized
-    LaunchedEffect(playerInitialized) {
-        if (!playerInitialized) {
-            hasFocusedPlayButtonOnStart = false
-        }
-    }
     
     // Report playback progress periodically when playing OR paused (to save position)
     LaunchedEffect(isPlaying, playerInitialized) {
@@ -1857,6 +1844,70 @@ fun JellyfinVideoPlayerScreen(
         }
     }
     
+    // Track last interaction time to reset auto-hide timer
+    var controlsInteractionKey by remember { mutableStateOf(0) }
+    
+    // Auto-hide controls after 5 seconds of inactivity (resets on any interaction)
+    LaunchedEffect(showControls, controlsInteractionKey) {
+        if (showControls) {
+            delay(5000)
+            showControls = false
+        }
+    }
+    
+    // Update playback position periodically for the progress bar
+    LaunchedEffect(playerInitialized, showControls) {
+        if (playerInitialized) {
+            while (true) {
+                currentPosition = player.currentPosition
+                duration = player.duration.coerceAtLeast(0L)
+                delay(500) // Update every 500ms
+            }
+        }
+    }
+    
+    // Apply aspect mode to PlayerView when it changes
+    LaunchedEffect(currentAspectMode, playerViewRef.value) {
+        playerViewRef.value?.let { pv ->
+            // Get the content frame (AspectRatioFrameLayout) from PlayerView
+            val contentFrame = pv.findViewById<AspectRatioFrameLayout>(androidx.media3.ui.R.id.exo_content_frame)
+            
+            when (currentAspectMode) {
+                AspectMode.FIT -> {
+                    // Fit video within screen, maintaining aspect ratio (black bars if needed)
+                    pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    contentFrame?.setAspectRatio(0f) // Reset to video's natural aspect ratio
+                }
+                AspectMode.FILL -> {
+                    // Fill screen by cropping video (removes black bars)
+                    pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
+                    contentFrame?.setAspectRatio(0f) // Reset to video's natural aspect ratio
+                }
+                AspectMode.LETTERBOX -> {
+                    // Force 16:9 letterbox - video fits inside a 16:9 frame with black bars
+                    pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    contentFrame?.setAspectRatio(16f / 9f) // Force 16:9 container
+                }
+                AspectMode.CINEMA -> {
+                    // Cinema scope 2.39:1 - movie theater style with wide black bars top/bottom
+                    pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    contentFrame?.setAspectRatio(2.39f / 1f) // Force cinemascope aspect ratio
+                }
+                AspectMode.STRETCH -> {
+                    // Stretch to fill screen (may distort video)
+                    pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
+                    contentFrame?.setAspectRatio(0f)
+                }
+                AspectMode.ORIGINAL -> {
+                    // Display at native resolution without scaling
+                    pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    contentFrame?.setAspectRatio(0f)
+                }
+            }
+            Log.d("ExoPlayer", "Applied aspect mode: ${currentAspectMode.label}, contentFrame: ${contentFrame != null}")
+        }
+    }
+    
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1869,27 +1920,13 @@ fun JellyfinVideoPlayerScreen(
                         Key.DirectionCenter,  // DPAD center
                         Key.Enter,             // Enter key
                         Key.NumPadEnter -> {
-                            val playerView = playerViewRef.value
-                            if (playerView != null) {
-                                // Check if controller is currently visible
-                                val controller = playerView.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
-                                val isControllerShowing = controller != null && controller.visibility == android.view.View.VISIBLE && controller.alpha > 0f
-                                
-                                if (!isControllerShowing) {
-                                    // Controller is hidden, show it
-                                    playerView.showController()
-                                    Log.d("ExoPlayer", "Enter/OK pressed - showing controller")
-                                    // Set flag to focus play button after controller is shown
-                                    shouldFocusPlayButton = true
-                                    // Ensure PlayerView has focus so it can receive further key events
-                                    playerView.requestFocus()
-                                    // Consume the event to prevent it from being handled elsewhere
-                                    true
-                                } else {
-                                    // Controller is already showing, let it handle the event (for play/pause)
-                                    false
-                                }
+                            if (!showControls) {
+                                // Show custom Compose controls overlay
+                                showControls = true
+                                Log.d("ExoPlayer", "Enter/OK pressed - showing custom controls")
+                                true
                             } else {
+                                // Controls are showing, let them handle the event
                                 false
                             }
                         }
@@ -1900,13 +1937,8 @@ fun JellyfinVideoPlayerScreen(
                                 showNextUpOverlay = false
                                 Log.d("JellyfinPlayer", "Autoplay cancelled by user (Left key)")
                                 true
-                            } else {
-                                // Check if controller is showing - if so, don't seek (allow navigation)
-                                val controller = playerViewRef.value?.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
-                                val isControllerShowing = controller != null && controller.visibility == android.view.View.VISIBLE && controller.alpha > 0f
-                                
-                                if (!isControllerShowing) {
-                                // Seek backward 15 seconds (don't show controller)
+                            } else if (!showControls) {
+                                // Controls not showing - seek backward 15 seconds
                                 scope.launch(Dispatchers.Main) {
                                     val currentPos = player.currentPosition
                                     val seekTo = (currentPos - 15000).coerceAtLeast(0)
@@ -1914,9 +1946,8 @@ fun JellyfinVideoPlayerScreen(
                                     Log.d("ExoPlayer", "Left pressed - seeking backward to ${seekTo}ms")
                                 }
                                 true // Consume event
-                                } else {
-                                    false // Don't consume - let controller handle navigation
-                                }
+                            } else {
+                                false // Don't consume - let controls handle navigation
                             }
                         }
                         Key.DirectionRight -> {
@@ -1926,18 +1957,13 @@ fun JellyfinVideoPlayerScreen(
                                 showNextUpOverlay = false
                                 Log.d("JellyfinPlayer", "Autoplay cancelled by user (Right key)")
                                 true
-                            } else {
-                                // Check if controller is showing - if so, don't seek (allow navigation)
-                                val controller = playerViewRef.value?.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
-                                val isControllerShowing = controller != null && controller.visibility == android.view.View.VISIBLE && controller.alpha > 0f
-                                
-                                if (!isControllerShowing) {
-                                // Seek forward 15 seconds (don't show controller)
+                            } else if (!showControls) {
+                                // Controls not showing - seek forward 15 seconds
                                 scope.launch(Dispatchers.Main) {
                                     val currentPos = player.currentPosition
-                                    val duration = player.duration
-                                    val seekTo = if (duration > 0) {
-                                        (currentPos + 15000).coerceAtMost(duration)
+                                    val dur = player.duration
+                                    val seekTo = if (dur > 0) {
+                                        (currentPos + 15000).coerceAtMost(dur)
                                     } else {
                                         currentPos + 15000
                                     }
@@ -1945,9 +1971,8 @@ fun JellyfinVideoPlayerScreen(
                                     Log.d("ExoPlayer", "Right pressed - seeking forward to ${seekTo}ms")
                                 }
                                 true // Consume event
-                                } else {
-                                    false // Don't consume - let controller handle navigation
-                                }
+                            } else {
+                                false // Don't consume - let controls handle navigation
                             }
                         }
                         Key.DirectionUp, Key.DirectionDown -> {
@@ -2004,16 +2029,14 @@ fun JellyfinVideoPlayerScreen(
                                     }
                                     addView(glSurface)
                                     
-                                    // Create PlayerView WITHOUT video surface (just for controls and subtitles)
+                                    // Create PlayerView WITHOUT video surface (just for subtitles only - controls handled by Compose)
                                     val playerView = PlayerView(ctx).apply {
                                         this.player = player
-                                        // Disable video surface since GL surface handles it
-                                        useController = true
-                                        controllerShowTimeoutMs = 5000
-                                        controllerAutoShow = true
-                                        setShowSubtitleButton(false)
-                                        controllerHideOnTouch = false
-                                        isFocusable = true
+                                        // DISABLE built-in controller - Compose handles controls
+                                        useController = false
+                                        // Block focus from going to PlayerView children
+                                        descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                                        isFocusable = false
                                         isFocusableInTouchMode = false
                                         
                                         // Make video surface area transparent so GL surface shows through
@@ -2187,22 +2210,15 @@ fun JellyfinVideoPlayerScreen(
                                     addView(playerView)
                                 }
                             } else {
-                                // Standard mode: Regular PlayerView
+                                // Standard mode: Regular PlayerView (subtitles only - controls handled by Compose)
                                 PlayerView(ctx).apply {
                                     this.player = player
-                                // Enable built-in controller for proper Android TV support
-                                useController = true
-                                // Show controller automatically
-                                controllerShowTimeoutMs = 5000 // Hide after 5 seconds of inactivity
-                                // Enable subtitle track selection in controller
-                                controllerAutoShow = true
-                                // Hide default subtitle button (we're using custom settings button)
-                                setShowSubtitleButton(false)
-                                // Make sure controller is focusable for TV
-                                controllerHideOnTouch = false // On TV, don't hide on touch
-                                // Make PlayerView focusable so it can receive key events
-                                isFocusable = true
-                                isFocusableInTouchMode = false // Not needed for TV
+                                // DISABLE built-in controller - Compose handles controls
+                                useController = false
+                                // Block focus from going to PlayerView children
+                                descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                                isFocusable = false
+                                isFocusableInTouchMode = false
                                 
                                 // Ensure view is visible and properly sized
                                 visibility = android.view.View.VISIBLE
@@ -2502,97 +2518,11 @@ fun JellyfinVideoPlayerScreen(
                         )
                     }
                     
-                    // Watch for controller visibility and focus play button whenever it appears
-                    LaunchedEffect(shouldFocusPlayButton, playerInitialized) {
-                        if (shouldFocusPlayButton && playerInitialized) {
-                            // Wait for controller to be fully rendered
-                            kotlinx.coroutines.delay(300)
-                            
-                            val playerView = playerViewRef.value
-                            val controller = playerView?.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
-                            
-                            if (controller != null && controller.visibility == android.view.View.VISIBLE && controller.alpha > 0f) {
-                                // Focus on play/pause button instead of settings
-                                val playButton = controller.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_play)
-                                val pauseButton = controller.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_pause)
-                                val buttonToFocus = if (player.isPlaying && pauseButton != null) pauseButton else playButton
-                                
-                                buttonToFocus?.let { button ->
-                                    try {
-                                        if (button.isFocusable) {
-                                            button.requestFocus()
-                                            Log.d("ExoPlayer", "Focused on play/pause button when controls shown")
-                                        } else {
-                                            // If not focusable, make it focusable and try again
-                                            button.isFocusable = true
-                                            button.isFocusableInTouchMode = false
-                                            kotlinx.coroutines.delay(50)
-                                            button.requestFocus()
-                                            Log.d("ExoPlayer", "Made button focusable and focused on play/pause button")
-                                        }
-                                    } catch (e: Exception) {
-                                        Log.w("ExoPlayer", "Failed to focus play button: ${e.message}")
-                                    }
-                                }
-                            }
-                            
-                            // Reset flag
-                            shouldFocusPlayButton = false
-                        }
-                    }
-                    
-                    // Monitor controller visibility continuously and focus play button when it appears
-                    LaunchedEffect(playerInitialized) {
-                        if (!playerInitialized) return@LaunchedEffect
-                        
-                        var wasControllerVisible = false
-                        while (true) {
-                            kotlinx.coroutines.delay(100) // Check every 100ms
-                            
-                            val playerView = playerViewRef.value
-                            val controller = playerView?.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
-                            val isControllerVisible = controller != null && controller.visibility == android.view.View.VISIBLE && controller.alpha > 0f
-                            
-                            // If controller just became visible, focus play button
-                            if (isControllerVisible && !wasControllerVisible) {
-                                kotlinx.coroutines.delay(200) // Wait for controller to be fully rendered
-                                
-                                val playButton = controller?.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_play)
-                                val pauseButton = controller?.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_pause)
-                                val buttonToFocus = if (player.isPlaying && pauseButton != null) pauseButton else playButton
-                                
-                                buttonToFocus?.let { button ->
-                                    try {
-                                        // Clear any existing focus first
-                                        val currentFocused = controller.findFocus()
-                                        currentFocused?.clearFocus()
-                                        
-                                        // Make button focusable if needed
-                                        if (!button.isFocusable) {
-                                            button.isFocusable = true
-                                            button.isFocusableInTouchMode = false
-                                        }
-                                        
-                                        // Request focus on play/pause button
-                                        button.requestFocus()
-                                        Log.d("ExoPlayer", "Focused on play/pause button when controller appeared (monitored)")
-                                    } catch (e: Exception) {
-                                        Log.w("ExoPlayer", "Failed to focus play button when controller appeared: ${e.message}")
-                                    }
-                                }
-                            }
-                            
-                            wasControllerVisible = isControllerVisible
-                        }
-                    }
-                    
-                    // Title overlay at the top - disappears after 10 seconds or when controller is visible
+                    // Title overlay at the top - shows on initial load (10 seconds) OR when controls are visible
                     val displayName = itemDetails?.Name ?: item.Name
                     val isEpisode = itemDetails?.Type == "Episode"
-                    // Check if controller is visible
-                    val controller = playerViewRef.value?.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
-                    val isControllerShowing = controller != null && controller.visibility == android.view.View.VISIBLE && controller.alpha > 0f
-                    val showTitle = titleOverlayVisible && !isControllerShowing && (displayName.isNotEmpty() || (isEpisode && seriesName != null))
+                    // Show title when: initial overlay is visible OR custom controls are showing
+                    val showTitle = (titleOverlayVisible || showControls) && (displayName.isNotEmpty() || (isEpisode && seriesName != null))
                     
                     if (showTitle) {
                         Column(
@@ -2617,13 +2547,178 @@ fun JellyfinVideoPlayerScreen(
                                 )
                             }
                             
-                            // Show episode name below series name for episodes
-                            if (isEpisode && displayName.isNotEmpty()) {
-                                androidx.tv.material3.Text(
-                                    text = displayName,
-                                    style = androidx.tv.material3.MaterialTheme.typography.titleMedium,
-                                    color = Color.White.copy(alpha = 0.9f)
+                            // Show season/episode number and episode name for episodes
+                            if (isEpisode) {
+                                val seasonNum = itemDetails?.ParentIndexNumber ?: item.ParentIndexNumber
+                                val episodeNum = itemDetails?.IndexNumber ?: item.IndexNumber
+                                
+                                // Build episode info string: "S1 E5 - Episode Name" or "S1 E5" or just episode name
+                                val episodeInfo = buildString {
+                                    if (seasonNum != null && episodeNum != null) {
+                                        append("S${seasonNum} E${episodeNum}")
+                                        if (displayName.isNotEmpty()) {
+                                            append(" · ")
+                                            append(displayName)
+                                        }
+                                    } else if (episodeNum != null) {
+                                        append("Episode ${episodeNum}")
+                                        if (displayName.isNotEmpty()) {
+                                            append(" · ")
+                                            append(displayName)
+                                        }
+                                    } else if (displayName.isNotEmpty()) {
+                                        append(displayName)
+                                    }
+                                }
+                                
+                                if (episodeInfo.isNotEmpty()) {
+                                    androidx.tv.material3.Text(
+                                        text = episodeInfo,
+                                        style = androidx.tv.material3.MaterialTheme.typography.titleMedium,
+                                        color = Color.White.copy(alpha = 0.9f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    
+                    // === CUSTOM COMPOSE CONTROLS OVERLAY ===
+                    AnimatedVisibility(
+                        visible = showControls,
+                        enter = fadeIn(),
+                        exit = fadeOut()
+                    ) {
+                        // FocusRequester for play/pause button - ALWAYS gets focus first
+                        val playPauseFocusRequester = remember { FocusRequester() }
+                        
+                        // Request focus on play/pause button when controls appear
+                        LaunchedEffect(Unit) {
+                            playPauseFocusRequester.requestFocus()
+                        }
+                        
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.4f))
+                                .onPreviewKeyEvent { event ->
+                                    // Reset auto-hide timer on any key press
+                                    if (event.type == KeyEventType.KeyDown) {
+                                        controlsInteractionKey++
+                                    }
+                                    
+                                    if (event.type == KeyEventType.KeyUp && event.key == Key.Back) {
+                                        showControls = false
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+                        ) {
+                            // Progress bar at the bottom
+                            Column(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 48.dp, vertical = 32.dp)
+                            ) {
+                                // Time display
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = formatTime(currentPosition),
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        text = formatTime(duration),
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                                
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                // Focusable Seekbar - user can select and use left/right to seek
+                                PlayerSeekBar(
+                                    currentPosition = currentPosition,
+                                    duration = duration,
+                                    onSeek = { newPosition ->
+                                        player.seekTo(newPosition)
+                                    }
                                 )
+                                
+                                Spacer(modifier = Modifier.height(24.dp))
+                                
+                                // Control buttons row
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Rewind button
+                                    PlayerControlButton(
+                                        icon = Icons.Filled.FastRewind,
+                                        contentDescription = "Rewind 15s",
+                                        onClick = {
+                                            val seekTo = (player.currentPosition - 15000).coerceAtLeast(0)
+                                            player.seekTo(seekTo)
+                                        }
+                                    )
+                                    
+                                    Spacer(modifier = Modifier.width(32.dp))
+                                    
+                                    // Play/Pause button - DEFAULT FOCUS TARGET
+                                    PlayerControlButton(
+                                        icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                        contentDescription = if (isPlaying) "Pause" else "Play",
+                                        onClick = {
+                                            if (isPlaying) player.pause() else player.play()
+                                        },
+                                        modifier = Modifier.focusRequester(playPauseFocusRequester),
+                                        isLarge = true
+                                    )
+                                    
+                                    Spacer(modifier = Modifier.width(32.dp))
+                                    
+                                    // Fast forward button
+                                    PlayerControlButton(
+                                        icon = Icons.Filled.FastForward,
+                                        contentDescription = "Forward 15s",
+                                        onClick = {
+                                            val dur = player.duration
+                                            val seekTo = if (dur > 0) {
+                                                (player.currentPosition + 15000).coerceAtMost(dur)
+                                            } else {
+                                                player.currentPosition + 15000
+                                            }
+                                            player.seekTo(seekTo)
+                                        }
+                                    )
+                                    
+                                    Spacer(modifier = Modifier.width(32.dp))
+                                    
+                                    // Picture Mode / Aspect Ratio button
+                                    AspectModeButton(
+                                        currentMode = currentAspectMode,
+                                        onClick = {
+                                            currentAspectMode = currentAspectMode.next()
+                                        }
+                                    )
+                                    
+                                    Spacer(modifier = Modifier.width(32.dp))
+                                    
+                                    // Settings button
+                                    PlayerControlButton(
+                                        icon = Icons.Filled.Settings,
+                                        contentDescription = "Settings",
+                                        onClick = {
+                                            showControls = false
+                                            showSettingsMenu = true
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -3887,6 +3982,224 @@ fun SkipButton(
                     color = Color.Black
                 )
             }
+        }
+    }
+}
+
+// YouTube TV-style player control button
+@Composable
+private fun PlayerControlButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    isLarge: Boolean = false
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val size = if (isLarge) 80.dp else 56.dp
+    val iconSize = if (isLarge) 40.dp else 28.dp
+    
+    Box(
+        modifier = modifier
+            .size(size)
+            .background(
+                color = when {
+                    isFocused -> Color.White
+                    else -> Color.White.copy(alpha = 0.2f)
+                },
+                shape = RoundedCornerShape(50)
+            )
+            .border(
+                width = if (isFocused) 3.dp else 2.dp,
+                color = Color.White,
+                shape = RoundedCornerShape(50)
+            )
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusable()
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (isFocused) Color.Black else Color.White,
+            modifier = Modifier.size(iconSize)
+        )
+    }
+}
+
+// Format time in HH:MM:SS or MM:SS format
+private fun formatTime(ms: Long): String {
+    if (ms <= 0) return "0:00"
+    val totalSeconds = ms / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    
+    return if (hours > 0) {
+        String.format("%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format("%d:%02d", minutes, seconds)
+    }
+}
+
+// Focusable seekbar that allows manual seeking with D-pad
+@Composable
+private fun PlayerSeekBar(
+    currentPosition: Long,
+    duration: Long,
+    onSeek: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val progress = if (duration > 0) currentPosition.toFloat() / duration.toFloat() else 0f
+    
+    // Seek step when progress bar is focused: 3% of duration or 30 seconds (much faster than regular seeking)
+    // This allows users to quickly scrub through the video
+    // For a 2-hour movie: ~3.6 minutes per press
+    // For a 1-hour show: ~1.8 minutes per press
+    // For a 30-min episode: ~54 seconds per press
+    val seekStep = if (duration > 0) {
+        maxOf(duration / 33, 30000L) // 3% of duration, minimum 30 seconds
+    } else {
+        30000L
+    }
+    
+    val barHeight = if (isFocused) 12.dp else 6.dp
+    val thumbSize = if (isFocused) 18.dp else 0.dp
+    
+    androidx.compose.foundation.layout.BoxWithConstraints(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(24.dp) // Fixed height to accommodate thumb
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusable()
+            .onPreviewKeyEvent { event ->
+                if (isFocused && event.type == KeyEventType.KeyDown) {
+                    when (event.key) {
+                        Key.DirectionLeft -> {
+                            // Seek backward
+                            val newPosition = (currentPosition - seekStep).coerceAtLeast(0)
+                            onSeek(newPosition)
+                            true
+                        }
+                        Key.DirectionRight -> {
+                            // Seek forward
+                            val newPosition = if (duration > 0) {
+                                (currentPosition + seekStep).coerceAtMost(duration)
+                            } else {
+                                currentPosition + seekStep
+                            }
+                            onSeek(newPosition)
+                            true
+                        }
+                        else -> false
+                    }
+                } else {
+                    false
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        val trackWidth = maxWidth
+        
+        // Track background
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(barHeight)
+                .background(
+                    color = Color.White.copy(alpha = 0.3f),
+                    shape = RoundedCornerShape(barHeight / 2)
+                )
+                .border(
+                    width = if (isFocused) 2.dp else 0.dp,
+                    color = if (isFocused) Color(0xFF9C27B0) else Color.Transparent,
+                    shape = RoundedCornerShape(barHeight / 2)
+                )
+        ) {
+            // Progress fill
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progress.coerceIn(0f, 1f))
+                    .fillMaxHeight()
+                    .background(
+                        color = if (isFocused) Color(0xFF9C27B0) else Color.White,
+                        shape = RoundedCornerShape(barHeight / 2)
+                    )
+            )
+        }
+        
+        // Thumb indicator - only show when focused
+        if (isFocused && thumbSize > 0.dp) {
+            val thumbOffset = with(androidx.compose.ui.platform.LocalDensity.current) {
+                (trackWidth.toPx() * progress.coerceIn(0f, 1f) - thumbSize.toPx() / 2).toDp()
+            }
+            
+            Box(
+                modifier = Modifier
+                    .offset(x = thumbOffset)
+                    .size(thumbSize)
+                    .align(Alignment.CenterStart)
+                    .background(
+                        color = Color.White,
+                        shape = RoundedCornerShape(50)
+                    )
+                    .border(
+                        width = 2.dp,
+                        color = Color(0xFF9C27B0),
+                        shape = RoundedCornerShape(50)
+                    )
+            )
+        }
+    }
+}
+
+// Picture Mode / Aspect Ratio button
+@Composable
+private fun AspectModeButton(
+    currentMode: AspectMode,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    
+    Box(
+        modifier = modifier
+            .size(56.dp)
+            .background(
+                color = when {
+                    isFocused -> Color.White
+                    else -> Color.White.copy(alpha = 0.2f)
+                },
+                shape = RoundedCornerShape(50)
+            )
+            .border(
+                width = if (isFocused) 3.dp else 2.dp,
+                color = Color.White,
+                shape = RoundedCornerShape(50)
+            )
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusable()
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = Icons.Filled.AspectRatio,
+                contentDescription = "Picture Mode: ${currentMode.label}",
+                tint = if (isFocused) Color.Black else Color.White,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = currentMode.label,
+                color = if (isFocused) Color.Black else Color.White,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }

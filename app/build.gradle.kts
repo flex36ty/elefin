@@ -16,8 +16,8 @@ android {
         targetSdk = 36
 
         // Version code: major * 10000 + minor * 100 + patch
-        versionCode = 10110
-        versionName = "1.1.10"
+        versionCode = 10111
+        versionName = "1.1.11"
 
         ndk {
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
@@ -57,11 +57,6 @@ android {
         compose = true
     }
     
-    sourceSets {
-        getByName("main") {
-            jniLibs.srcDirs("lib")
-        }
-    }
 }
 
 dependencies {
@@ -154,4 +149,10 @@ dependencies {
     // Adds support for: DTS, DTS-HD, TrueHD, AC3, E-AC3, and 30+ codecs
     // Licensed under GPLv3 (compatible with Jellyfin ecosystem)
     implementation(libs.jellyfin.media3.ffmpeg.decoder)
+    
+    // -------------------------------------------------------------
+    // MPV Player (Optional - can be enabled in settings)
+    // -------------------------------------------------------------
+    // Uses embedded libmpv.so and libplayer.so from jniLibs folder
+    // Requires .so files to be placed in app/src/main/jniLibs/{abi}/
 }

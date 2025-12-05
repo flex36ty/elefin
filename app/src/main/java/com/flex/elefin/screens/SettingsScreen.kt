@@ -79,6 +79,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import com.flex.elefin.jellyfin.JellyfinConfig
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import android.content.Intent
+import android.net.Uri
+import androidx.core.content.FileProvider
 
 // Settings categories
 enum class SettingsCategory(val title: String, val icon: ImageVector) {
@@ -106,6 +112,22 @@ fun SettingsScreen(
     var selectedCategory by remember { mutableStateOf(SettingsCategory.PLAYBACK) }
     
     // All settings state
+    var mpvEnabled by remember { mutableStateOf(settings.isMpvEnabled) }
+    
+    // MPV download state
+    var isMpvInstalled by remember { mutableStateOf(false) }
+    var isMpvDownloading by remember { mutableStateOf(false) }
+    var mpvDownloadProgress by remember { mutableStateOf(0f) }
+    
+    // Check if mpv-android is installed
+    LaunchedEffect(Unit) {
+        isMpvInstalled = try {
+            context.packageManager.getPackageInfo("is.xyz.mpv", 0)
+            true
+        } catch (e: PackageManager.NameNotFoundException) {
+            false
+        }
+    }
     var debugOutlinesEnabled by remember { mutableStateOf(settings.showDebugOutlines) }
     var preloadLibraryImagesEnabled by remember { mutableStateOf(settings.preloadLibraryImages) }
     var cacheLibraryImagesEnabled by remember { mutableStateOf(settings.cacheLibraryImages) }
@@ -243,6 +265,138 @@ fun SettingsScreen(
                     
                     when (selectedCategory) {
                         SettingsCategory.PLAYBACK -> {
+                            // MPV Player Toggle
+                            SettingToggle(
+                                title = "Use MPV Player",
+                                description = if (isMpvInstalled) {
+                                    "Use mpv-android for playback. Better codec support and HDR passthrough. (Installed ✓)"
+                                } else {
+                                    "Use mpv-android for playback. Requires mpv-android to be installed."
+                                },
+                                isEnabled = mpvEnabled,
+                                onToggle = {
+                                    mpvEnabled = !mpvEnabled
+                                    settings.isMpvEnabled = mpvEnabled
+                                }
+                            )
+                            
+                            // Download MPV Button
+                            if (!isMpvInstalled) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                
+                                if (isMpvDownloading) {
+                                    // Show download progress
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(20.dp),
+                                                strokeWidth = 2.dp,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(
+                                                text = "Downloading mpv-android... ${(mpvDownloadProgress * 100).toInt()}%",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        LinearProgressIndicator(
+                                            progress = { mpvDownloadProgress },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                } else {
+                                    // Download button
+                                    Button(
+                                        onClick = {
+                                            scope.launch {
+                                                isMpvDownloading = true
+                                                mpvDownloadProgress = 0f
+                                                
+                                                try {
+                                                    val mpvApkUrl = "https://github.com/mpv-android/mpv-android/releases/download/2025-08-25/app-default-universal-release.apk"
+                                                    val apkFile = File(context.cacheDir, "mpv-android.apk")
+                                                    
+                                                    // Download the APK
+                                                    withContext(Dispatchers.IO) {
+                                                        val url = java.net.URL(mpvApkUrl)
+                                                        val connection = url.openConnection() as java.net.HttpURLConnection
+                                                        connection.instanceFollowRedirects = true
+                                                        connection.connect()
+                                                        
+                                                        val fileLength = connection.contentLength.toLong()
+                                                        
+                                                        connection.inputStream.use { input ->
+                                                            apkFile.outputStream().use { output ->
+                                                                val buffer = ByteArray(8192)
+                                                                var bytesRead: Int
+                                                                var totalBytesRead = 0L
+                                                                
+                                                                while (input.read(buffer).also { bytesRead = it } != -1) {
+                                                                    output.write(buffer, 0, bytesRead)
+                                                                    totalBytesRead += bytesRead
+                                                                    if (fileLength > 0) {
+                                                                        mpvDownloadProgress = totalBytesRead.toFloat() / fileLength
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    
+                                                    // Install the APK
+                                                    val apkUri = FileProvider.getUriForFile(
+                                                        context,
+                                                        "${context.packageName}.fileprovider",
+                                                        apkFile
+                                                    )
+                                                    
+                                                    val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                                                        setDataAndType(apkUri, "application/vnd.android.package-archive")
+                                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                    }
+                                                    context.startActivity(installIntent)
+                                                    
+                                                    Toast.makeText(context, "Installing mpv-android...", Toast.LENGTH_SHORT).show()
+                                                    
+                                                } catch (e: Exception) {
+                                                    android.util.Log.e("Settings", "Failed to download mpv-android", e)
+                                                    Toast.makeText(context, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
+                                                } finally {
+                                                    isMpvDownloading = false
+                                                    mpvDownloadProgress = 0f
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp),
+                                        colors = ButtonDefaults.colors(
+                                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Download,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Download & Install mpv-android")
+                                    }
+                                }
+                            }
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
                             // Skip Intro
                             SettingToggle(
                                 title = "Skip Intro",

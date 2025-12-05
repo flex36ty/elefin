@@ -4,20 +4,82 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2025-12-04 part 2
+
+### Added
+
+- **MPV-Elefin External Player Integration**
+  - New companion app `mpv-elefin` provides hardware-accelerated MPV playback
+  - Elefin automatically launches mpv-elefin when MPV player is enabled in settings
+  - Seamless handoff - Elefin passes video URL, headers, title, and resume position to mpv-elefin
+  - mpv-elefin handles all playback with YouTube TV-style controls
+  - Progress reporting back to Jellyfin handled by mpv-elefin
+
+- **MpvElefinLauncher Helper**
+  - Checks if mpv-elefin is installed on the device
+  - Builds Jellyfin direct stream URLs with proper authentication
+  - Constructs HTTP headers for Jellyfin API access
+  - Passes resume position for seamless continue watching support
+
+### Changed
+
+- **MPV Player Architecture**
+  - MPV playback now uses external mpv-elefin app instead of embedded .so libraries
+  - Embedded .so approach was unstable - external app is the only reliable method
+  - New `MpvUrlBuilder` for building Jellyfin stream URLs
+  - Simplified codebase by removing complex MPV initialization logic
+
+### Removed
+
+- **Deprecated MPV Files**
+  - Removed `MPVHolder.kt` (singleton pattern no longer needed)
+  - Removed `MPVSubtitleDownloader.kt` (handled by mpv-elefin)
+  - Removed `MpvUrlSelector.kt` (replaced by `MpvUrlBuilder`)
+  - Removed `MPVVideoPlayerScreen.kt` (playback handled by mpv-elefin)
+
+---
+
 ## 2025-12-04
 
 ### Added
 
 - **Cast Info Screen** - View actor/director biographies, birth dates, and filmography by clicking on cast members
 
+- **New Video Player Controls** - Completely redesigned YouTube TV-style player controls
+  - Clean overlay that appears when you press OK/Enter during playback
+  - Large, centered Play/Pause button that's always focused first
+  - Rewind and Fast Forward buttons (15 seconds each)
+  - Interactive seek bar - navigate to it and use Left/Right to scrub through the video faster
+  - Picture Mode button to change aspect ratios
+  - Settings button for subtitles, audio tracks, and playback speed
+  - Controls auto-hide after 5 seconds of inactivity (resets on any button press)
+
+- **Title Overlay** 
+  - Shows the movie/show title when controls appear, including season and episode info for TV shows (e.g., "S1 E5 · Episode Name")
+
+- **Picture Mode / Aspect Ratio** - New button in player controls to change how the video fills your screen
+  - Fit: Shows the full video with black bars if needed (default)
+  - Fill: Crops the video to fill the entire screen, removing black bars
+  - 16:9: Forces a 16:9 letterbox frame
+  - Cinema: Movie theater style 2.39:1 cinemascope with wide black bars (like a real cinema!)
+  - Stretch: Stretches the video to fill the screen
+
+- **Focusable Seek Bar** \
+  - Navigate to the progress bar and use Left/Right arrows to seek quickly through the video
+
 ### Improved
 
-- **Home Screen Performance** - Debounced synopsis loading to prevent lag during fast scrolling
-- **Smoother Scrolling** - Reduced API calls and recompositions when navigating between items
+- **Home Screen Performance** 
+  - Debounced synopsis loading to prevent lag during fast scrolling
+- **Smoother Scrolling** 
+  - Reduced API calls and recompositions when navigating between items
+- **Player Focus Handling** 
+  - Play/Pause button is now always focused when controls appear, no more hunting for it with the remote
 
 ### Fixed
 
-- **Settings Layout** - Redesigned to Google TV style with categories on the left
+- **Settings Layout** 
+  - Redesigned to Google TV style with categories on the left
 
 ---
 

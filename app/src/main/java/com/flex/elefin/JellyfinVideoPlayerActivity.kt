@@ -16,12 +16,26 @@ import com.flex.elefin.jellyfin.JellyfinApiService
 import com.flex.elefin.jellyfin.JellyfinConfig
 import com.flex.elefin.jellyfin.JellyfinItem
 import com.flex.elefin.jellyfin.AppSettings
+import com.flex.elefin.player.mpv.MpvTvPlayerActivity
+import com.flex.elefin.player.mpv.MpvUrlBuilder
 import com.flex.elefin.screens.JellyfinVideoPlayerScreen
+import `is`.xyz.mpv.MPVLib
 
 @UnstableApi
 class JellyfinVideoPlayerActivity : ComponentActivity() {
+    
+    private fun isPackageInstalled(packageName: String): Boolean {
+        return try {
+            packageManager.getPackageInfo(packageName, 0)
+            true
+        } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+            false
+        }
+    }
+    
     companion object {
         private const val EXTRA_ITEM_ID = "item_id"
+        private const val EXTRA_ITEM_NAME = "item_name"
         private const val EXTRA_RESUME_POSITION_MS = "resume_position_ms"
         private const val EXTRA_SUBTITLE_STREAM_INDEX = "subtitle_stream_index"
         private const val EXTRA_AUDIO_STREAM_INDEX = "audio_stream_index"
@@ -31,13 +45,15 @@ class JellyfinVideoPlayerActivity : ComponentActivity() {
             itemId: String,
             resumePositionMs: Long = 0L,
             subtitleStreamIndex: Int? = null,
-            audioStreamIndex: Int? = null
+            audioStreamIndex: Int? = null,
+            itemName: String? = null
         ): Intent {
             return Intent(context, JellyfinVideoPlayerActivity::class.java).apply {
                 putExtra(EXTRA_ITEM_ID, itemId)
                 putExtra(EXTRA_RESUME_POSITION_MS, resumePositionMs)
                 subtitleStreamIndex?.let { putExtra(EXTRA_SUBTITLE_STREAM_INDEX, it) }
                 audioStreamIndex?.let { putExtra(EXTRA_AUDIO_STREAM_INDEX, it) }
+                itemName?.let { putExtra(EXTRA_ITEM_NAME, it) }
             }
         }
     }
@@ -90,6 +106,7 @@ class JellyfinVideoPlayerActivity : ComponentActivity() {
         window.decorView.requestFocus()
 
         val itemId = intent.getStringExtra(EXTRA_ITEM_ID) ?: return
+        val itemName = intent.getStringExtra(EXTRA_ITEM_NAME) ?: ""
         val resumePositionMs = intent.getLongExtra(EXTRA_RESUME_POSITION_MS, 0L)
         val subtitleStreamIndex = if (intent.hasExtra(EXTRA_SUBTITLE_STREAM_INDEX)) {
             intent.getIntExtra(EXTRA_SUBTITLE_STREAM_INDEX, -1).takeIf { it >= 0 }
@@ -113,16 +130,65 @@ class JellyfinVideoPlayerActivity : ComponentActivity() {
             return
         }
 
+        // Check if MPV is enabled in settings
+        if (settings.isMpvEnabled) {
+            val serverUrl = config.serverUrl.removeSuffix("/")
+            val accessToken = config.accessToken ?: ""
+            
+            // Check for mpv-elefin first (TV-optimized controls), then mpv-android
+            val mpvPackage = when {
+                isPackageInstalled("com.flex.mpvelefin") -> "com.flex.mpvelefin"
+                isPackageInstalled("is.xyz.mpv") -> "is.xyz.mpv"
+                else -> null
+            }
+            
+            if (mpvPackage != null) {
+                android.util.Log.d("VideoPlayer", "MPV player enabled - launching $mpvPackage")
+                
+                // Build direct stream URL (static=true for direct play)
+                val url = MpvUrlBuilder.buildStreamUrl(
+                    serverUrl = serverUrl,
+                    itemId = itemId,
+                    accessToken = accessToken
+                )
+                
+                android.util.Log.d("VideoPlayer", "MPV URL: $url")
+                
+                try {
+                    // Launch exactly like mpv-android expects: ACTION_VIEW with URL as data
+                    val mpvIntent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(android.net.Uri.parse(url), "video/*")
+                        setPackage(mpvPackage)
+                        putExtra("title", itemName)
+                        // Position in milliseconds
+                        if (resumePositionMs > 0) {
+                            putExtra("position", resumePositionMs.toInt())
+                        }
+                        putExtra("decode_mode", 2) // Hardware decoding
+                        putExtra("subs_enable", true)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    startActivity(mpvIntent)
+                    finish()
+                    return
+                } catch (e: Exception) {
+                    android.util.Log.e("VideoPlayer", "Failed to launch $mpvPackage", e)
+                    // Fall through to ExoPlayer
+                }
+            } else {
+                android.util.Log.w("VideoPlayer", "No MPV player installed, falling back to ExoPlayer")
+            }
+        }
+
         // Create a minimal item object (details will be fetched in the screen)
         val item = JellyfinItem(
             Id = itemId,
-            Name = ""
+            Name = itemName
         )
 
         setContent {
             JellyfinAppTheme {
                 // Use ExoPlayer with FFmpeg for comprehensive codec support
-                // MPV is temporarily disabled
                 JellyfinVideoPlayerScreen(
                     item = item,
                     apiService = apiService,

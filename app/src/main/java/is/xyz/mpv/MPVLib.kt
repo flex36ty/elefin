@@ -2,20 +2,37 @@ package `is`.xyz.mpv
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.util.Log
 import android.view.Surface
 
-// Wrapper for native library
-// Source: https://github.com/mpv-android/mpv-android/blob/master/app/src/main/java/is/xyz/mpv/MPVLib.kt
-
+/**
+ * MPVLib - JNI wrapper for libmpv
+ * 
+ * This is the exact interface expected by libplayer.so from mpv-android.
+ * All @JvmStatic methods are called from native code and must match exactly.
+ */
 @Suppress("unused")
 object MPVLib {
+    private const val TAG = "MPVLib"
+    
+    var initialized = false
+        private set
+    
     init {
-        val libs = arrayOf("mpv", "player")
-        for (lib in libs) {
-            System.loadLibrary(lib)
+        try {
+            val libs = arrayOf("mpv", "player")
+            for (lib in libs) {
+                System.loadLibrary(lib)
+            }
+            initialized = true
+            Log.d(TAG, "MPV libraries loaded successfully")
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to load MPV libraries", e)
+            initialized = false
         }
     }
 
+    // Native methods - called by Kotlin to control MPV
     external fun create(appctx: Context)
     external fun init()
     external fun destroy()
@@ -39,6 +56,9 @@ object MPVLib {
 
     external fun observeProperty(property: String, format: Int)
 
+    // ========== Callback methods - called FROM native code ==========
+    // These MUST be @JvmStatic and match the exact signatures expected by libplayer.so
+
     private val observers = mutableListOf<EventObserver>()
 
     @JvmStatic
@@ -55,6 +75,7 @@ object MPVLib {
         }
     }
 
+    // Called from native: eventProperty(String, long)
     @JvmStatic
     fun eventProperty(property: String, value: Long) {
         synchronized(observers) {
@@ -63,6 +84,7 @@ object MPVLib {
         }
     }
 
+    // Called from native: eventProperty(String, boolean)
     @JvmStatic
     fun eventProperty(property: String, value: Boolean) {
         synchronized(observers) {
@@ -71,6 +93,7 @@ object MPVLib {
         }
     }
 
+    // Called from native: eventProperty(String, double)
     @JvmStatic
     fun eventProperty(property: String, value: Double) {
         synchronized(observers) {
@@ -79,6 +102,7 @@ object MPVLib {
         }
     }
 
+    // Called from native: eventProperty(String, String)
     @JvmStatic
     fun eventProperty(property: String, value: String) {
         synchronized(observers) {
@@ -87,6 +111,7 @@ object MPVLib {
         }
     }
 
+    // Called from native: eventProperty(String)
     @JvmStatic
     fun eventProperty(property: String) {
         synchronized(observers) {
@@ -95,6 +120,7 @@ object MPVLib {
         }
     }
 
+    // Called from native: event(int)
     @JvmStatic
     fun event(eventId: Int) {
         synchronized(observers) {
@@ -103,6 +129,7 @@ object MPVLib {
         }
     }
 
+    // Log observers
     private val log_observers = mutableListOf<LogObserver>()
 
     @JvmStatic
@@ -119,6 +146,7 @@ object MPVLib {
         }
     }
 
+    // Called from native: logMessage(String, int, String)
     @JvmStatic
     fun logMessage(prefix: String, level: Int, text: String) {
         synchronized(log_observers) {
@@ -188,5 +216,3 @@ object MPVLib {
         const val MPV_LOG_LEVEL_TRACE: Int = 70
     }
 }
-
-

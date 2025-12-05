@@ -6,19 +6,27 @@ import android.util.Log
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 
-// Contains only the essential code needed to get a picture on the screen
-// Source: https://github.com/mpv-android/mpv-android/blob/master/app/src/main/java/is/xyz/mpv/BaseMPVView.kt
-
-abstract class BaseMPVView(context: Context, attrs: AttributeSet?) : SurfaceView(context, attrs), SurfaceHolder.Callback {
+/**
+ * BaseMPVView - Contains only the essential code needed to get a picture on the screen.
+ * From mpv-android source code.
+ */
+abstract class BaseMPVView @JvmOverloads constructor(
+    context: Context, 
+    attrs: AttributeSet? = null
+) : SurfaceView(context, attrs), SurfaceHolder.Callback {
+    
+    companion object {
+        private const val TAG = "mpv"
+    }
+    
     /**
      * Initialize libmpv.
-     *
      * Call this once before the view is shown.
      */
     fun initialize(configDir: String, cacheDir: String) {
         MPVLib.create(context)
 
-        /* set normal options (user-supplied config can override) */
+        // Set normal options (user-supplied config can override)
         MPVLib.setOptionString("config", "yes")
         MPVLib.setOptionString("config-dir", configDir)
         for (opt in arrayOf("gpu-shader-cache-dir", "icc-cache-dir"))
@@ -27,11 +35,11 @@ abstract class BaseMPVView(context: Context, attrs: AttributeSet?) : SurfaceView
 
         MPVLib.init()
 
-        /* set hardcoded options */
+        // Set hardcoded options
         postInitOptions()
-        // could mess up VO init before surfaceCreated() is called
+        // Could mess up VO init before surfaceCreated() is called
         MPVLib.setOptionString("force-window", "no")
-        // need to idle at least once for playFile() logic to work
+        // Need to idle at least once for playFile() logic to work
         MPVLib.setOptionString("idle", "once")
 
         holder.addCallback(this)
@@ -40,19 +48,16 @@ abstract class BaseMPVView(context: Context, attrs: AttributeSet?) : SurfaceView
 
     /**
      * Deinitialize libmpv.
-     *
      * Call this once before the view is destroyed.
      */
     fun destroy() {
         // Disable surface callbacks to avoid using uninitialized mpv state
         holder.removeCallback(this)
-
         MPVLib.destroy()
     }
 
     protected abstract fun initOptions()
     protected abstract fun postInitOptions()
-
     protected abstract fun observeProperties()
 
     private var filePath: String? = null
@@ -99,17 +104,10 @@ abstract class BaseMPVView(context: Context, attrs: AttributeSet?) : SurfaceView
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         Log.w(TAG, "detaching surface")
         MPVLib.setPropertyString("vo", "null")
-        MPVLib.setOptionString("force-window", "no")
+        MPVLib.setPropertyString("force-window", "no")
         // Note that before calling detachSurface() we need to be sure that libmpv
         // is done using the surface.
-        // FIXME: There could be a race condition here, because I don't think
-        // setting a property will wait for VO deinit.
         MPVLib.detachSurface()
     }
-
-    companion object {
-        private const val TAG = "mpv"
-    }
 }
-
 
