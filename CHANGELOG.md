@@ -4,6 +4,81 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2025-12-05
+
+### Added
+
+- **OpenSubtitles Integration - Download Subtitles On Demand**
+  - New "Download Subtitles" button in the subtitle selection dialog on movie/series info pages
+  - Search OpenSubtitles by IMDB ID, TMDB ID, or title query
+  - Select from multiple subtitle results sorted by download count
+  - Supports 30+ languages including English, Spanish, French, German, Portuguese, Japanese, Korean, Chinese, Arabic, and more
+  - Downloaded subtitles are saved locally and persist across app sessions
+  - Requires free OpenSubtitles API key and account login (get at opensubtitles.com)
+
+- **OpenSubtitles Settings**
+  - New "OpenSubtitles API Key" setting to configure your API key
+  - New "OpenSubtitles Login" setting for username/password authentication
+  - API key and login required for downloading subtitles (search is free)
+  - Settings located in the Performance section
+
+- **Downloaded Subtitles in Video Player**
+  - Downloaded subtitles automatically appear in the player's subtitle picker
+  - Shows "Downloaded Subtitles" section with all locally saved subtitles
+  - Downloaded subtitles display with "(Downloaded)" label to distinguish from server subtitles
+  - Select downloaded subtitles just like any other subtitle track
+
+- **UI Performance - Low Power Mode**
+  - New "Low Power Mode" setting for budget Android TV devices (ONN 4K Pro, etc.)
+  - Enables Google TV style cards (lightweight with subtle animations)
+  - Disables UI animations for smoother scrolling
+  - Reduces image resolutions:
+    - Background images: 1280x720 @ 75% quality
+    - Poster cards: 300x450 @ 80% quality
+    - Thumbnail cards: 320x180 @ 80% quality
+  - Disables image crossfade animations
+  - Significantly reduces CPU/GPU load on weaker devices
+
+- **UI Performance - Card Style Options**
+  - New "Use Simple Cards" setting - basic cards without zoom animations
+  - New "Use Google TV Cards" setting - lightweight cards with subtle scale and glow border
+  - Settings apply immediately without app restart
+  - Google TV cards have proper D-pad navigation support
+
+### Fixed
+
+- **Subtitle File Naming**
+  - Downloaded subtitles now always have proper file extensions (.srt, .vtt, .ass, etc.)
+  - ExoPlayer correctly detects MIME type from file extension
+  - Fixed issue where subtitles were downloaded but not recognized by ExoPlayer
+
+- **Subtitle Picker Shows Downloaded Subtitles**
+  - Fixed issue where downloaded OpenSubtitles weren't appearing in the subtitle picker
+  - Subtitle picker now shows both Jellyfin server subtitles AND downloaded local subtitles
+  - Downloaded subtitles are properly attached to ExoPlayer MediaItem on playback start
+
+- **OpenSubtitles API Compliance**
+  - Added required User-Agent header to all API requests
+  - Implemented proper authentication flow (API key + login token)
+  - Added retry logic with exponential backoff for 503/429 errors
+  - Fixed download request format (JSON body with file_id)
+
+### Changed
+
+- **Home Screen Performance**
+  - Synopsis and metadata now load instantly (removed 300ms debounce delay)
+  - Faster response when navigating between items
+
+### Technical
+
+- Added `SubtitleMapper.buildLocalSubtitleConfiguration()` for downloaded subtitle support
+- Added `OpenSubtitlesApi` client with search, login, and download functionality
+- Added `SubtitleLanguageDialog`, `SubtitleResultsDialog`, `SubtitleDownloadingDialog`, `ApiKeyRequiredDialog` composables
+- Downloaded subtitles stored in `filesDir/downloaded_subtitles/{itemId}/`
+- ExoPlayer MediaItem now includes both Jellyfin and downloaded subtitle configurations
+
+---
+
 ## 2025-12-04 part 2
 
 ### Added

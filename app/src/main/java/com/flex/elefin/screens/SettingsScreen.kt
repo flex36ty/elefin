@@ -70,6 +70,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -171,6 +173,9 @@ fun SettingsScreen(
 
     // UI Performance settings
     var disableUIAnimations by remember { mutableStateOf(settings.disableUIAnimations) }
+    var useSimpleCards by remember { mutableStateOf(settings.useSimpleCards) }
+    var useGoogleTvCards by remember { mutableStateOf(settings.useGoogleTvCards) }
+    var lowPowerMode by remember { mutableStateOf(settings.lowPowerMode) }
     
     // Logout confirmation
     var showLogoutConfirmation by remember { mutableStateOf(false) }
@@ -616,6 +621,129 @@ fun SettingsScreen(
                             
                             Spacer(modifier = Modifier.height(16.dp))
                             
+                            // OpenSubtitles API Key
+                            var openSubtitlesApiKey by remember { mutableStateOf(settings.openSubtitlesApiKey) }
+                            var showApiKeyDialog by remember { mutableStateOf(false) }
+                            
+                            SettingButton(
+                                title = "OpenSubtitles API Key",
+                                description = if (openSubtitlesApiKey.isNotBlank()) 
+                                    "API key configured ✓" 
+                                else 
+                                    "Required for subtitle downloads. Get free key at opensubtitles.com",
+                                buttonText = if (openSubtitlesApiKey.isNotBlank()) "Change" else "Set Key",
+                                onClick = { showApiKeyDialog = true }
+                            )
+                            
+                            if (showApiKeyDialog) {
+                                var apiKeyInput by remember { mutableStateOf(openSubtitlesApiKey) }
+                                AlertDialog(
+                                    onDismissRequest = { showApiKeyDialog = false },
+                                    title = { Text("OpenSubtitles API Key") },
+                                    text = {
+                                        Column {
+                                            Text(
+                                                "Get your free API key at:\nhttps://www.opensubtitles.com/en/consumers\n\nFree tier: 100 downloads/day",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                modifier = Modifier.padding(bottom = 16.dp)
+                                            )
+                                            OutlinedTextField(
+                                                value = apiKeyInput,
+                                                onValueChange = { apiKeyInput = it },
+                                                label = { Text("API Key") },
+                                                singleLine = true,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
+                                    },
+                                    confirmButton = {
+                                        TextButton(
+                                            onClick = {
+                                                openSubtitlesApiKey = apiKeyInput
+                                                settings.openSubtitlesApiKey = apiKeyInput
+                                                showApiKeyDialog = false
+                                            }
+                                        ) {
+                                            Text("Save")
+                                        }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { showApiKeyDialog = false }) {
+                                            Text("Cancel")
+                                        }
+                                    }
+                                )
+                            }
+                            
+                            // OpenSubtitles Login (required for downloads)
+                            var openSubtitlesUsername by remember { mutableStateOf(settings.openSubtitlesUsername) }
+                            var openSubtitlesPassword by remember { mutableStateOf(settings.openSubtitlesPassword) }
+                            var showLoginDialog by remember { mutableStateOf(false) }
+                            
+                            SettingButton(
+                                title = "OpenSubtitles Login",
+                                description = if (openSubtitlesUsername.isNotBlank()) 
+                                    "Logged in as: $openSubtitlesUsername ✓" 
+                                else 
+                                    "Required for downloading subtitles",
+                                buttonText = if (openSubtitlesUsername.isNotBlank()) "Change" else "Login",
+                                onClick = { showLoginDialog = true }
+                            )
+                            
+                            if (showLoginDialog) {
+                                var usernameInput by remember { mutableStateOf(openSubtitlesUsername) }
+                                var passwordInput by remember { mutableStateOf(openSubtitlesPassword) }
+                                AlertDialog(
+                                    onDismissRequest = { showLoginDialog = false },
+                                    title = { Text("OpenSubtitles Login") },
+                                    text = {
+                                        Column {
+                                            Text(
+                                                "Enter your OpenSubtitles.com account credentials.\nCreate a free account at opensubtitles.com if needed.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                modifier = Modifier.padding(bottom = 16.dp)
+                                            )
+                                            OutlinedTextField(
+                                                value = usernameInput,
+                                                onValueChange = { usernameInput = it },
+                                                label = { Text("Username") },
+                                                singleLine = true,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            OutlinedTextField(
+                                                value = passwordInput,
+                                                onValueChange = { passwordInput = it },
+                                                label = { Text("Password") },
+                                                singleLine = true,
+                                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
+                                    },
+                                    confirmButton = {
+                                        TextButton(
+                                            onClick = {
+                                                openSubtitlesUsername = usernameInput
+                                                openSubtitlesPassword = passwordInput
+                                                settings.openSubtitlesUsername = usernameInput
+                                                settings.openSubtitlesPassword = passwordInput
+                                                showLoginDialog = false
+                                            }
+                                        ) {
+                                            Text("Save")
+                                        }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { showLoginDialog = false }) {
+                                            Text("Cancel")
+                                        }
+                                    }
+                                )
+                            }
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
                             // Transcode AAC to AC3
                             SettingToggle(
                                 title = "Transcode AAC to AC3",
@@ -686,10 +814,78 @@ fun SettingsScreen(
                         }
                         
                         SettingsCategory.PERFORMANCE -> {
+                            // Low Power Mode - Master toggle for all performance optimizations
+                            SettingToggle(
+                                title = "Low Power Mode",
+                                description = "Enable all performance optimizations. Recommended for ONN 4K Pro, Fire TV Stick, and budget Android TV boxes.",
+                                isEnabled = lowPowerMode,
+                                onToggle = {
+                                    lowPowerMode = !lowPowerMode
+                                    settings.lowPowerMode = lowPowerMode
+                                    // When enabling low power mode, enable Google TV cards and disable animations
+                                    if (lowPowerMode) {
+                                        useGoogleTvCards = true
+                                        settings.useGoogleTvCards = true
+                                        useSimpleCards = false
+                                        settings.useSimpleCards = false
+                                        disableUIAnimations = true
+                                        settings.disableUIAnimations = true
+                                    }
+                                }
+                            )
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Card Style",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(start = 16.dp, bottom = 4.dp)
+                            )
+                            
+                            // Use Simple Cards
+                            SettingToggle(
+                                title = "Use Simple Cards",
+                                description = "Use flat cards without zoom animation. Best for low-spec devices.",
+                                isEnabled = useSimpleCards,
+                                onToggle = {
+                                    useSimpleCards = !useSimpleCards
+                                    settings.useSimpleCards = useSimpleCards
+                                    // Disable Google TV cards if simple cards enabled
+                                    if (useSimpleCards) {
+                                        useGoogleTvCards = false
+                                        settings.useGoogleTvCards = false
+                                    }
+                                }
+                            )
+                            
+                            // Use Google TV Cards
+                            SettingToggle(
+                                title = "Use Google TV Cards",
+                                description = "Lightweight cards with subtle scale animation and glow border.",
+                                isEnabled = useGoogleTvCards,
+                                onToggle = {
+                                    useGoogleTvCards = !useGoogleTvCards
+                                    settings.useGoogleTvCards = useGoogleTvCards
+                                    // Disable simple cards if Google TV cards enabled
+                                    if (useGoogleTvCards) {
+                                        useSimpleCards = false
+                                        settings.useSimpleCards = false
+                                    }
+                                }
+                            )
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Animations",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(start = 16.dp, bottom = 4.dp)
+                            )
+                            
                             // Disable UI Animations
                             SettingToggle(
                                 title = "Disable UI Animations",
-                                description = "Turn off card zoom animations for better performance",
+                                description = "Turn off row scrolling animations for better performance",
                                 isEnabled = disableUIAnimations,
                                 onToggle = {
                                     disableUIAnimations = !disableUIAnimations

@@ -72,7 +72,10 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.foundation.Image
+import kotlinx.coroutines.launch
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Card
@@ -2574,10 +2577,35 @@ fun EpisodeSubtitleSelectionDialog(
     item: JellyfinItem,
     apiService: JellyfinApiService?,
     onDismiss: () -> Unit,
-    onSubtitleSelected: (subtitleStreamIndex: Int?) -> Unit
+    onSubtitleSelected: (subtitleStreamIndex: Int?) -> Unit,
+    onDownloadedSubtitleSelected: ((String) -> Unit)? = null // File path of downloaded subtitle
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    
     var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     var isLoadingSubtitles by remember { mutableStateOf(true) }
+    
+    // OpenSubtitles download state
+    var showLanguageDialog by remember { mutableStateOf(false) }
+    var showApiKeyRequiredDialog by remember { mutableStateOf(false) }
+    var showSearchResults by remember { mutableStateOf(false) }
+    var isSearching by remember { mutableStateOf(false) }
+    var isDownloading by remember { mutableStateOf(false) }
+    var downloadingSubtitleName by remember { mutableStateOf("") }
+    var searchResults by remember { mutableStateOf<List<com.flex.elefin.subtitles.SubtitleResult>>(emptyList()) }
+    var downloadedSubtitles by remember { mutableStateOf<List<com.flex.elefin.subtitles.DownloadedSubtitle>>(emptyList()) }
+    
+    // Get OpenSubtitles settings
+    val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
+    val openSubtitlesApiKey = remember { settings.openSubtitlesApiKey }
+    val openSubtitlesUsername = remember { settings.openSubtitlesUsername }
+    val openSubtitlesPassword = remember { settings.openSubtitlesPassword }
+    
+    // Load downloaded subtitles
+    LaunchedEffect(item.Id) {
+        downloadedSubtitles = com.flex.elefin.subtitles.OpenSubtitlesApi.getDownloadedSubtitles(context, item.Id)
+    }
     
     // Fetch full item details to get MediaSources with subtitle streams
     LaunchedEffect(item.Id, apiService) {
@@ -2607,7 +2635,6 @@ fun EpisodeSubtitleSelectionDialog(
             ?.sortedBy { it.Index ?: 0 } ?: emptyList()
     }
     
-    val context = LocalContext.current
     val storedSubtitleIndex = remember(context, item.Id) { 
         com.flex.elefin.jellyfin.AppSettings(context).getSubtitlePreference(item.Id) 
     }
@@ -2734,7 +2761,7 @@ fun EpisodeSubtitleSelectionDialog(
                             }
                             
                             // If no subtitles available
-                            if (subtitleStreams.isEmpty()) {
+                            if (subtitleStreams.isEmpty() && downloadedSubtitles.isEmpty()) {
                                 item {
                                     Box(
                                         modifier = Modifier
@@ -2750,11 +2777,202 @@ fun EpisodeSubtitleSelectionDialog(
                                     }
                                 }
                             }
+                            
+                            // Divider before downloaded subtitles
+                            if (downloadedSubtitles.isNotEmpty()) {
+                                item {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "Downloaded Subtitles",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontSize = MaterialTheme.typography.labelMedium.fontSize * 0.8f
+                                        ),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                                
+                                // Downloaded subtitle options
+                                items(downloadedSubtitles) { downloadedSub ->
+                                    ListItem(
+                                        selected = false,
+                                        onClick = {
+                                            onDownloadedSubtitleSelected?.invoke(downloadedSub.filePath)
+                                            onDismiss()
+                                        },
+                                        headlineContent = {
+                                            Column {
+                                                Text(
+                                                    text = com.flex.elefin.subtitles.SubtitleLanguages.getDisplayName(downloadedSub.language),
+                                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.7f
+                                                    )
+                                                )
+                                                Text(
+                                                    text = downloadedSub.release,
+                                                    style = MaterialTheme.typography.bodySmall.copy(
+                                                        fontSize = MaterialTheme.typography.bodySmall.fontSize * 0.7f
+                                                    ),
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        },
+                                        leadingContent = {
+                                            Icon(
+                                                imageVector = Icons.Default.Download,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+                            
+                            // Download Subtitles button
+                            item {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Button(
+                                    onClick = { 
+                                        // Check if API key is configured
+                                        // Check if API key and credentials are configured
+                                        if (openSubtitlesApiKey.isNotBlank() && 
+                                            openSubtitlesUsername.isNotBlank() && 
+                                            openSubtitlesPassword.isNotBlank()) {
+                                            com.flex.elefin.subtitles.OpenSubtitlesApi.setApiKey(openSubtitlesApiKey)
+                                            com.flex.elefin.subtitles.OpenSubtitlesApi.setCredentials(openSubtitlesUsername, openSubtitlesPassword)
+                                            showLanguageDialog = true
+                                        } else {
+                                            showApiKeyRequiredDialog = true
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudDownload,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Download Subtitles",
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
+                                        )
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+    }
+    
+    // API key required dialog
+    if (showApiKeyRequiredDialog) {
+        com.flex.elefin.subtitles.ApiKeyRequiredDialog(
+            onGoToSettings = {
+                showApiKeyRequiredDialog = false
+                onDismiss() // Close the subtitle dialog and go back
+                // User needs to go to Settings manually
+            },
+            onDismiss = { showApiKeyRequiredDialog = false }
+        )
+    }
+    
+    // Language selection dialog
+    if (showLanguageDialog) {
+        com.flex.elefin.subtitles.SubtitleLanguageDialog(
+            onSelect = { language ->
+                showLanguageDialog = false
+                isSearching = true
+                showSearchResults = true
+                
+                // Search OpenSubtitles - for episodes, include season/episode info
+                scope.launch {
+                    try {
+                        val imdbId = item.ProviderIds?.get("Imdb") ?: itemDetails?.SeriesId?.let { 
+                            // Try to get series IMDB ID if episode doesn't have one
+                            apiService?.getItemDetails(it)?.ProviderIds?.get("Imdb")
+                        }
+                        val tmdbId = item.ProviderIds?.get("Tmdb")
+                        
+                        searchResults = com.flex.elefin.subtitles.OpenSubtitlesApi.searchSubtitles(
+                            imdbId = imdbId,
+                            tmdbId = tmdbId,
+                            query = if (imdbId == null && tmdbId == null) {
+                                item.SeriesName ?: item.Name
+                            } else null,
+                            language = language,
+                            seasonNumber = item.ParentIndexNumber,
+                            episodeNumber = item.IndexNumber
+                        )
+                    } catch (e: Exception) {
+                        Log.e("EpisodeSubtitleDialog", "Error searching subtitles", e)
+                        searchResults = emptyList()
+                    } finally {
+                        isSearching = false
+                    }
+                }
+            },
+            onDismiss = { showLanguageDialog = false }
+        )
+    }
+    
+    // Search results dialog
+    if (showSearchResults) {
+        com.flex.elefin.subtitles.SubtitleResultsDialog(
+            results = searchResults,
+            isLoading = isSearching,
+            onSelect = { subtitle ->
+                showSearchResults = false
+                isDownloading = true
+                downloadingSubtitleName = subtitle.attributes.release ?: "Subtitle"
+                
+                // Download the subtitle
+                scope.launch {
+                    try {
+                        val filePath = com.flex.elefin.subtitles.OpenSubtitlesApi.downloadAndSaveSubtitle(
+                            context = context,
+                            itemId = item.Id,
+                            subtitle = subtitle
+                        )
+                        
+                        if (filePath != null) {
+                            // Refresh downloaded subtitles list
+                            downloadedSubtitles = com.flex.elefin.subtitles.OpenSubtitlesApi.getDownloadedSubtitles(context, item.Id)
+                            
+                            // Optionally auto-select the downloaded subtitle
+                            onDownloadedSubtitleSelected?.invoke(filePath)
+                            onDismiss()
+                        } else {
+                            // Show error toast
+                            val errorMsg = com.flex.elefin.subtitles.OpenSubtitlesApi.lastError 
+                                ?: "Download failed"
+                            android.widget.Toast.makeText(context, errorMsg, android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    } catch (e: Exception) {
+                        Log.e("EpisodeSubtitleDialog", "Error downloading subtitle", e)
+                        android.widget.Toast.makeText(context, "Download failed: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                    } finally {
+                        isDownloading = false
+                    }
+                }
+            },
+            onDismiss = { showSearchResults = false }
+        )
+    }
+    
+    // Downloading dialog
+    if (isDownloading) {
+        com.flex.elefin.subtitles.SubtitleDownloadingDialog(
+            subtitleName = downloadingSubtitleName
+        )
     }
 }
 

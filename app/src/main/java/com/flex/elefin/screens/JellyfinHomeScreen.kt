@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -59,8 +61,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Offset
@@ -153,6 +157,15 @@ fun JellyfinHomeScreen(
     
     // UI animations setting - read from settings
     val disableUIAnimations = remember { mutableStateOf(settings.disableUIAnimations) }
+    
+    // Low power mode - enables all performance optimizations
+    val lowPowerMode = remember { mutableStateOf(settings.lowPowerMode) }
+    
+    // Simple cards setting - read from settings (for low-spec devices)
+    val useSimpleCards = remember { mutableStateOf(settings.useSimpleCards) }
+    
+    // Google TV style cards setting - lightweight with subtle scale animation
+    val useGoogleTvCards = remember { mutableStateOf(settings.useGoogleTvCards) }
     
     // No-fling behavior for when animations are disabled (instant scroll, no smooth animation)
     val noFlingBehavior = remember {
@@ -275,6 +288,9 @@ fun JellyfinHomeScreen(
     var darkModeWhenSettingsOpened by remember { mutableStateOf(false) }
     var debugOutlinesWhenSettingsOpened by remember { mutableStateOf(false) }
     var disableUIAnimationsWhenSettingsOpened by remember { mutableStateOf(false) }
+    var lowPowerModeWhenSettingsOpened by remember { mutableStateOf(false) }
+    var useSimpleCardsWhenSettingsOpened by remember { mutableStateOf(false) }
+    var useGoogleTvCardsWhenSettingsOpened by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     var showSortDialog by remember { mutableStateOf(false) }
@@ -430,19 +446,14 @@ fun JellyfinHomeScreen(
         }
     }
     
-    // For instant metadata: show item data immediately, then fetch full details for synopsis after a delay
-    // The delay prevents rapid API calls during fast scrolling, improving performance
+    // For instant metadata and synopsis: show item data immediately, fetch full details instantly
     LaunchedEffect(instantHighlightedItem?.Id, apiService) {
         // Show item data immediately for instant response
         instantHighlightedItemDetails = instantHighlightedItem
         
-        // Wait before fetching full details - this debounces rapid navigation
+        // Fetch full details immediately for instant synopsis/metadata display
         instantHighlightedItem?.Id?.let { itemId ->
             if (apiService != null) {
-                // Debounce: wait 300ms before fetching details
-                // If user navigates away, this coroutine is cancelled
-                kotlinx.coroutines.delay(300)
-                
                 try {
                     val details = apiService.getItemDetails(itemId)
                     // Only update if we're still showing the same item
@@ -474,13 +485,17 @@ fun JellyfinHomeScreen(
                 }
                 
                 // Prioritize backdrop for home screen background
-                // Use 1080p resolution - sufficient for background images and faster loading
-                val backdropUrl = apiService?.getImageUrl(itemId, "Backdrop", null, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
+                // Low power mode uses 720p, normal mode uses 1080p
+                val bgMaxWidth = if (lowPowerMode.value) 1280 else 1920
+                val bgMaxHeight = if (lowPowerMode.value) 720 else 1080
+                val bgQuality = if (lowPowerMode.value) 75 else 90
+                
+                val backdropUrl = apiService?.getImageUrl(itemId, "Backdrop", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
                 if (backdropUrl.isNotEmpty()) {
                     backdropUrl
                 } else {
                     // Fall back to primary image if no backdrop
-                    apiService?.getImageUrl(itemId, "Primary", null, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
+                    apiService?.getImageUrl(itemId, "Primary", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
                 }
             } ?: ""
             
@@ -582,6 +597,9 @@ fun JellyfinHomeScreen(
                         darkModeWhenSettingsOpened = settings.darkModeEnabled
                         debugOutlinesWhenSettingsOpened = settings.showDebugOutlines
                         disableUIAnimationsWhenSettingsOpened = settings.disableUIAnimations
+                        lowPowerModeWhenSettingsOpened = settings.lowPowerMode
+                        useSimpleCardsWhenSettingsOpened = settings.useSimpleCards
+                        useGoogleTvCardsWhenSettingsOpened = settings.useGoogleTvCards
                         showSettings = true
                     },
                     colors = IconButtonDefaults.colors(
@@ -1314,7 +1332,10 @@ fun JellyfinHomeScreen(
                                             enableCaching = cacheLibraryImages,
                                             reducePosterResolution = reducePosterResolution,
                                             unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null,
-                                            disableAnimations = disableUIAnimations.value
+                                            disableAnimations = disableUIAnimations.value,
+                                            useSimpleCards = useSimpleCards.value,
+                                            useGoogleTvCards = useGoogleTvCards.value,
+                                            lowPowerMode = lowPowerMode.value
                                         )
                                         // Item name below the card
                                         Text(
@@ -1644,7 +1665,10 @@ fun JellyfinHomeScreen(
                                                 enableCaching = cacheLibraryImages,
                                                 reducePosterResolution = reducePosterResolution,
                                                 unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null,
-                                                disableAnimations = disableUIAnimations.value
+                                                disableAnimations = disableUIAnimations.value,
+                                                useSimpleCards = useSimpleCards.value,
+                                                useGoogleTvCards = useGoogleTvCards.value,
+                                                lowPowerMode = lowPowerMode.value
                                             )
                                             // Item name below the card
                                             Text(
@@ -1770,7 +1794,10 @@ fun JellyfinHomeScreen(
                                                     }
                                                 }
                                             }
-                                        }
+                                        },
+                                        useSimpleCards = useSimpleCards.value,
+                                        useGoogleTvCards = useGoogleTvCards.value,
+                                        lowPowerMode = lowPowerMode.value
                                     )
                                 }
                             }
@@ -1842,7 +1869,10 @@ fun JellyfinHomeScreen(
                                                     }
                                                 }
                                             }
-                                        }
+                                        },
+                                        useSimpleCards = useSimpleCards.value,
+                                        useGoogleTvCards = useGoogleTvCards.value,
+                                        lowPowerMode = lowPowerMode.value
                                     )
                                 }
                             }
@@ -1900,7 +1930,10 @@ fun JellyfinHomeScreen(
                                                     }
                                                 },
                                                 enableCaching = cacheLibraryImages,
-                                                reducePosterResolution = reducePosterResolution
+                                                reducePosterResolution = reducePosterResolution,
+                                                useSimpleCards = useSimpleCards.value,
+                                                useGoogleTvCards = useGoogleTvCards.value,
+                                                lowPowerMode = lowPowerMode.value
                                             )
                                         }
                                     }
@@ -1949,7 +1982,10 @@ fun JellyfinHomeScreen(
                                             }
                                         },
                                         enableCaching = cacheLibraryImages,
-                                        reducePosterResolution = reducePosterResolution
+                                        reducePosterResolution = reducePosterResolution,
+                                        useSimpleCards = useSimpleCards.value,
+                                        useGoogleTvCards = useGoogleTvCards.value,
+                                        lowPowerMode = lowPowerMode.value
                                     )
                                 }
                             }
@@ -2019,7 +2055,10 @@ fun JellyfinHomeScreen(
                                                 },
                                                 enableCaching = cacheLibraryImages,
                                                 reducePosterResolution = reducePosterResolution,
-                                                unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null
+                                                unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null,
+                                                useSimpleCards = useSimpleCards.value,
+                                                useGoogleTvCards = useGoogleTvCards.value,
+                                                lowPowerMode = lowPowerMode.value
                                             )
                                         }
                                     }
@@ -2100,7 +2139,10 @@ fun JellyfinHomeScreen(
                                                 enableCaching = cacheLibraryImages,
                                                 reducePosterResolution = reducePosterResolution,
                                                 // For episodes in Recently Added Episodes, use series poster
-                                                useSeriesPosterForEpisodes = true
+                                                useSeriesPosterForEpisodes = true,
+                                                useSimpleCards = useSimpleCards.value,
+                                                useGoogleTvCards = useGoogleTvCards.value,
+                                                lowPowerMode = lowPowerMode.value
                                             )
                                         }
                                     }
@@ -2146,6 +2188,19 @@ fun JellyfinHomeScreen(
                 if (animationsChanged) {
                     disableUIAnimations.value = settings.disableUIAnimations
                 }
+                // Check if low power mode changed
+                val lowPowerModeChanged = settings.lowPowerMode != lowPowerModeWhenSettingsOpened
+                if (lowPowerModeChanged) {
+                    lowPowerMode.value = settings.lowPowerMode
+                }
+                // Check if simple cards or Google TV cards settings changed and refresh UI if needed
+                // Always refresh both since they're mutually exclusive (enabling one disables the other)
+                val simpleCardsChanged = settings.useSimpleCards != useSimpleCardsWhenSettingsOpened
+                val googleTvCardsChanged = settings.useGoogleTvCards != useGoogleTvCardsWhenSettingsOpened
+                if (simpleCardsChanged || googleTvCardsChanged || lowPowerModeChanged) {
+                    useSimpleCards.value = settings.useSimpleCards
+                    useGoogleTvCards.value = settings.useGoogleTvCards
+                }
                 showSettings = false 
             },
             properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -2182,6 +2237,19 @@ fun JellyfinHomeScreen(
                             val animationsChanged = settings.disableUIAnimations != disableUIAnimationsWhenSettingsOpened
                             if (animationsChanged) {
                                 disableUIAnimations.value = settings.disableUIAnimations
+                            }
+                            // Check if low power mode changed
+                            val lowPowerModeChanged = settings.lowPowerMode != lowPowerModeWhenSettingsOpened
+                            if (lowPowerModeChanged) {
+                                lowPowerMode.value = settings.lowPowerMode
+                            }
+                            // Check if simple cards or Google TV cards settings changed and refresh UI if needed
+                            // Always refresh both since they're mutually exclusive (enabling one disables the other)
+                            val simpleCardsChanged = settings.useSimpleCards != useSimpleCardsWhenSettingsOpened
+                            val googleTvCardsChanged = settings.useGoogleTvCards != useGoogleTvCardsWhenSettingsOpened
+                            if (simpleCardsChanged || googleTvCardsChanged || lowPowerModeChanged) {
+                                useSimpleCards.value = settings.useSimpleCards
+                                useGoogleTvCards.value = settings.useGoogleTvCards
                             }
                             showSettings = false 
                         }
@@ -2653,122 +2721,323 @@ fun JellyfinHorizontalCard(
     reducePosterResolution: Boolean = false,
     useSeriesPosterForEpisodes: Boolean = false,
     unwatchedEpisodeCount: Int? = null,
-    disableAnimations: Boolean = false
+    disableAnimations: Boolean = false,
+    useSimpleCards: Boolean = false,
+    useGoogleTvCards: Boolean = false,
+    lowPowerMode: Boolean = false
 ) {
     // For episodes, use series poster (Primary) if requested; otherwise use poster (Primary) for movies/shows
-    // When animations disabled, force reduced resolution for better performance
-    val effectiveReduceResolution = reducePosterResolution || disableAnimations
-    val imageUrl = remember(item.Id, item.Type, item.SeriesId, useSeriesPosterForEpisodes, effectiveReduceResolution) {
+    // When animations disabled, simple cards, or Google TV cards enabled, force reduced resolution for better performance
+    // Low power mode uses even smaller images (300x450) for budget devices
+    val effectiveReduceResolution = reducePosterResolution || disableAnimations || useSimpleCards || useGoogleTvCards
+    val imageUrl = remember(item.Id, item.Type, item.SeriesId, useSeriesPosterForEpisodes, effectiveReduceResolution, lowPowerMode) {
+        // Low power mode: 300x450, Reduced: 600x900, Full: 3840x5760
+        val maxWidth = if (lowPowerMode) 300 else if (effectiveReduceResolution) 600 else 3840
+        val maxHeight = if (lowPowerMode) 450 else if (effectiveReduceResolution) 900 else 5760
+        val quality = if (lowPowerMode) 80 else 90
+        
         if (item.Type == "Episode" && useSeriesPosterForEpisodes && item.SeriesId != null) {
             // Use series poster (Primary) for episodes
-            if (effectiveReduceResolution) {
-                apiService?.getImageUrl(item.SeriesId, "Primary", null, maxWidth = 600, maxHeight = 900, quality = 90) ?: ""
-            } else {
-                apiService?.getImageUrl(item.SeriesId, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90) ?: ""
-            }
+            apiService?.getImageUrl(item.SeriesId, "Primary", null, maxWidth = maxWidth, maxHeight = maxHeight, quality = quality) ?: ""
         } else {
             // Use poster (Primary) for movies and shows
-            if (effectiveReduceResolution) {
-                apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 600, maxHeight = 900, quality = 90) ?: ""
-            } else {
-                apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90) ?: ""
-            }
+            apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = maxWidth, maxHeight = maxHeight, quality = quality) ?: ""
         }
     }
     val context = LocalContext.current
     
-    // Vertical card with 2:3 aspect ratio matching Plex dimensions
-    // 30% smaller (105dp instead of 150dp)
-    StandardCardContainer(
-        modifier = Modifier
-            .width(105.dp)
-            .onFocusChanged { focusState ->
-                onFocusChanged?.invoke(focusState.isFocused)
-            },
-        imageCard = {
-            Card(
-                onClick = onClick,
-                interactionSource = it,
-                colors = CardDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
+    // Use Google TV style card - lightweight with subtle 10% scale animation and glow border
+    if (useGoogleTvCards) {
+        var isFocused by remember { mutableStateOf(false) }
+        
+        // Google TV style: use TV Card with minimal scale for proper D-pad navigation
+        Card(
+            onClick = onClick,
+            modifier = Modifier
+                .width(105.dp)
+                .onFocusChanged { focusState ->
+                    isFocused = focusState.isFocused
+                    onFocusChanged?.invoke(focusState.isFocused)
+                }
+                .graphicsLayer {
+                    // Subtle 10% scale on focus (Google TV uses 1.08-1.12x)
+                    scaleX = if (isFocused) 1.10f else 1.0f
+                    scaleY = if (isFocused) 1.10f else 1.0f
+                    // Subtle shadow on focus
+                    shadowElevation = if (isFocused) 16f else 0f
+                }
+                .then(
+                    if (isFocused) {
+                        // Google TV glow border
+                        Modifier.border(
+                            width = 3.dp,
+                            color = Color.White,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    } else {
+                        Modifier
+                    }
+                ),
+            scale = CardDefaults.scale(focusedScale = 1.0f), // Disable default scale (we use graphicsLayer)
+            colors = CardDefaults.colors(containerColor = Color.Transparent),
+            shape = CardDefaults.shape(RoundedCornerShape(12.dp))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f / 3f)
             ) {
                 if (imageUrl.isNotEmpty() && apiService != null) {
                     val headerMap = apiService.getImageRequestHeaders()
-                    // Use stable ImageRequest based on item ID to ensure proper caching
-                    // Coil will cache based on the URL, but using remember ensures we don't recreate the request on recomposition
                     val imageRequest = remember(item.Id, imageUrl, enableCaching) {
                         ImageRequest.Builder(context)
                             .data(imageUrl)
                             .headers(headerMap)
-                            .size(300) // Hint to Coil about target size for optimization
-                            .crossfade(true) // Smooth fade-in when image loads
+                            .size(300)
+                            .crossfade(false) // Disable crossfade for Google TV cards (performance)
+                            .memoryCachePolicy(CachePolicy.ENABLED) // Always cache for Google TV cards
+                            .diskCachePolicy(CachePolicy.ENABLED)
+                            .build()
+                    }
+                    AsyncImage(
+                        model = imageRequest,
+                        contentDescription = item.Name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    )
+                }
+                
+                // Watched indicator
+                val isWatched = (item.UserData?.Played == true) || (item.UserData?.PlayedPercentage == 100.0)
+                if (isWatched) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(4.dp))
+                            .padding(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Watched",
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+                
+                // Unwatched episodes badge
+                if (item.Type == "Series" && !isWatched && unwatchedEpisodeCount != null && unwatchedEpisodeCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .background(Color.Black, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = unwatchedEpisodeCount.toString(),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
+                }
+            }
+        }
+    } else if (useSimpleCards) {
+        // Use simple card without zoom animation for low-spec devices
+        var isFocused by remember { mutableStateOf(false) }
+        
+        // Simple card using Card without StandardCardContainer (no zoom animation)
+        Card(
+            onClick = onClick,
+            modifier = Modifier
+                .width(105.dp)
+                .onFocusChanged { focusState ->
+                    isFocused = focusState.isFocused
+                    onFocusChanged?.invoke(focusState.isFocused)
+                }
+                .then(
+                    if (isFocused) {
+                        Modifier.border(3.dp, Color.White, RoundedCornerShape(8.dp))
+                    } else {
+                        Modifier
+                    }
+                ),
+            colors = CardDefaults.colors(containerColor = Color.Transparent),
+            shape = CardDefaults.shape(RoundedCornerShape(8.dp))
+        ) {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                if (imageUrl.isNotEmpty() && apiService != null) {
+                    val headerMap = apiService.getImageRequestHeaders()
+                    val imageRequest = remember(item.Id, imageUrl, enableCaching) {
+                        ImageRequest.Builder(context)
+                            .data(imageUrl)
+                            .headers(headerMap)
+                            .size(300)
+                            .crossfade(false) // Disable crossfade for simple cards (performance)
                             .memoryCachePolicy(if (enableCaching) CachePolicy.ENABLED else CachePolicy.DISABLED)
                             .diskCachePolicy(if (enableCaching) CachePolicy.ENABLED else CachePolicy.DISABLED)
                             .build()
                     }
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        AsyncImage(
-                            model = imageRequest,
-                            contentDescription = item.Name,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(2f / 3f), // 2:3 portrait aspect ratio for posters (movies/shows/episodes)
-                            contentScale = ContentScale.Crop,
-                            placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
-                        )
-                        
-                        // Watched indicator - checkmark in black box (top-right corner)
-                        // Check Played boolean first, then PlayedPercentage as fallback
-                        val isWatched = (item.UserData?.Played == true) ||
-                                       (item.UserData?.PlayedPercentage == 100.0)
-                        if (isWatched) {
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(6.dp)
-                                    .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(4.dp))
-                                    .padding(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = "Watched",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-                        
-                        // Unwatched episodes badge for TV shows (top-right corner)
-                        // Only show if series is not fully watched and has unwatched episodes
-                        if (item.Type == "Series" && !isWatched && unwatchedEpisodeCount != null && unwatchedEpisodeCount > 0) {
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(6.dp)
-                                    .background(Color.Black, RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 6.dp, vertical = 3.dp)
-                            ) {
-                                Text(
-                                    text = unwatchedEpisodeCount.toString(),
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    androidx.compose.foundation.layout.Box(
+                    AsyncImage(
+                        model = imageRequest,
+                        contentDescription = item.Name,
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(2f / 3f)
+                            .clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop,
+                        placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(2f / 3f)
+                            .clip(RoundedCornerShape(8.dp))
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                     )
                 }
+                
+                // Watched indicator
+                val isWatched = (item.UserData?.Played == true) || (item.UserData?.PlayedPercentage == 100.0)
+                if (isWatched) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(4.dp))
+                            .padding(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Watched",
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+                
+                // Unwatched episodes badge
+                if (item.Type == "Series" && !isWatched && unwatchedEpisodeCount != null && unwatchedEpisodeCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .background(Color.Black, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = unwatchedEpisodeCount.toString(),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
+                }
             }
-        },
-        title = { }
-    )
+        }
+    } else {
+        // Vertical card with 2:3 aspect ratio matching Plex dimensions
+        // 30% smaller (105dp instead of 150dp)
+        StandardCardContainer(
+            modifier = Modifier
+                .width(105.dp)
+                .onFocusChanged { focusState ->
+                    onFocusChanged?.invoke(focusState.isFocused)
+                },
+            imageCard = {
+                Card(
+                    onClick = onClick,
+                    interactionSource = it,
+                    colors = CardDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
+                ) {
+                    if (imageUrl.isNotEmpty() && apiService != null) {
+                        val headerMap = apiService.getImageRequestHeaders()
+                        // Use stable ImageRequest based on item ID to ensure proper caching
+                        // Coil will cache based on the URL, but using remember ensures we don't recreate the request on recomposition
+                        val imageRequest = remember(item.Id, imageUrl, enableCaching) {
+                            ImageRequest.Builder(context)
+                                .data(imageUrl)
+                                .headers(headerMap)
+                                .size(300) // Hint to Coil about target size for optimization
+                                .crossfade(true) // Smooth fade-in when image loads
+                                .memoryCachePolicy(if (enableCaching) CachePolicy.ENABLED else CachePolicy.DISABLED)
+                                .diskCachePolicy(if (enableCaching) CachePolicy.ENABLED else CachePolicy.DISABLED)
+                                .build()
+                        }
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            AsyncImage(
+                                model = imageRequest,
+                                contentDescription = item.Name,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(2f / 3f), // 2:3 portrait aspect ratio for posters (movies/shows/episodes)
+                                contentScale = ContentScale.Crop,
+                                placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
+                            )
+                            
+                            // Watched indicator - checkmark in black box (top-right corner)
+                            // Check Played boolean first, then PlayedPercentage as fallback
+                            val isWatched = (item.UserData?.Played == true) ||
+                                           (item.UserData?.PlayedPercentage == 100.0)
+                            if (isWatched) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(6.dp)
+                                        .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(4.dp))
+                                        .padding(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Watched",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                            
+                            // Unwatched episodes badge for TV shows (top-right corner)
+                            // Only show if series is not fully watched and has unwatched episodes
+                            if (item.Type == "Series" && !isWatched && unwatchedEpisodeCount != null && unwatchedEpisodeCount > 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(6.dp)
+                                        .background(Color.Black, RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                                ) {
+                                    Text(
+                                        text = unwatchedEpisodeCount.toString(),
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        androidx.compose.foundation.layout.Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(2f / 3f)
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                        )
+                    }
+                }
+            },
+            title = { }
+        )
+    }
 }
 
 @Composable
@@ -2867,8 +3136,18 @@ fun JellyfinHorizontalCardWithProgress(
     apiService: JellyfinApiService?,
     onClick: () -> Unit,
     onFocusChanged: ((Boolean) -> Unit)? = null,
-    disableAnimations: Boolean = false
+    disableAnimations: Boolean = false,
+    useSimpleCards: Boolean = false,
+    useGoogleTvCards: Boolean = false,
+    lowPowerMode: Boolean = false
 ) {
+    // Use reduced resolution for simple/Google TV cards for better performance
+    // Low power mode uses even smaller images (320x180) for budget devices
+    val useReducedResolution = useSimpleCards || useGoogleTvCards
+    val maxImageWidth = if (lowPowerMode) 320 else if (useReducedResolution) 640 else 1920
+    val maxImageHeight = if (lowPowerMode) 180 else if (useReducedResolution) 360 else 1080
+    val imageQuality = if (lowPowerMode) 80 else 90
+    
     // Use thumbnail (Thumb) images for both episodes and movies
     // For episodes, prioritize series/parent thumb image (like official Jellyfin Android TV app)
     // For movies, use item's own thumb if available
@@ -2876,23 +3155,23 @@ fun JellyfinHorizontalCardWithProgress(
         // For episodes, try series thumb first (official app's preferParentThumb behavior)
         item.Type == "Episode" && item.SeriesId != null -> {
             // Try to get series thumb image (most common for episodes)
-            val seriesThumb = apiService?.getImageUrl(item.SeriesId, "Thumb", null, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
+            val seriesThumb = apiService?.getImageUrl(item.SeriesId, "Thumb", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
             if (seriesThumb.isNotEmpty()) {
                 seriesThumb
             } else {
                 // Fall back to episode's own thumb
                 val episodeThumb = item.ImageTags?.get("Thumb")?.let { thumbTag ->
-                    apiService?.getImageUrl(item.Id, "Thumb", thumbTag, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
+                    apiService?.getImageUrl(item.Id, "Thumb", thumbTag, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
                 } ?: ""
                 if (episodeThumb.isNotEmpty()) {
                     episodeThumb
                 } else {
                     // Last resort: series backdrop, then episode backdrop, then primary
-                    val seriesBackdrop = apiService?.getImageUrl(item.SeriesId, "Backdrop", null, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
+                    val seriesBackdrop = apiService?.getImageUrl(item.SeriesId, "Backdrop", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
                     seriesBackdrop.ifEmpty {
-                        val episodeBackdrop = apiService?.getImageUrl(item.Id, "Backdrop", null, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
+                        val episodeBackdrop = apiService?.getImageUrl(item.Id, "Backdrop", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
                         episodeBackdrop.ifEmpty {
-                            apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90) ?: ""
+                            apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
                         }
                     }
                 }
@@ -2901,105 +3180,263 @@ fun JellyfinHorizontalCardWithProgress(
         // For movies or other items, use item's own thumb if available
         item.ImageTags?.containsKey("Thumb") == true -> {
             item.ImageTags?.get("Thumb")?.let { thumbTag ->
-                apiService?.getImageUrl(item.Id, "Thumb", thumbTag, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
+                apiService?.getImageUrl(item.Id, "Thumb", thumbTag, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
             } ?: ""
         }
         // Fallback for movies: backdrop, then primary
         else -> {
-            val backdrop = apiService?.getImageUrl(item.Id, "Backdrop", null, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
+            val backdrop = apiService?.getImageUrl(item.Id, "Backdrop", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
             backdrop.ifEmpty {
-                apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90) ?: ""
+                apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
             }
         }
     }
     
     // Calculate progress percentage
     val progress = item.UserData?.PlayedPercentage?.toFloat()?.div(100f) ?: 0f
+    val context = LocalContext.current
     
-    // Horizontal card with 16:9 aspect ratio for backdrop images (landscape)
-    // 40% smaller: 268 * 0.6 = 160.8, rounded to 161.dp
-    StandardCardContainer(
-        modifier = Modifier
-            .width(161.dp)
-            .onFocusChanged { focusState ->
-                onFocusChanged?.invoke(focusState.isFocused)
-            },
-        imageCard = {
-            Card(
-                onClick = onClick,
-                interactionSource = it,
-                colors = CardDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
-            ) {
-                Box(modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))) {
-                    if (imageUrl.isNotEmpty() && apiService != null) {
-                        val headerMap = apiService.getImageRequestHeaders()
-                        AsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data(imageUrl)
-                                .headers(headerMap)
-                                .build(),
-                            contentDescription = item.Name,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(16f / 9f) // 16:9 landscape aspect ratio
-                                .clip(RoundedCornerShape(12.dp)),
-                            contentScale = ContentScale.Crop
+    // Google TV style card - lightweight with subtle scale animation
+    if (useGoogleTvCards) {
+        var isFocused by remember { mutableStateOf(false) }
+        
+        // Google TV style: use TV Card with minimal scale for proper D-pad navigation
+        Card(
+            onClick = onClick,
+            modifier = Modifier
+                .width(161.dp)
+                .onFocusChanged { focusState ->
+                    isFocused = focusState.isFocused
+                    onFocusChanged?.invoke(focusState.isFocused)
+                }
+                .graphicsLayer {
+                    scaleX = if (isFocused) 1.10f else 1.0f
+                    scaleY = if (isFocused) 1.10f else 1.0f
+                    shadowElevation = if (isFocused) 16f else 0f
+                }
+                .then(
+                    if (isFocused) {
+                        Modifier.border(
+                            width = 3.dp,
+                            color = Color.White,
+                            shape = RoundedCornerShape(12.dp)
                         )
                     } else {
-                        // Fallback to primary image if no thumbnail/backdrop
-                        // Use 4K resolution for library cards (3840x5760 for 2:3 aspect ratio, quality 90)
-                        val primaryUrl = apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90) ?: ""
-                        if (primaryUrl.isNotEmpty() && apiService != null) {
+                        Modifier
+                    }
+                ),
+            scale = CardDefaults.scale(focusedScale = 1.0f), // Disable default scale (we use graphicsLayer)
+            colors = CardDefaults.colors(containerColor = Color.Transparent),
+            shape = CardDefaults.shape(RoundedCornerShape(12.dp))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+            ) {
+                if (imageUrl.isNotEmpty() && apiService != null) {
+                    val headerMap = apiService.getImageRequestHeaders()
+                    val imageRequest = remember(item.Id, imageUrl) {
+                        ImageRequest.Builder(context)
+                            .data(imageUrl)
+                            .headers(headerMap)
+                            .crossfade(false) // Disable crossfade for Google TV cards (performance)
+                            .memoryCachePolicy(CachePolicy.ENABLED)
+                            .diskCachePolicy(CachePolicy.ENABLED)
+                            .build()
+                    }
+                    AsyncImage(
+                        model = imageRequest,
+                        contentDescription = item.Name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    )
+                }
+                
+                // Progress bar at the bottom
+                if (progress > 0f && progress < 1f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .align(Alignment.BottomCenter)
+                            .background(Color.Black.copy(alpha = 0.5f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(progress)
+                                .height(4.dp)
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                    }
+                }
+            }
+        }
+    } else if (useSimpleCards) {
+        // Simple card - flat with border highlight on focus
+        var isFocused by remember { mutableStateOf(false) }
+        
+        Card(
+            onClick = onClick,
+            modifier = Modifier
+                .width(161.dp)
+                .onFocusChanged { focusState ->
+                    isFocused = focusState.isFocused
+                    onFocusChanged?.invoke(focusState.isFocused)
+                }
+                .then(
+                    if (isFocused) {
+                        Modifier.border(3.dp, Color.White, RoundedCornerShape(12.dp))
+                    } else {
+                        Modifier
+                    }
+                ),
+            colors = CardDefaults.colors(containerColor = Color.Transparent),
+            shape = CardDefaults.shape(RoundedCornerShape(12.dp))
+        ) {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                if (imageUrl.isNotEmpty() && apiService != null) {
+                    val headerMap = apiService.getImageRequestHeaders()
+                    val imageRequest = remember(item.Id, imageUrl) {
+                        ImageRequest.Builder(context)
+                            .data(imageUrl)
+                            .headers(headerMap)
+                            .crossfade(false) // Disable crossfade for simple cards (performance)
+                            .memoryCachePolicy(CachePolicy.ENABLED)
+                            .diskCachePolicy(CachePolicy.ENABLED)
+                            .build()
+                    }
+                    AsyncImage(
+                        model = imageRequest,
+                        contentDescription = item.Name,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(16f / 9f)
+                            .clip(RoundedCornerShape(12.dp)),
+                        contentScale = ContentScale.Crop,
+                        placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(16f / 9f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    )
+                }
+                
+                // Progress bar at the bottom
+                if (progress > 0f && progress < 1f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .align(Alignment.BottomCenter)
+                            .background(Color.Black.copy(alpha = 0.5f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(progress)
+                                .height(4.dp)
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                    }
+                }
+            }
+        }
+    } else {
+        // Default: Horizontal card with 16:9 aspect ratio using StandardCardContainer
+        // 40% smaller: 268 * 0.6 = 160.8, rounded to 161.dp
+        StandardCardContainer(
+            modifier = Modifier
+                .width(161.dp)
+                .onFocusChanged { focusState ->
+                    onFocusChanged?.invoke(focusState.isFocused)
+                },
+            imageCard = {
+                Card(
+                    onClick = onClick,
+                    interactionSource = it,
+                    colors = CardDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
+                ) {
+                    Box(modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))) {
+                        if (imageUrl.isNotEmpty() && apiService != null) {
                             val headerMap = apiService.getImageRequestHeaders()
                             AsyncImage(
                                 model = ImageRequest.Builder(LocalContext.current)
-                                    .data(primaryUrl)
+                                    .data(imageUrl)
                                     .headers(headerMap)
                                     .build(),
                                 contentDescription = item.Name,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .aspectRatio(16f / 9f)
+                                    .aspectRatio(16f / 9f) // 16:9 landscape aspect ratio
                                     .clip(RoundedCornerShape(12.dp)),
                                 contentScale = ContentScale.Crop
                             )
                         } else {
+                            // Fallback to primary image if no thumbnail/backdrop
+                            val primaryUrl = apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90) ?: ""
+                            if (primaryUrl.isNotEmpty() && apiService != null) {
+                                val headerMap = apiService.getImageRequestHeaders()
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current)
+                                        .data(primaryUrl)
+                                        .headers(headerMap)
+                                        .build(),
+                                    contentDescription = item.Name,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(16f / 9f)
+                                        .clip(RoundedCornerShape(12.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                androidx.compose.foundation.layout.Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(16f / 9f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                )
+                            }
+                        }
+                        
+                        // Progress bar at the bottom
+                        if (progress > 0f && progress < 1f) {
                             androidx.compose.foundation.layout.Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .aspectRatio(16f / 9f)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                            )
-                        }
-                    }
-                    
-                    // Progress bar at the bottom
-                    if (progress > 0f && progress < 1f) {
-                        androidx.compose.foundation.layout.Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(4.dp)
-                                .align(Alignment.BottomCenter)
-                                .background(Color.Black.copy(alpha = 0.5f))
-                        ) {
-                            androidx.compose.foundation.layout.Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(progress)
                                     .height(4.dp)
-                                    .background(MaterialTheme.colorScheme.primary)
-                            )
+                                    .align(Alignment.BottomCenter)
+                                    .background(Color.Black.copy(alpha = 0.5f))
+                            ) {
+                                androidx.compose.foundation.layout.Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(progress)
+                                        .height(4.dp)
+                                        .background(MaterialTheme.colorScheme.primary)
+                                )
+                            }
                         }
                     }
                 }
+            },
+            title = { 
+                // Title removed - no text displayed under continue watching cards
             }
-        },
-        title = { 
-            // Title removed - no text displayed under continue watching cards
-        }
-    )
+        )
+    }
 }
 
 fun Modifier.carouselGradient(): Modifier = composed {

@@ -245,6 +245,8 @@ fun JellyfinVideoPlayerScreen(
     var is4KContent by remember { mutableStateOf(false) } // Track if current content is 4K
     // Store subtitle streams list for composite key registration in onTracksChanged
     var jellyfinSubtitleStreams by remember { mutableStateOf<List<MediaStream>>(emptyList()) }
+    // Downloaded subtitles from OpenSubtitles
+    var downloadedSubtitles by remember { mutableStateOf<List<com.flex.elefin.subtitles.DownloadedSubtitle>>(emptyList()) }
     var nextEpisodeId by remember { mutableStateOf<String?>(null) } // Next episode ID for autoplay
     var nextEpisodeDetails by remember { mutableStateOf<JellyfinItem?>(null) } // Next episode details
     var showNextUpOverlay by remember { mutableStateOf(false) } // Show next up overlay
@@ -259,6 +261,12 @@ fun JellyfinVideoPlayerScreen(
     val skipIntroEnabled = remember { settings.skipIntroEnabled }
     val skipCreditsEnabled = remember { settings.skipCreditsEnabled }
 
+    // Load downloaded subtitles from OpenSubtitles
+    LaunchedEffect(item.Id) {
+        downloadedSubtitles = com.flex.elefin.subtitles.OpenSubtitlesApi.getDownloadedSubtitles(context, item.Id)
+        Log.d("JellyfinPlayer", "📁 Loaded ${downloadedSubtitles.size} downloaded subtitle(s) for item ${item.Id}")
+    }
+    
     // Fetch skip markers for intro/credits (only for episodes)
     LaunchedEffect(item.Id, apiService) {
         if (item.Type == "Episode" && (skipIntroEnabled || skipCreditsEnabled)) {
@@ -539,19 +547,43 @@ fun JellyfinVideoPlayerScreen(
                                 }
                             }.filterNotNull()
                             
-                            Log.d("JellyfinPlayer", "Successfully created ${subtitleConfigurations.size} subtitle configuration(s)")
+                            Log.d("JellyfinPlayer", "Successfully created ${subtitleConfigurations.size} Jellyfin subtitle configuration(s)")
                             subtitleConfigurations.forEachIndexed { index, config ->
                                 Log.d("JellyfinPlayer", "  [$index] ${config.uri}")
                                 Log.d("JellyfinPlayer", "       Lang: ${config.language}, MIME: ${config.mimeType}, Label: ${config.label}")
                             }
                             
+                            // ⭐ ADD DOWNLOADED OPENSUBTITLES (if any exist for this item)
+                            val downloadedSubtitles = com.flex.elefin.subtitles.OpenSubtitlesApi.getDownloadedSubtitles(context, item.Id)
+                            val downloadedSubtitleConfigs = downloadedSubtitles.mapNotNull { downloadedSub ->
+                                try {
+                                    Log.d("JellyfinPlayer", "📁 Adding downloaded subtitle: ${downloadedSub.fileName}")
+                                    com.flex.elefin.player.SubtitleMapper.buildLocalSubtitleConfiguration(
+                                        filePath = downloadedSub.filePath,
+                                        language = downloadedSub.language,
+                                        label = "${com.flex.elefin.subtitles.SubtitleLanguages.getDisplayName(downloadedSub.language)} (Downloaded)"
+                                    )
+                                } catch (e: Exception) {
+                                    Log.w("JellyfinPlayer", "Failed to add downloaded subtitle ${downloadedSub.fileName}: ${e.message}")
+                                    null
+                                }
+                            }
+                            
+                            if (downloadedSubtitleConfigs.isNotEmpty()) {
+                                Log.d("JellyfinPlayer", "✅ Added ${downloadedSubtitleConfigs.size} downloaded subtitle(s) from OpenSubtitles")
+                            }
+                            
+                            // Combine Jellyfin subtitles + downloaded OpenSubtitles
+                            val allSubtitleConfigs = subtitleConfigurations + downloadedSubtitleConfigs
+                            Log.d("JellyfinPlayer", "Total subtitle configurations: ${allSubtitleConfigs.size} (${subtitleConfigurations.size} Jellyfin + ${downloadedSubtitleConfigs.size} downloaded)")
+                            
                             // Create MediaItem with ALL subtitle configurations
-                            if (subtitleConfigurations.isNotEmpty()) {
+                            if (allSubtitleConfigs.isNotEmpty()) {
                                 MediaItem.Builder()
                                     .setUri(Uri.parse(currentMediaUrl))
-                                    .setSubtitleConfigurations(subtitleConfigurations)
+                                    .setSubtitleConfigurations(allSubtitleConfigs)
                                     .build().also {
-                                        Log.d("JellyfinPlayer", "✅ MediaItem created with ${subtitleConfigurations.size} subtitle configuration(s)")
+                                        Log.d("JellyfinPlayer", "✅ MediaItem created with ${allSubtitleConfigs.size} subtitle configuration(s)")
                                     }
                             } else {
                                 Log.d("JellyfinPlayer", "No valid subtitle configurations - creating MediaItem without subtitles")
@@ -2739,6 +2771,64 @@ fun JellyfinVideoPlayerScreen(
                 onDismiss = { showSettingsMenu = false },
                 player = player,
                 jellyfinSubtitleStreams = jellyfinSubtitleStreams, // Pass for composite key registration
+                downloadedSubtitles = downloadedSubtitles, // Downloaded OpenSubtitles
+                onDownloadedSubtitleSelected = { filePath ->
+                    // Select downloaded subtitle by finding its ExoPlayer track
+                    scope.launch(Dispatchers.Main) {
+                        try {
+                            val tracks = player.currentTracks
+                            val textGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+                            
+                            Log.d("JellyfinPlayer", "🔍 Looking for downloaded subtitle track: $filePath")
+                            Log.d("JellyfinPlayer", "   Available text groups: ${textGroups.size}")
+                            
+                            // Find the track group that matches this downloaded subtitle
+                            // Downloaded subtitles have labels like "English (Downloaded)"
+                            val fileName = java.io.File(filePath).name
+                            val language = fileName.substringBefore("_")
+                            
+                            var foundTrack = false
+                            textGroups.forEachIndexed { groupIndex, group ->
+                                val format = group.mediaTrackGroup.getFormat(0)
+                                Log.d("JellyfinPlayer", "   Group $groupIndex: label='${format.label}', lang='${format.language}'")
+                                
+                                // Match by label containing "(Downloaded)" or by file URI
+                                val isDownloadedTrack = format.label?.contains("(Downloaded)") == true ||
+                                                       format.id?.contains(filePath) == true
+                                val matchesLanguage = format.language == language
+                                
+                                if (isDownloadedTrack && matchesLanguage && !foundTrack) {
+                                    foundTrack = true
+                                    Log.d("JellyfinPlayer", "   ✅ Found matching downloaded subtitle track at group $groupIndex")
+                                    
+                                    // Select this track
+                                    val updatedParameters = player.trackSelectionParameters
+                                        .buildUpon()
+                                        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                                        .addOverride(
+                                            androidx.media3.common.TrackSelectionOverride(
+                                                group.mediaTrackGroup,
+                                                listOf(0)
+                                            )
+                                        )
+                                        .build()
+                                    
+                                    player.trackSelectionParameters = updatedParameters
+                                    Log.d("JellyfinPlayer", "✅ Selected downloaded subtitle: $fileName")
+                                    currentSubtitleIndex = null // Clear Jellyfin index since this is a downloaded subtitle
+                                }
+                            }
+                            
+                            if (!foundTrack) {
+                                Log.w("JellyfinPlayer", "⚠️ Could not find ExoPlayer track for downloaded subtitle: $filePath")
+                            }
+                            
+                            showSettingsMenu = false
+                        } catch (e: Exception) {
+                            Log.e("JellyfinPlayer", "Error selecting downloaded subtitle", e)
+                        }
+                    }
+                },
                 onSubtitleSelected = { subtitleIndex ->
                     currentSubtitleIndex = subtitleIndex
                     // Use ExoPlayer track selection API to select the subtitle
@@ -2841,7 +2931,9 @@ fun ExoPlayerSettingsMenu(
     onDismiss: () -> Unit,
     onSubtitleSelected: (Int?) -> Unit,
     player: ExoPlayer? = null,
-    jellyfinSubtitleStreams: List<MediaStream> = emptyList() // For composite key registration
+    jellyfinSubtitleStreams: List<MediaStream> = emptyList(), // For composite key registration
+    downloadedSubtitles: List<com.flex.elefin.subtitles.DownloadedSubtitle> = emptyList(), // Downloaded OpenSubtitles
+    onDownloadedSubtitleSelected: ((String) -> Unit)? = null // Callback for selecting downloaded subtitle by file path
 ) {
     var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     var isLoadingSubtitles by remember { mutableStateOf(true) }
@@ -3265,7 +3357,7 @@ fun ExoPlayerSettingsMenu(
                                 )
                             }
                             
-                            // Subtitle stream options
+                            // Subtitle stream options from Jellyfin
                             items(subtitleStreams) { stream ->
                                 val subtitleTitle = stream.DisplayTitle
                                     ?: stream.Language
@@ -3314,6 +3406,61 @@ fun ExoPlayerSettingsMenu(
                                     },
                                     modifier = Modifier.fillMaxWidth()
                                 )
+                            }
+                            
+                            // ⭐ Downloaded subtitles from OpenSubtitles
+                            if (downloadedSubtitles.isNotEmpty()) {
+                                item {
+                                    Text(
+                                        text = "Downloaded Subtitles",
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontSize = MaterialTheme.typography.titleSmall.fontSize * 0.8f
+                                        ),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                                    )
+                                }
+                                
+                                items(downloadedSubtitles) { downloadedSub ->
+                                    val subtitleTitle = com.flex.elefin.subtitles.SubtitleLanguages.getDisplayName(downloadedSub.language)
+                                    val subtitleInfo = "${downloadedSub.release} (Downloaded)"
+                                    
+                                    ListItem(
+                                        selected = false, // Downloaded subtitles have different selection mechanism
+                                        onClick = {
+                                            Log.d("ExoPlayerSettingsMenu", "📺 User clicked downloaded subtitle: ${downloadedSub.fileName}")
+                                            onDownloadedSubtitleSelected?.invoke(downloadedSub.filePath)
+                                        },
+                                        headlineContent = {
+                                            Column {
+                                                Text(
+                                                    text = subtitleTitle,
+                                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                                        fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
+                                                    )
+                                                )
+                                                Text(
+                                                    text = subtitleInfo,
+                                                    style = MaterialTheme.typography.bodySmall.copy(
+                                                        fontSize = MaterialTheme.typography.bodySmall.fontSize * 0.7f
+                                                    ),
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                                    maxLines = 1,
+                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        },
+                                        leadingContent = {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
                             }
                         }
                         }

@@ -54,6 +54,14 @@ class AppSettings(context: Context) {
         
         // UI performance settings
         private const val KEY_DISABLE_UI_ANIMATIONS = "disable_ui_animations"
+        private const val KEY_USE_SIMPLE_CARDS = "use_simple_cards"
+        private const val KEY_USE_GOOGLE_TV_CARDS = "use_google_tv_cards"
+        private const val KEY_LOW_POWER_MODE = "low_power_mode"
+        
+        // OpenSubtitles settings
+        private const val KEY_OPENSUBTITLES_API_KEY = "opensubtitles_api_key"
+        private const val KEY_OPENSUBTITLES_USERNAME = "opensubtitles_username"
+        private const val KEY_OPENSUBTITLES_PASSWORD = "opensubtitles_password"
     }
 
     var isMpvEnabled: Boolean
@@ -272,5 +280,35 @@ class AppSettings(context: Context) {
     var disableUIAnimations: Boolean
         get() = prefs.getBoolean(KEY_DISABLE_UI_ANIMATIONS, false) // Disabled by default (animations enabled)
         set(value) = prefs.edit().putBoolean(KEY_DISABLE_UI_ANIMATIONS, value).apply()
+    
+    // Use simple cards without zoom animation (better for low-spec devices)
+    var useSimpleCards: Boolean
+        get() = prefs.getBoolean(KEY_USE_SIMPLE_CARDS, false) // Disabled by default
+        set(value) = prefs.edit().putBoolean(KEY_USE_SIMPLE_CARDS, value).apply()
+    
+    // Use Google TV style cards (lightweight with subtle scale animation)
+    var useGoogleTvCards: Boolean
+        get() = prefs.getBoolean(KEY_USE_GOOGLE_TV_CARDS, false) // Disabled by default
+        set(value) = prefs.edit().putBoolean(KEY_USE_GOOGLE_TV_CARDS, value).apply()
+    
+    // Low power mode - enables all performance optimizations for budget devices
+    var lowPowerMode: Boolean
+        get() = prefs.getBoolean(KEY_LOW_POWER_MODE, false) // Disabled by default
+        set(value) = prefs.edit().putBoolean(KEY_LOW_POWER_MODE, value).apply()
+    
+    // OpenSubtitles API key - users need to get their own key from opensubtitles.com
+    var openSubtitlesApiKey: String
+        get() = prefs.getString(KEY_OPENSUBTITLES_API_KEY, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_OPENSUBTITLES_API_KEY, value).apply()
+    
+    // OpenSubtitles username - required for downloading subtitles
+    var openSubtitlesUsername: String
+        get() = prefs.getString(KEY_OPENSUBTITLES_USERNAME, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_OPENSUBTITLES_USERNAME, value).apply()
+    
+    // OpenSubtitles password - required for downloading subtitles
+    var openSubtitlesPassword: String
+        get() = prefs.getString(KEY_OPENSUBTITLES_PASSWORD, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_OPENSUBTITLES_PASSWORD, value).apply()
 }
 

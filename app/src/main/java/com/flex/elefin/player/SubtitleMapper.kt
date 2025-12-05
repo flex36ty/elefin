@@ -325,6 +325,50 @@ object SubtitleMapper {
         return "g${groupIndex}:t${trackIndex}:l${lang}${flags}"
     }
 
+    /**
+     * Build a SubtitleConfiguration for a locally downloaded subtitle file.
+     * This is used for OpenSubtitles downloads that need to be attached to ExoPlayer.
+     * 
+     * @param filePath Path to the local subtitle file
+     * @param language Language code (e.g., "en", "es")
+     * @param label Display label for the subtitle track
+     * @return SubtitleConfiguration ready to be added to a MediaItem
+     */
+    fun buildLocalSubtitleConfiguration(
+        filePath: String,
+        language: String,
+        label: String
+    ): MediaItem.SubtitleConfiguration {
+        val file = java.io.File(filePath)
+        val extension = file.extension.lowercase()
+        
+        // Determine MIME type from file extension
+        val mimeType = when (extension) {
+            "srt" -> MimeTypes.APPLICATION_SUBRIP
+            "vtt", "webvtt" -> MimeTypes.TEXT_VTT
+            "ass", "ssa" -> MimeTypes.TEXT_SSA
+            "ttml" -> MimeTypes.APPLICATION_TTML
+            "sub" -> MimeTypes.APPLICATION_SUBRIP // Assume SRT-like format
+            else -> {
+                Log.w(TAG, "⚠️ Unknown subtitle extension '$extension' - defaulting to SRT")
+                MimeTypes.APPLICATION_SUBRIP
+            }
+        }
+        
+        Log.d(TAG, "📁 Building local subtitle config:")
+        Log.d(TAG, "   File: $filePath")
+        Log.d(TAG, "   Extension: $extension")
+        Log.d(TAG, "   MIME type: $mimeType")
+        Log.d(TAG, "   Language: $language")
+        Log.d(TAG, "   Label: $label")
+        
+        return MediaItem.SubtitleConfiguration.Builder(Uri.fromFile(file))
+            .setMimeType(mimeType)
+            .setLanguage(language)
+            .setLabel(label)
+            .build()
+    }
+    
     private fun buildLabel(stream: MediaStream): String {
         // ⭐ Priority order for subtitle label:
         // 1. DisplayTitle (full name from Jellyfin, e.g., "English (CC) - SUBRIP - Default")
