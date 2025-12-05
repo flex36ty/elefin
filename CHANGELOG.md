@@ -20,7 +20,7 @@ All notable changes to Elefin will be documented in this file.
   - New "OpenSubtitles API Key" setting to configure your API key
   - New "OpenSubtitles Login" setting for username/password authentication
   - API key and login required for downloading subtitles (search is free)
-  - Settings located in the Performance section
+  - Settings located in the Audio and Subtitles section
 
 - **Downloaded Subtitles in Video Player**
   - Downloaded subtitles automatically appear in the player's subtitle picker
