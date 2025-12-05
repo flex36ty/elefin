@@ -322,7 +322,7 @@ fun SettingsScreen(
                                                 mpvDownloadProgress = 0f
                                                 
                                                 try {
-                                                    val mpvApkUrl = "https://github.com/nowsci/mpv-elefin/releases/latest/download/mpv-elefin.apk"
+                                                    val mpvApkUrl = "https://github.com/flex36ty/elefin/releases/download/1.1.11/mpv-universal-release.apk"
                                                     val apkFile = File(context.cacheDir, "mpv-elefin.apk")
                                                     
                                                     // Download the APK

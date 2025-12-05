@@ -29,14 +29,6 @@ All notable changes to Elefin will be documented in this file.
   - New `MpvUrlBuilder` for building Jellyfin stream URLs
   - Simplified codebase by removing complex MPV initialization logic
 
-### Removed
-
-- **Deprecated MPV Files**
-  - Removed `MPVHolder.kt` (singleton pattern no longer needed)
-  - Removed `MPVSubtitleDownloader.kt` (handled by mpv-elefin)
-  - Removed `MpvUrlSelector.kt` (replaced by `MpvUrlBuilder`)
-  - Removed `MPVVideoPlayerScreen.kt` (playback handled by mpv-elefin)
-
 ---
 
 ## 2025-12-04
