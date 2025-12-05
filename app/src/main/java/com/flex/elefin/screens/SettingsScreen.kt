@@ -119,10 +119,10 @@ fun SettingsScreen(
     var isMpvDownloading by remember { mutableStateOf(false) }
     var mpvDownloadProgress by remember { mutableStateOf(0f) }
     
-    // Check if mpv-android is installed
+    // Check if mpv-elefin is installed
     LaunchedEffect(Unit) {
         isMpvInstalled = try {
-            context.packageManager.getPackageInfo("is.xyz.mpv", 0)
+            context.packageManager.getPackageInfo("com.flex.mpvelefin", 0)
             true
         } catch (e: PackageManager.NameNotFoundException) {
             false
@@ -267,11 +267,11 @@ fun SettingsScreen(
                         SettingsCategory.PLAYBACK -> {
                             // MPV Player Toggle
                             SettingToggle(
-                                title = "Use MPV Player",
+                                title = "Use MPV Player (Experimental)",
                                 description = if (isMpvInstalled) {
-                                    "Use mpv-android for playback. Better codec support and HDR passthrough. (Installed ✓)"
+                                    "Experimental. Uses mpv-elefin companion app for playback. Better codec support and HDR passthrough. (Installed ✓)"
                                 } else {
-                                    "Use mpv-android for playback. Requires mpv-android to be installed."
+                                    "Experimental. Requires mpv-elefin APK to be installed separately."
                                 },
                                 isEnabled = mpvEnabled,
                                 onToggle = {
@@ -301,7 +301,7 @@ fun SettingsScreen(
                                                 color = MaterialTheme.colorScheme.primary
                                             )
                                             Text(
-                                                text = "Downloading mpv-android... ${(mpvDownloadProgress * 100).toInt()}%",
+                                                text = "Downloading mpv-elefin... ${(mpvDownloadProgress * 100).toInt()}%",
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 color = MaterialTheme.colorScheme.onSurface
                                             )
@@ -322,8 +322,8 @@ fun SettingsScreen(
                                                 mpvDownloadProgress = 0f
                                                 
                                                 try {
-                                                    val mpvApkUrl = "https://github.com/mpv-android/mpv-android/releases/download/2025-08-25/app-default-universal-release.apk"
-                                                    val apkFile = File(context.cacheDir, "mpv-android.apk")
+                                                    val mpvApkUrl = "https://github.com/nowsci/mpv-elefin/releases/latest/download/mpv-elefin.apk"
+                                                    val apkFile = File(context.cacheDir, "mpv-elefin.apk")
                                                     
                                                     // Download the APK
                                                     withContext(Dispatchers.IO) {
@@ -365,10 +365,10 @@ fun SettingsScreen(
                                                     }
                                                     context.startActivity(installIntent)
                                                     
-                                                    Toast.makeText(context, "Installing mpv-android...", Toast.LENGTH_SHORT).show()
+                                                    Toast.makeText(context, "Installing mpv-elefin...", Toast.LENGTH_SHORT).show()
                                                     
                                                 } catch (e: Exception) {
-                                                    android.util.Log.e("Settings", "Failed to download mpv-android", e)
+                                                    android.util.Log.e("Settings", "Failed to download mpv-elefin", e)
                                                     Toast.makeText(context, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
                                                 } finally {
                                                     isMpvDownloading = false
@@ -390,7 +390,7 @@ fun SettingsScreen(
                                             modifier = Modifier.size(20.dp)
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Download & Install mpv-android")
+                                        Text("Download & Install mpv-elefin")
                                     }
                                 }
                             }
