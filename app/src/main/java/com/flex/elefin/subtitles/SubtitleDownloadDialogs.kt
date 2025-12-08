@@ -60,6 +60,16 @@ fun SubtitleLanguageDialog(
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
                     
+                    // Custom colors for ListItem - purple focus to match toggle switches
+                    val listItemColors = ListItemDefaults.colors(
+                        containerColor = Color.Transparent,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        focusedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                        focusedContentColor = Color.White,
+                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                        selectedContentColor = Color.White
+                    )
+                    
                     // Language list
                     LazyColumn(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -69,6 +79,7 @@ fun SubtitleLanguageDialog(
                             ListItem(
                                 selected = false,
                                 onClick = { onSelect(code) },
+                                colors = listItemColors,
                                 headlineContent = {
                                     Text(
                                         text = name,
@@ -174,6 +185,16 @@ fun SubtitleResultsDialog(
                             )
                         }
                     } else {
+                        // Custom colors for ListItem - purple focus to match toggle switches
+                        val listItemColors = ListItemDefaults.colors(
+                            containerColor = Color.Transparent,
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                            focusedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                            focusedContentColor = Color.White,
+                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                            selectedContentColor = Color.White
+                        )
+                        
                         // Results list
                         LazyColumn(
                             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -195,6 +216,7 @@ fun SubtitleResultsDialog(
                                 ListItem(
                                     selected = false,
                                     onClick = { onSelect(subtitle) },
+                                    colors = listItemColors,
                                     headlineContent = {
                                         Column {
                                             Text(
@@ -351,6 +373,16 @@ fun DownloadedSubtitlesDialog(
                             )
                         }
                     } else {
+                        // Custom colors for ListItem - purple focus to match toggle switches
+                        val listItemColors = ListItemDefaults.colors(
+                            containerColor = Color.Transparent,
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                            focusedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                            focusedContentColor = Color.White,
+                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                            selectedContentColor = Color.White
+                        )
+                        
                         LazyColumn(
                             modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -360,6 +392,7 @@ fun DownloadedSubtitlesDialog(
                                 ListItem(
                                     selected = false,
                                     onClick = { onSelect(subtitle) },
+                                    colors = listItemColors,
                                     headlineContent = {
                                         Column {
                                             Text(

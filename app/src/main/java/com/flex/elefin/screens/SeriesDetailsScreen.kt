@@ -2686,6 +2686,16 @@ fun EpisodeSubtitleSelectionDialog(
                             )
                         }
                     } else {
+                        // Custom colors for ListItem - purple focus to match toggle switches
+                        val listItemColors = androidx.tv.material3.ListItemDefaults.colors(
+                            containerColor = Color.Transparent,
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                            focusedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                            focusedContentColor = Color.White,
+                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                            selectedContentColor = Color.White
+                        )
+                        
                         LazyColumn(
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                             contentPadding = PaddingValues(vertical = 4.dp),
@@ -2699,6 +2709,7 @@ fun EpisodeSubtitleSelectionDialog(
                                         onSubtitleSelected(null)
                                         onDismiss()
                                     },
+                                    colors = listItemColors,
                                     headlineContent = {
                                         Text(
                                             text = "None (Off)",
@@ -2737,6 +2748,7 @@ fun EpisodeSubtitleSelectionDialog(
                                             onDismiss()
                                         }
                                     },
+                                    colors = listItemColors,
                                     headlineContent = {
                                         Column {
                                             Text(
@@ -2800,6 +2812,7 @@ fun EpisodeSubtitleSelectionDialog(
                                             onDownloadedSubtitleSelected?.invoke(downloadedSub.filePath)
                                             onDismiss()
                                         },
+                                        colors = listItemColors,
                                         headlineContent = {
                                             Column {
                                                 Text(

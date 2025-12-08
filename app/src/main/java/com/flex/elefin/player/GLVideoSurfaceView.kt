@@ -46,9 +46,11 @@ class GLVideoSurfaceView @JvmOverloads constructor(
     private var prevFrameFBO: Int = 0
     private var prevFrameTexture: Int = 0
     private var copyShaderProgram: Int = 0
+    private var textureCopyShaderProgram: Int = 0  // For texture-to-texture copy
     private var viewportWidth: Int = 1920
     private var viewportHeight: Int = 1080
     private var hasPreviousFrame: Boolean = false
+    private var frameCount: Long = 0
     
     // Effect settings
     var enableFakeHDR: Boolean = false
@@ -79,12 +81,14 @@ class GLVideoSurfaceView @JvmOverloads constructor(
     var enableFrameBlending: Boolean = false
         set(value) {
             field = value
+            Log.d(TAG, "🎬 Frame blending ${if (value) "ENABLED" else "DISABLED"}")
             requestRender()
         }
     
     var frameBlendStrength: Float = 0.5f
         set(value) {
             field = value.coerceIn(0f, 1f)
+            Log.d(TAG, "🎬 Frame blend strength: $field")
             requestRender()
         }
     
@@ -178,15 +182,16 @@ class GLVideoSurfaceView @JvmOverloads constructor(
         // Initialize shader programs
         shaderProgram = createShaderProgram()
         copyShaderProgram = createCopyShaderProgram()
+        textureCopyShaderProgram = createTextureCopyShaderProgram()
         
-        // Create FBO for storing previous frame (for frame blending)
+        // Create FBOs for storing previous frames (for frame blending and motion interpolation)
         createPreviousFrameFBO()
         
         Log.d(TAG, "GL pipeline initialized, Surface created")
     }
     
     private fun createPreviousFrameFBO() {
-        // Generate FBO
+        // Generate FBO for previous frame (used for frame blending)
         val fbos = IntArray(1)
         GLES20.glGenFramebuffers(1, fbos, 0)
         prevFrameFBO = fbos[0]
@@ -196,14 +201,12 @@ class GLVideoSurfaceView @JvmOverloads constructor(
         GLES20.glGenTextures(1, textures, 0)
         prevFrameTexture = textures[0]
         
-        // Setup texture
+        // Setup previous frame texture
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, prevFrameTexture)
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
-        
-        // Allocate texture storage
         GLES20.glTexImage2D(
             GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA,
             viewportWidth, viewportHeight, 0,
@@ -234,11 +237,12 @@ class GLVideoSurfaceView @JvmOverloads constructor(
         Log.d(TAG, "onSurfaceChanged: ${width}x${height}")
         GLES20.glViewport(0, 0, width, height)
         
-        // Update viewport dimensions and recreate FBO if size changed
+        // Update viewport dimensions and recreate FBOs if size changed
         if (width != viewportWidth || height != viewportHeight) {
             viewportWidth = width
             viewportHeight = height
             hasPreviousFrame = false
+            frameCount = 0
             
             // Recreate FBO with new size
             if (prevFrameFBO != 0) {
@@ -257,6 +261,7 @@ class GLVideoSurfaceView @JvmOverloads constructor(
             surfaceTexture?.updateTexImage()
             surfaceTexture?.getTransformMatrix(transformMatrix)
             frameAvailable = false
+            frameCount++
         }
         
         // Clear the screen
@@ -265,9 +270,12 @@ class GLVideoSurfaceView @JvmOverloads constructor(
         // Draw the video frame with effects
         drawVideoFrame()
         
-        // If frame blending is enabled, copy current frame to FBO for next frame
+        // If frame blending is enabled, copy current frame to FBO
         if (enableFrameBlending) {
             copyCurrentFrameToFBO()
+            if (!hasPreviousFrame) {
+                Log.d(TAG, "🎬 Frame blending active - capturing first frame")
+            }
             hasPreviousFrame = true
         }
     }
@@ -414,6 +422,27 @@ class GLVideoSurfaceView @JvmOverloads constructor(
         }
     }
     
+    private fun createTextureCopyShaderProgram(): Int {
+        val vertexShader = loadShader(GLES20.GL_VERTEX_SHADER, VERTEX_SHADER)
+        val fragmentShader = loadShader(GLES20.GL_FRAGMENT_SHADER, TEXTURE_COPY_FRAGMENT_SHADER)
+        
+        return GLES20.glCreateProgram().also { program ->
+            GLES20.glAttachShader(program, vertexShader)
+            GLES20.glAttachShader(program, fragmentShader)
+            GLES20.glLinkProgram(program)
+            
+            val linkStatus = IntArray(1)
+            GLES20.glGetProgramiv(program, GLES20.GL_LINK_STATUS, linkStatus, 0)
+            if (linkStatus[0] == 0) {
+                val error = GLES20.glGetProgramInfoLog(program)
+                GLES20.glDeleteProgram(program)
+                throw RuntimeException("Error linking texture copy shader program: $error")
+            }
+            
+            Log.d(TAG, "Texture copy shader program created successfully")
+        }
+    }
+    
     private fun loadShader(type: Int, shaderCode: String): Int {
         return GLES20.glCreateShader(type).also { shader ->
             GLES20.glShaderSource(shader, shaderCode)
@@ -451,6 +480,11 @@ class GLVideoSurfaceView @JvmOverloads constructor(
                 copyShaderProgram = 0
             }
             
+            if (textureCopyShaderProgram != 0) {
+                GLES20.glDeleteProgram(textureCopyShaderProgram)
+                textureCopyShaderProgram = 0
+            }
+            
             if (oesTextureId != 0) {
                 val textures = intArrayOf(oesTextureId)
                 GLES20.glDeleteTextures(1, textures, 0)
@@ -470,6 +504,7 @@ class GLVideoSurfaceView @JvmOverloads constructor(
             }
             
             hasPreviousFrame = false
+            frameCount = 0
             
             Log.d(TAG, "GL resources released")
         }
@@ -509,51 +544,49 @@ class GLVideoSurfaceView @JvmOverloads constructor(
             
             varying vec2 vTexCoord;
             
+            // Helper: Calculate luminance
+            float getLuma(vec3 color) {
+                return dot(color, vec3(0.299, 0.587, 0.114));
+            }
+            
             void main() {
                 vec3 color = texture2D(uTexture, vTexCoord).rgb;
                 
-                // Apply frame blending (soap opera effect)
-                // Blends current frame with previous frame for smoother motion
+                // ============================================
+                // Frame Blending (soap opera effect)
+                // ============================================
                 if (uEnableBlend == 1 && uHasPrevFrame == 1) {
                     vec3 prevColor = texture2D(uPrevTexture, vTexCoord).rgb;
-                    // Mix factor: 0.0 = current only, 0.5 = 50/50 blend, 1.0 = previous only
-                    // We use half the strength for a subtle effect (max 50% blend at strength 1.0)
                     float blendFactor = uBlendStrength * 0.5;
                     color = mix(color, prevColor, blendFactor);
                 }
                 
-                // Apply sharpening using unsharp mask technique
+                // ============================================
+                // Sharpening (unsharp mask)
+                // ============================================
                 if (uEnableSharpen == 1) {
-                    // Sample neighboring pixels
                     vec3 n = texture2D(uTexture, vTexCoord + vec2(0.0, -uTexelSize.y)).rgb;
                     vec3 s = texture2D(uTexture, vTexCoord + vec2(0.0, uTexelSize.y)).rgb;
                     vec3 e = texture2D(uTexture, vTexCoord + vec2(uTexelSize.x, 0.0)).rgb;
                     vec3 w = texture2D(uTexture, vTexCoord + vec2(-uTexelSize.x, 0.0)).rgb;
                     
-                    // Calculate edge detection (Laplacian)
                     vec3 edge = -4.0 * color + n + s + e + w;
-                    
-                    // Apply sharpening
                     color = color - edge * uSharpenStrength * 0.3;
                 }
                 
-                // Apply fake HDR tone mapping
+                // ============================================
+                // Fake HDR (SDR to fake HDR simulation)
+                // ============================================
                 if (uEnableHDR == 1) {
-                    // Gamma adjustment for brightness boost
                     color = pow(color, vec3(0.9));
-                    
-                    // Boost luminance
                     color *= uHDRStrength;
-                    
-                    // Simple tone mapping to prevent clipping
                     color = color / (1.0 + color);
                     
-                    // Slightly increase saturation
-                    float luma = dot(color, vec3(0.299, 0.587, 0.114));
+                    float luma = getLuma(color);
                     color = mix(vec3(luma), color, 1.15);
                 }
                 
-                // Clamp to valid range
+                // Final clamp
                 color = clamp(color, 0.0, 1.0);
                 
                 gl_FragColor = vec4(color, 1.0);
@@ -566,6 +599,18 @@ class GLVideoSurfaceView @JvmOverloads constructor(
             precision mediump float;
             
             uniform samplerExternalOES uTexture;
+            varying vec2 vTexCoord;
+            
+            void main() {
+                gl_FragColor = texture2D(uTexture, vTexCoord);
+            }
+        """
+        
+        // Shader for copying regular 2D texture to FBO (for frame history)
+        private const val TEXTURE_COPY_FRAGMENT_SHADER = """
+            precision mediump float;
+            
+            uniform sampler2D uTexture;
             varying vec2 vTexCoord;
             
             void main() {

@@ -33,13 +33,20 @@ import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.gestures.ScrollScope
 import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.rememberSplineBasedDecay
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -131,6 +138,7 @@ enum class SortType {
 @Composable
 fun JellyfinHomeScreen(
     onItemClick: (JellyfinItem, Long) -> Unit = { _, _ -> },
+    onMusicClick: () -> Unit = {},
     showDebugOutlines: Boolean = false,
     preloadLibraryImages: Boolean = false,
     cacheLibraryImages: Boolean = true,
@@ -175,6 +183,7 @@ fun JellyfinHomeScreen(
             }
         }
     }
+    
     
     // Hide shows with zero episodes setting - read from settings
     var hideShowsWithZeroEpisodes by remember { mutableStateOf(settings.hideShowsWithZeroEpisodes) }
@@ -776,6 +785,11 @@ fun JellyfinHomeScreen(
                 // Library buttons with underlined indicator using TV Material3 TabRow
                 // Add a single "Collections" tab if collections are available
                 val allTabs = remember(libraries, collections) {
+                    // Debug: Log all libraries and their CollectionType
+                    libraries.forEach { lib ->
+                        android.util.Log.d("JellyfinHomeScreen", "📚 Library loaded: ${lib.Name}, Type: ${lib.Type}, CollectionType: ${lib.CollectionType}, Id: ${lib.Id}")
+                    }
+                    
                     buildList<Pair<String?, String>> {
                         // Add all libraries (exclude any library named "Collections" to avoid conflicts)
                         addAll(libraries.filter { !it.Name.equals("Collections", ignoreCase = true) }.map { null to it.Id })
@@ -823,12 +837,26 @@ fun JellyfinHomeScreen(
                                 libraries.find { it.Id == itemId }?.Name ?: ""
                             }
                             
+                            // Check if this is a music library
+                            val library = libraries.find { it.Id == itemId }
+                            val isMusicLibrary = !isCollectionsTab && library?.CollectionType == "music"
+                            
+                            // Debug log for library detection
+                            android.util.Log.d("JellyfinHomeScreen", "Library: ${library?.Name}, CollectionType: ${library?.CollectionType}, isMusicLibrary: $isMusicLibrary")
+                            
                             Tab(
                                 selected = isSelected,
                                 onFocus = {
                                     // Do nothing on focus - only load on click
                                 },
                                 onClick = {
+                                    // Handle music library specially - navigate to music screen
+                                    if (isMusicLibrary) {
+                                        android.util.Log.d("JellyfinHomeScreen", "🎵 Music library clicked! Navigating to music screen...")
+                                        onMusicClick()
+                                        return@Tab
+                                    }
+                                    
                                     // Only load library/collections on Enter/OK press, not on focus
                                     if (isSelected) {
                                         // Deselect if already selected
@@ -943,8 +971,25 @@ fun JellyfinHomeScreen(
                             .fillMaxWidth(0.75f) // Increased by 50%: 0.5 * 1.5 = 0.75 (50% wider horizontally)
                     ) {
                         // Title (Series name for episodes, item name for others) or Logo
+                        // For episodes, we need to show the series name as the title, not the episode name
+                        val titleText = if (isEpisodeHighlight && episodeForMetadata != null && !isSeriesItem) {
+                            // For episodes, use SeriesName as the title
+                            episodeForMetadata.SeriesName ?: details.Name
+                        } else {
+                            details.Name
+                        }
+                        
+                        // Create a modified item for TitleOrLogo that has the correct name
+                        // This ensures the title shows series name for episodes
+                        val titleItem = if (isEpisodeHighlight && episodeForMetadata != null && !isSeriesItem && episodeForMetadata.SeriesName != null) {
+                            // Use series info for logo/title display
+                            details.copy(Name = episodeForMetadata.SeriesName!!)
+                        } else {
+                            details
+                        }
+                        
                         TitleOrLogo(
-                            item = details,
+                            item = titleItem,
                             apiService = apiService,
                             style = MaterialTheme.typography.headlineMedium.copy(
                                 fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f // Reduced by 20% (0.8 * 0.8 = 0.64)
@@ -1171,11 +1216,11 @@ fun JellyfinHomeScreen(
                         val preloadCount = minOf(36, items.size) // First 6 rows (6 columns * 6 rows)
                         
                         items.take(preloadCount).forEach { item ->
-                            // Use reduced resolution (600x900) or 4K resolution (3840x5760) based on setting
+                            // Use reduced resolution (300x450) or standard resolution (400x600) based on setting
                             val imageUrl = if (reducePosterResolution) {
-                                apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 600, maxHeight = 900, quality = 90)
+                                apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 300, maxHeight = 450, quality = 80)
                             } else {
-                                apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90)
+                                apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 400, maxHeight = 600, quality = 85)
                             }
                             if (imageUrl.isNotEmpty()) {
                                 try {
@@ -1205,11 +1250,11 @@ fun JellyfinHomeScreen(
                         
                         if (preloadStart < items.size && preloadEnd > preloadStart) {
                             items.subList(preloadStart, preloadEnd).forEach { item ->
-                                // Use reduced resolution (600x900) or 4K resolution (3840x5760) based on setting
+                                // Use reduced resolution (300x450) or standard resolution (400x600) based on setting
                                 val imageUrl = if (reducePosterResolution) {
-                                    apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 600, maxHeight = 900, quality = 90)
+                                    apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 300, maxHeight = 450, quality = 80)
                                 } else {
-                                    apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90)
+                                    apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 400, maxHeight = 600, quality = 85)
                                 }
                                 if (imageUrl.isNotEmpty()) {
                                     try {
@@ -1234,138 +1279,206 @@ fun JellyfinHomeScreen(
                 Spacer(modifier = Modifier.height(86.dp)) // Add space below tab row (reduced by 40% from 144: 144 * 0.6 = 86)
                 
                 if (items.isNotEmpty()) {
-                    androidx.tv.material3.Surface(
+                    // A-Z Index state - only show when sorted alphabetically AND not in low power mode
+                    // The A-Z index with animations can cause scrolling lag on lower-end devices
+                    val showAlphabetIndex = sortType == SortType.Alphabetically && !lowPowerMode.value
+                    val columns = 6
+                    val letterIndexMap = remember(items, columns) {
+                        if (showAlphabetIndex) buildLetterIndexMap(items, columns) else emptyMap()
+                    }
+                    val availableLetters = remember(letterIndexMap) { letterIndexMap.keys }
+                    var selectedLetter by remember { mutableStateOf<Char?>(null) }
+                    var showLetterOverlay by remember { mutableStateOf(false) }
+                    
+                    // Auto-hide letter overlay after delay
+                    LaunchedEffect(selectedLetter) {
+                        if (selectedLetter != null) {
+                            showLetterOverlay = true
+                            delay(800)
+                            showLetterOverlay = false
+                        }
+                    }
+                    
+                    // Scroll to letter when selected
+                    LaunchedEffect(selectedLetter, letterIndexMap) {
+                        if (selectedLetter != null && letterIndexMap.containsKey(selectedLetter)) {
+                            val targetRow = letterIndexMap[selectedLetter] ?: return@LaunchedEffect
+                            lazyListState.animateScrollToItem(targetRow)
+                        }
+                    }
+                    
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
-                            .then(
-                                if (debugOutlinesEnabled) {
-                                    Modifier.border(3.dp, Color.Green)
-                                } else {
-                                    Modifier
-                                }
-                            ),
-                        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-                        colors = androidx.tv.material3.SurfaceDefaults.colors(
-                            containerColor = Color.Transparent
-                        )
                     ) {
-                        LazyColumn(
-                            state = lazyListState,
-                            contentPadding = PaddingValues(bottom = 20.dp * 1.15f, top = 24.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 54.dp, end = 38.dp)
-                                .then(
-                                    if (debugOutlinesEnabled) {
-                                        Modifier.border(3.dp, Color.Blue)
-                                    } else {
-                                        Modifier
-                                    }
-                                )
+                        Row(
+                            modifier = Modifier.fillMaxSize()
                         ) {
-                        // Grid layout with 6 columns - integrate directly into LazyColumn
-                        val columns = 6
-                        items(
-                            items = items.chunked(columns),
-                            key = { rowItems -> rowItems.firstOrNull()?.Id ?: "" },
-                            contentType = { "library_row" }
-                        ) { rowItems ->
-                            Row(
+                            // A-Z Index Bar on the left (only when sorted alphabetically)
+                            if (showAlphabetIndex) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(48.dp)
+                                        .fillMaxHeight()
+                                        .padding(start = 8.dp, top = 24.dp, bottom = 24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    AlphabetIndexBar(
+                                        availableLetters = availableLetters,
+                                        selectedLetter = selectedLetter,
+                                        onLetterFocused = { letter ->
+                                            selectedLetter = letter
+                                        },
+                                        onLetterSelected = { letter ->
+                                            selectedLetter = letter
+                                        }
+                                    )
+                                }
+                            }
+                            
+                            // Main content area
+                            androidx.tv.material3.Surface(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 10.dp),
-                                horizontalArrangement = Arrangement.Center
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .then(
+                                        if (debugOutlinesEnabled) {
+                                            Modifier.border(3.dp, Color.Green)
+                                        } else {
+                                            Modifier
+                                        }
+                                    ),
+                                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                                colors = androidx.tv.material3.SurfaceDefaults.colors(
+                                    containerColor = Color.Transparent
+                                )
                             ) {
-                                // Add spacer at the start for equal spacing
-                                Spacer(modifier = Modifier.weight(1f))
-                                
-                                // Cards with spacing between them
-                                rowItems.forEachIndexed { index, item ->
-                                    if (index > 0) {
-                                        Spacer(modifier = Modifier.width(20.dp))
-                                    }
-                                    Column(
-                                        modifier = Modifier.width(105.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        JellyfinHorizontalCard(
-                                            item = item,
-                                            apiService = apiService,
-                                            onClick = {
-                                                // Library item click - pass fromLibrary flag
-                                                val intent = when (item.Type) {
-                                                    "Series" -> {
-                                                        com.flex.elefin.SeriesDetailsActivity.createIntent(
-                                                            context = context,
-                                                            item = item,
-                                                            fromLibrary = true
-                                                        )
-                                                    }
-                                                    else -> {
-                                                        // Movies and other types
-                                                        com.flex.elefin.MovieDetailsActivity.createIntent(
-                                                            context = context,
-                                                            item = item,
-                                                            fromLibrary = true
-                                                        )
-                                                    }
-                                                }
-                                                context.startActivity(intent)
-                                            },
-                                            onFocusChanged = { isFocused ->
-                                                if (isFocused) {
-                                                    // Update metadata text immediately
-                                                    instantHighlightedItem = item
-                                                    originalEpisodeItem = null
-                                                    
-                                                    // Cancel any pending background change
-                                                    backgroundChangeJob?.cancel()
-                                                    
-                                                    // Debounce: wait 1 second before changing background
-                                                    backgroundChangeJob = scope.launch {
-                                                        delay(1000)
-                                                        highlightedItem = item
-                                                    }
-                                                }
-                                            },
-                                            enableCaching = cacheLibraryImages,
-                                            reducePosterResolution = reducePosterResolution,
-                                            unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null,
-                                            disableAnimations = disableUIAnimations.value,
-                                            useSimpleCards = useSimpleCards.value,
-                                            useGoogleTvCards = useGoogleTvCards.value,
-                                            lowPowerMode = lowPowerMode.value
+                                LazyColumn(
+                                    state = lazyListState,
+                                    contentPadding = PaddingValues(bottom = 20.dp * 1.15f, top = 24.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = if (showAlphabetIndex) 8.dp else 54.dp, end = 38.dp)
+                                        .then(
+                                            if (debugOutlinesEnabled) {
+                                                Modifier.border(3.dp, Color.Blue)
+                                            } else {
+                                                Modifier
+                                            }
                                         )
-                                        // Item name below the card
-                                        Text(
-                                            text = item.Name ?: "",
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.85f
-                                            ),
-                                            color = Color.White,
-                                            maxLines = 2,
-                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                ) {
+                                    // Grid layout with 6 columns - integrate directly into LazyColumn
+                                    items(
+                                        items = items.chunked(columns),
+                                        key = { rowItems -> rowItems.firstOrNull()?.Id ?: "" },
+                                        contentType = { "library_row" }
+                                    ) { rowItems ->
+                                        Row(
                                             modifier = Modifier
-                                                .padding(top = 8.dp)
                                                 .fillMaxWidth()
-                                        )
+                                                .padding(vertical = 10.dp),
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            // Add spacer at the start for equal spacing
+                                            Spacer(modifier = Modifier.weight(1f))
+                                            
+                                            // Cards with spacing between them
+                                            rowItems.forEachIndexed { index, item ->
+                                                if (index > 0) {
+                                                    Spacer(modifier = Modifier.width(20.dp))
+                                                }
+                                                Column(
+                                                    modifier = Modifier.width(105.dp),
+                                                    horizontalAlignment = Alignment.CenterHorizontally
+                                                ) {
+                                                    JellyfinHorizontalCard(
+                                                        item = item,
+                                                        apiService = apiService,
+                                                        onClick = {
+                                                            // Library item click - pass fromLibrary flag
+                                                            val intent = when (item.Type) {
+                                                                "Series" -> {
+                                                                    com.flex.elefin.SeriesDetailsActivity.createIntent(
+                                                                        context = context,
+                                                                        item = item,
+                                                                        fromLibrary = true
+                                                                    )
+                                                                }
+                                                                else -> {
+                                                                    // Movies and other types
+                                                                    com.flex.elefin.MovieDetailsActivity.createIntent(
+                                                                        context = context,
+                                                                        item = item,
+                                                                        fromLibrary = true
+                                                                    )
+                                                                }
+                                                            }
+                                                            context.startActivity(intent)
+                                                        },
+                                                        onFocusChanged = { isFocused ->
+                                                            if (isFocused) {
+                                                                // Update metadata text immediately
+                                                                instantHighlightedItem = item
+                                                                originalEpisodeItem = null
+                                                                
+                                                                // Cancel any pending background change
+                                                                backgroundChangeJob?.cancel()
+                                                                
+                                                                // Debounce: wait 1 second before changing background
+                                                                backgroundChangeJob = scope.launch {
+                                                                    delay(1000)
+                                                                    highlightedItem = item
+                                                                }
+                                                            }
+                                                        },
+                                                        enableCaching = cacheLibraryImages,
+                                                        reducePosterResolution = reducePosterResolution,
+                                                        unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null,
+                                                        disableAnimations = disableUIAnimations.value,
+                                                        useSimpleCards = useSimpleCards.value,
+                                                        useGoogleTvCards = useGoogleTvCards.value,
+                                                        lowPowerMode = lowPowerMode.value
+                                                    )
+                                                    // Item name below the card - skip in low power mode for smoother scrolling
+                                                    if (!lowPowerMode.value) {
+                                                        Text(
+                                                            text = item.Name ?: "",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = Color.White.copy(alpha = 0.9f),
+                                                            maxLines = 1,
+                                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                                            modifier = Modifier
+                                                                .padding(top = 6.dp)
+                                                                .fillMaxWidth()
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            
+                                            // Fill remaining space if row has fewer than columns items
+                                            if (rowItems.size < columns) {
+                                                repeat(columns - rowItems.size) {
+                                                    Spacer(modifier = Modifier.width(105.dp + 20.dp)) // Width of card + spacing
+                                                }
+                                            }
+                                            
+                                            // Add spacer at the end for equal spacing
+                                            Spacer(modifier = Modifier.weight(1f))
+                                        }
                                     }
                                 }
-                                
-                                // Fill remaining space if row has fewer than columns items
-                                if (rowItems.size < columns) {
-                                    repeat(columns - rowItems.size) {
-                                        Spacer(modifier = Modifier.width(105.dp + 20.dp)) // Width of card + spacing
-                                    }
-                                }
-                                
-                                // Add spacer at the end for equal spacing
-                                Spacer(modifier = Modifier.weight(1f))
                             }
                         }
-                    }
+                        
+                        // Letter overlay (shown briefly when navigating A-Z)
+                        if (showAlphabetIndex) {
+                            LetterOverlay(
+                                letter = selectedLetter,
+                                visible = showLetterOverlay
+                            )
+                        }
                     }
                 } else {
                     // Loading state for library items
@@ -1483,11 +1596,11 @@ fun JellyfinHomeScreen(
                         val preloadCount = minOf(36, items.size) // First 6 rows (6 columns * 6 rows)
                         
                         items.take(preloadCount).forEach { item ->
-                            // Use reduced resolution (600x900) or 4K resolution (3840x5760) based on setting
+                            // Use reduced resolution (300x450) or standard resolution (400x600) based on setting
                             val imageUrl = if (reducePosterResolution) {
-                                apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 600, maxHeight = 900, quality = 90)
+                                apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 300, maxHeight = 450, quality = 80)
                             } else {
-                                apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90)
+                                apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 400, maxHeight = 600, quality = 85)
                             }
                             if (imageUrl.isNotEmpty()) {
                                 try {
@@ -1517,11 +1630,11 @@ fun JellyfinHomeScreen(
                         
                         if (preloadStart < items.size && preloadEnd > preloadStart) {
                             items.subList(preloadStart, preloadEnd).forEach { item ->
-                                // Use reduced resolution (600x900) or 4K resolution (3840x5760) based on setting
+                                // Use reduced resolution (300x450) or standard resolution (400x600) based on setting
                                 val imageUrl = if (reducePosterResolution) {
-                                    apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 600, maxHeight = 900, quality = 90)
+                                    apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 300, maxHeight = 450, quality = 80)
                                 } else {
-                                    apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90)
+                                    apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 400, maxHeight = 600, quality = 85)
                                 }
                                 if (imageUrl.isNotEmpty()) {
                                     try {
@@ -1567,137 +1680,204 @@ fun JellyfinHomeScreen(
                         }
                     }
                 } else {
-                    androidx.tv.material3.Surface(
+                    // A-Z Index state for collections - only show when sorted alphabetically AND not in low power mode
+                    val showCollectionAlphabetIndex = sortType == SortType.Alphabetically && !lowPowerMode.value
+                    val collectionColumns = 6
+                    val collectionLetterIndexMap = remember(items, collectionColumns) {
+                        if (showCollectionAlphabetIndex) buildLetterIndexMap(items, collectionColumns) else emptyMap()
+                    }
+                    val collectionAvailableLetters = remember(collectionLetterIndexMap) { collectionLetterIndexMap.keys }
+                    var collectionSelectedLetter by remember { mutableStateOf<Char?>(null) }
+                    var showCollectionLetterOverlay by remember { mutableStateOf(false) }
+                    
+                    // Auto-hide letter overlay after delay
+                    LaunchedEffect(collectionSelectedLetter) {
+                        if (collectionSelectedLetter != null) {
+                            showCollectionLetterOverlay = true
+                            delay(800)
+                            showCollectionLetterOverlay = false
+                        }
+                    }
+                    
+                    // Scroll to letter when selected
+                    LaunchedEffect(collectionSelectedLetter, collectionLetterIndexMap) {
+                        if (collectionSelectedLetter != null && collectionLetterIndexMap.containsKey(collectionSelectedLetter)) {
+                            val targetRow = collectionLetterIndexMap[collectionSelectedLetter] ?: return@LaunchedEffect
+                            lazyListState.animateScrollToItem(targetRow)
+                        }
+                    }
+                    
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
-                            .then(
-                                if (debugOutlinesEnabled) {
-                                    Modifier.border(3.dp, Color.Green)
-                                } else {
-                                    Modifier
-                                }
-                            ),
-                        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-                        colors = androidx.tv.material3.SurfaceDefaults.colors(
-                            containerColor = Color.Transparent
-                        )
                     ) {
-                        LazyColumn(
-                            state = lazyListState,
-                            contentPadding = PaddingValues(bottom = 20.dp * 1.15f, top = 24.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 54.dp, end = 38.dp)
-                                .then(
-                                    if (debugOutlinesEnabled) {
-                                        Modifier.border(3.dp, Color.Blue)
-                                    } else {
-                                        Modifier
-                                    }
-                                )
+                        Row(
+                            modifier = Modifier.fillMaxSize()
                         ) {
-                            // Grid layout with 6 columns - integrate directly into LazyColumn
-                            val columns = 6
-                            items(
-                                items = items.chunked(columns),
-                                key = { rowItems -> rowItems.firstOrNull()?.Id ?: "" },
-                                contentType = { "collection_row" }
-                            ) { rowItems ->
-                                Row(
+                            // A-Z Index Bar on the left (only when sorted alphabetically)
+                            if (showCollectionAlphabetIndex) {
+                                Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 10.dp),
-                                    horizontalArrangement = Arrangement.Center
+                                        .width(48.dp)
+                                        .fillMaxHeight()
+                                        .padding(start = 8.dp, top = 24.dp, bottom = 24.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    // Add spacer at the start for equal spacing
-                                    Spacer(modifier = Modifier.weight(1f))
-                                    
-                                    // Cards with spacing between them
-                                    rowItems.forEachIndexed { index, item ->
-                                        if (index > 0) {
-                                            Spacer(modifier = Modifier.width(20.dp))
+                                    AlphabetIndexBar(
+                                        availableLetters = collectionAvailableLetters,
+                                        selectedLetter = collectionSelectedLetter,
+                                        onLetterFocused = { letter ->
+                                            collectionSelectedLetter = letter
+                                        },
+                                        onLetterSelected = { letter ->
+                                            collectionSelectedLetter = letter
                                         }
-                                        Column(
-                                            modifier = Modifier.width(105.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally
-                                        ) {
-                                            JellyfinHorizontalCard(
-                                                item = item,
-                                                apiService = apiService,
-                                                onClick = {
-                                                    // Collection item click - pass fromLibrary flag
-                                                    val intent = when (item.Type) {
-                                                        "Series" -> {
-                                                            com.flex.elefin.SeriesDetailsActivity.createIntent(
-                                                                context = context,
-                                                                item = item,
-                                                                fromLibrary = true
-                                                            )
-                                                        }
-                                                        else -> {
-                                                            // Movies and other types
-                                                            com.flex.elefin.MovieDetailsActivity.createIntent(
-                                                                context = context,
-                                                                item = item,
-                                                                fromLibrary = true
-                                                            )
-                                                        }
-                                                    }
-                                                    context.startActivity(intent)
-                                                },
-                                                onFocusChanged = { isFocused ->
-                                                    if (isFocused) {
-                                                        // Update metadata text immediately
-                                                        instantHighlightedItem = item
-                                                        originalEpisodeItem = null
-                                                        
-                                                        // Cancel any pending background change
-                                                        backgroundChangeJob?.cancel()
-                                                        
-                                                        // Debounce: wait 1 second before changing background
-                                                        backgroundChangeJob = scope.launch {
-                                                            delay(1000)
-                                                            highlightedItem = item
-                                                        }
-                                                    }
-                                                },
-                                                enableCaching = cacheLibraryImages,
-                                                reducePosterResolution = reducePosterResolution,
-                                                unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null,
-                                                disableAnimations = disableUIAnimations.value,
-                                                useSimpleCards = useSimpleCards.value,
-                                                useGoogleTvCards = useGoogleTvCards.value,
-                                                lowPowerMode = lowPowerMode.value
-                                            )
-                                            // Item name below the card
-                                            Text(
-                                                text = item.Name ?: "",
-                                                style = MaterialTheme.typography.bodyMedium.copy(
-                                                    fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.85f
-                                                ),
-                                                color = Color.White,
-                                                maxLines = 2,
-                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                                modifier = Modifier
-                                                    .padding(top = 8.dp)
-                                                    .fillMaxWidth()
-                                            )
-                                        }
-                                    }
-                                    
-                                    // Fill remaining space if row has fewer than columns items
-                                    if (rowItems.size < columns) {
-                                        repeat(columns - rowItems.size) {
-                                            Spacer(modifier = Modifier.width(105.dp + 20.dp)) // Width of card + spacing
-                                        }
-                                    }
-                                    
-                                    // Add spacer at the end for equal spacing
-                                    Spacer(modifier = Modifier.weight(1f))
+                                    )
                                 }
                             }
+                            
+                            // Main content area
+                            androidx.tv.material3.Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .then(
+                                        if (debugOutlinesEnabled) {
+                                            Modifier.border(3.dp, Color.Green)
+                                        } else {
+                                            Modifier
+                                        }
+                                    ),
+                                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                                colors = androidx.tv.material3.SurfaceDefaults.colors(
+                                    containerColor = Color.Transparent
+                                )
+                            ) {
+                                LazyColumn(
+                                    state = lazyListState,
+                                    contentPadding = PaddingValues(bottom = 20.dp * 1.15f, top = 24.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = if (showCollectionAlphabetIndex) 8.dp else 54.dp, end = 38.dp)
+                                        .then(
+                                            if (debugOutlinesEnabled) {
+                                                Modifier.border(3.dp, Color.Blue)
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
+                                ) {
+                                    // Grid layout with 6 columns - integrate directly into LazyColumn
+                                    items(
+                                        items = items.chunked(collectionColumns),
+                                        key = { rowItems -> rowItems.firstOrNull()?.Id ?: "" },
+                                        contentType = { "collection_row" }
+                                    ) { rowItems ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 10.dp),
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            // Add spacer at the start for equal spacing
+                                            Spacer(modifier = Modifier.weight(1f))
+                                            
+                                            // Cards with spacing between them
+                                            rowItems.forEachIndexed { index, item ->
+                                                if (index > 0) {
+                                                    Spacer(modifier = Modifier.width(20.dp))
+                                                }
+                                                Column(
+                                                    modifier = Modifier.width(105.dp),
+                                                    horizontalAlignment = Alignment.CenterHorizontally
+                                                ) {
+                                                    JellyfinHorizontalCard(
+                                                        item = item,
+                                                        apiService = apiService,
+                                                        onClick = {
+                                                            // Collection item click - pass fromLibrary flag
+                                                            val intent = when (item.Type) {
+                                                                "Series" -> {
+                                                                    com.flex.elefin.SeriesDetailsActivity.createIntent(
+                                                                        context = context,
+                                                                        item = item,
+                                                                        fromLibrary = true
+                                                                    )
+                                                                }
+                                                                else -> {
+                                                                    // Movies and other types
+                                                                    com.flex.elefin.MovieDetailsActivity.createIntent(
+                                                                        context = context,
+                                                                        item = item,
+                                                                        fromLibrary = true
+                                                                    )
+                                                                }
+                                                            }
+                                                            context.startActivity(intent)
+                                                        },
+                                                        onFocusChanged = { isFocused ->
+                                                            if (isFocused) {
+                                                                // Update metadata text immediately
+                                                                instantHighlightedItem = item
+                                                                originalEpisodeItem = null
+                                                                
+                                                                // Cancel any pending background change
+                                                                backgroundChangeJob?.cancel()
+                                                                
+                                                                // Debounce: wait 1 second before changing background
+                                                                backgroundChangeJob = scope.launch {
+                                                                    delay(1000)
+                                                                    highlightedItem = item
+                                                                }
+                                                            }
+                                                        },
+                                                        enableCaching = cacheLibraryImages,
+                                                        reducePosterResolution = reducePosterResolution,
+                                                        unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null,
+                                                        disableAnimations = disableUIAnimations.value,
+                                                        useSimpleCards = useSimpleCards.value,
+                                                        useGoogleTvCards = useGoogleTvCards.value,
+                                                        lowPowerMode = lowPowerMode.value
+                                                    )
+                                                    // Item name below the card - skip in low power mode for smoother scrolling
+                                                    if (!lowPowerMode.value) {
+                                                        Text(
+                                                            text = item.Name ?: "",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = Color.White.copy(alpha = 0.9f),
+                                                            maxLines = 1,
+                                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                                            modifier = Modifier
+                                                                .padding(top = 6.dp)
+                                                                .fillMaxWidth()
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            
+                                            // Fill remaining space if row has fewer than columns items
+                                            if (rowItems.size < collectionColumns) {
+                                                repeat(collectionColumns - rowItems.size) {
+                                                    Spacer(modifier = Modifier.width(105.dp + 20.dp)) // Width of card + spacing
+                                                }
+                                            }
+                                            
+                                            // Add spacer at the end for equal spacing
+                                            Spacer(modifier = Modifier.weight(1f))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Letter overlay (shown briefly when navigating A-Z)
+                        if (showCollectionAlphabetIndex) {
+                            LetterOverlay(
+                                letter = collectionSelectedLetter,
+                                visible = showCollectionLetterOverlay
+                            )
                         }
                     }
                 }
@@ -2580,13 +2760,13 @@ fun JellyfinCard(
     reducePosterResolution: Boolean = false,
     disableAnimations: Boolean = false
 ) {
-    // Use reduced resolution (600x900 for 2:3 aspect ratio) or 4K resolution (3840x5760) based on setting
+    // Use reduced resolution (300x450) or standard resolution (400x600) based on setting
     // When animations disabled, force reduced resolution for better performance
     val effectiveReduceResolution = reducePosterResolution || disableAnimations
     val imageUrl = if (effectiveReduceResolution) {
-        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 600, maxHeight = 900, quality = 90) ?: ""
+        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 300, maxHeight = 450, quality = 80) ?: ""
     } else {
-        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90) ?: ""
+        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 400, maxHeight = 600, quality = 85) ?: ""
     }
     
     StandardCardContainer(
@@ -2640,11 +2820,11 @@ fun JellyfinCardWithProgress(
     reducePosterResolution: Boolean = false,
     disableAnimations: Boolean = false
 ) {
-    // Use reduced resolution (600x900 for 2:3 aspect ratio) or 4K resolution (3840x5760) based on setting
+    // Use reduced resolution (300x450) or standard resolution (400x600) based on setting
     val imageUrl = if (reducePosterResolution) {
-        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 600, maxHeight = 900, quality = 90) ?: ""
+        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 300, maxHeight = 450, quality = 80) ?: ""
     } else {
-        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90) ?: ""
+        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 400, maxHeight = 600, quality = 85) ?: ""
     }
     
     // Calculate progress percentage
@@ -2731,10 +2911,10 @@ fun JellyfinHorizontalCard(
     // Low power mode uses even smaller images (300x450) for budget devices
     val effectiveReduceResolution = reducePosterResolution || disableAnimations || useSimpleCards || useGoogleTvCards
     val imageUrl = remember(item.Id, item.Type, item.SeriesId, useSeriesPosterForEpisodes, effectiveReduceResolution, lowPowerMode) {
-        // Low power mode: 300x450, Reduced: 600x900, Full: 3840x5760
-        val maxWidth = if (lowPowerMode) 300 else if (effectiveReduceResolution) 600 else 3840
-        val maxHeight = if (lowPowerMode) 450 else if (effectiveReduceResolution) 900 else 5760
-        val quality = if (lowPowerMode) 80 else 90
+        // Low power mode: 300x450, Reduced: 300x450, Standard: 400x600
+        val maxWidth = if (lowPowerMode) 300 else if (effectiveReduceResolution) 300 else 400
+        val maxHeight = if (lowPowerMode) 450 else if (effectiveReduceResolution) 450 else 600
+        val quality = if (lowPowerMode) 80 else 85
         
         if (item.Type == "Episode" && useSeriesPosterForEpisodes && item.SeriesId != null) {
             // Use series poster (Primary) for episodes
@@ -3386,7 +3566,7 @@ fun JellyfinHorizontalCardWithProgress(
                             )
                         } else {
                             // Fallback to primary image if no thumbnail/backdrop
-                            val primaryUrl = apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 3840, maxHeight = 5760, quality = 90) ?: ""
+                            val primaryUrl = apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 400, maxHeight = 600, quality = 85) ?: ""
                             if (primaryUrl.isNotEmpty() && apiService != null) {
                                 val headerMap = apiService.getImageRequestHeaders()
                                 AsyncImage(
@@ -3673,6 +3853,193 @@ private fun RatingBoxWithIcon(
                 text = "${percentage}%",
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.White
+            )
+        }
+    }
+}
+
+// =============================================================================
+// A-Z ALPHABET INDEX BAR (Plex-style jump navigation)
+// =============================================================================
+
+/**
+ * Builds a map of first letter -> row index for alphabetically sorted items.
+ * Used to jump to specific letters in the library grid.
+ * 
+ * @param items The list of items (must be sorted alphabetically)
+ * @param columns Number of columns in the grid (items per row)
+ * @return Map of letter to row index
+ */
+private fun buildLetterIndexMap(items: List<JellyfinItem>, columns: Int = 6): Map<Char, Int> {
+    val map = mutableMapOf<Char, Int>()
+    
+    items.forEachIndexed { index, item ->
+        val name = item.Name ?: return@forEachIndexed
+        val first = name.firstOrNull()?.uppercaseChar() ?: return@forEachIndexed
+        
+        // Only map A-Z letters, and only the first occurrence
+        if (first in 'A'..'Z' && first !in map) {
+            // Calculate row index (items are chunked into rows)
+            val rowIndex = index / columns
+            map[first] = rowIndex
+        }
+    }
+    
+    return map
+}
+
+/**
+ * A-Z Alphabet Index Bar for TV navigation.
+ * Displays a vertical column of letters that users can navigate with DPAD.
+ * When a letter is focused, it triggers a callback to scroll to that section.
+ * 
+ * @param modifier Modifier for the column
+ * @param letters List of letters to display (defaults to A-Z)
+ * @param availableLetters Set of letters that have items (others are dimmed)
+ * @param selectedLetter Currently selected/highlighted letter
+ * @param onLetterFocused Callback when a letter gains focus
+ * @param onLetterSelected Callback when a letter is clicked/selected
+ */
+@Composable
+private fun AlphabetIndexBar(
+    modifier: Modifier = Modifier,
+    letters: List<Char> = ('A'..'Z').toList(),
+    availableLetters: Set<Char> = emptySet(),
+    selectedLetter: Char?,
+    onLetterFocused: (Char) -> Unit,
+    onLetterSelected: (Char) -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    val lazyListState = rememberLazyListState()
+    
+    // Scroll to selected letter when it changes
+    LaunchedEffect(selectedLetter) {
+        if (selectedLetter != null) {
+            val index = letters.indexOf(selectedLetter)
+            if (index >= 0) {
+                lazyListState.animateScrollToItem(
+                    index = maxOf(0, index - 3), // Show a few letters above
+                    scrollOffset = 0
+                )
+            }
+        }
+    }
+    
+    androidx.compose.foundation.lazy.LazyColumn(
+        state = lazyListState,
+        modifier = modifier
+            .width(36.dp)
+            .padding(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        items(letters) { letter ->
+            val isSelected = letter == selectedLetter
+            val isAvailable = letter in availableLetters
+            val interactionSource = remember { MutableInteractionSource() }
+            val isFocused by interactionSource.collectIsFocusedAsState()
+            
+            // Animate size change
+            val scale by animateFloatAsState(
+                targetValue = when {
+                    isFocused -> 1.4f
+                    isSelected -> 1.2f
+                    else -> 1f
+                },
+                animationSpec = tween(durationMillis = 150),
+                label = "letterScale"
+            )
+            
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    }
+                    .then(
+                        if (isFocused) {
+                            Modifier.background(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                                RoundedCornerShape(6.dp)
+                            )
+                        } else if (isSelected) {
+                            Modifier.background(
+                                Color.White.copy(alpha = 0.2f),
+                                RoundedCornerShape(6.dp)
+                            )
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .focusable(interactionSource = interactionSource)
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = null
+                    ) {
+                        if (isAvailable) {
+                            onLetterSelected(letter)
+                        }
+                    }
+                    .onFocusChanged { focusState ->
+                        if (focusState.isFocused && isAvailable) {
+                            onLetterFocused(letter)
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = letter.toString(),
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontSize = when {
+                            isFocused -> 18.sp
+                            isSelected -> 16.sp
+                            else -> 14.sp
+                        },
+                        fontWeight = if (isFocused || isSelected) FontWeight.Bold else FontWeight.Normal
+                    ),
+                    color = when {
+                        isFocused -> Color.White
+                        isSelected -> Color.White
+                        isAvailable -> Color.White.copy(alpha = 0.7f)
+                        else -> Color.White.copy(alpha = 0.25f) // Dimmed for unavailable letters
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Large letter overlay shown when navigating the A-Z index.
+ * Provides visual feedback of the currently selected letter.
+ * 
+ * @param letter The letter to display (null to hide)
+ * @param visible Whether the overlay should be visible
+ */
+@Composable
+private fun LetterOverlay(
+    letter: Char?,
+    visible: Boolean
+) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible && letter != null,
+        enter = androidx.compose.animation.fadeIn(animationSpec = tween(150)),
+        exit = androidx.compose.animation.fadeOut(animationSpec = tween(300))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = letter?.toString() ?: "",
+                style = MaterialTheme.typography.displayLarge.copy(
+                    fontSize = 180.sp,
+                    fontWeight = FontWeight.Bold
+                ),
+                color = Color.White.copy(alpha = 0.9f)
             )
         }
     }

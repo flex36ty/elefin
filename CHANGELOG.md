@@ -4,6 +4,70 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2025-12-08
+
+### Added
+
+- **Apple Music-Style Music Player UI** (Work in progress)
+  - Complete redesign of the music player with Apple Music / tvOS aesthetic
+  - **AppleBlurBackground** - Fullscreen blurred album art backgrounds with darkening overlay
+    - Uses Compose blur modifier on Android 12+ with fallback for older devices
+    - Dynamic backgrounds that adapt to current album artwork
+  - **AppleLargeAlbumArt** - Large album artwork with shadow and scale animation on focus
+    - Parallax-style scaling effect when focused
+    - Rounded corners with elegant drop shadows
+  - **AppleNowPlayingScreen** - Full-featured Now Playing interface
+    - Large album art on left, controls on right
+    - Apple Music red accent color (#FA2D55) throughout
+    - Progress slider with elapsed/remaining time display
+    - Shuffle and repeat controls with active state indicators
+    - Audio quality badge (codec, bitrate, sample rate)
+    - Queue view with "Up Next" header
+  - **AppleAlbumScreen** - Album detail screen
+    - Hero layout with large album artwork
+    - Play and Shuffle pill-style buttons
+    - Clean track list without redundant album art
+    - Blurred background matching album artwork
+  - **AppleArtistScreen** - Artist profile screen
+    - Circular artist image with accent border
+    - "Top Songs" section with track rows
+    - Albums carousel with hover animations
+    - Hero header with gradient overlay
+  - **AppleTrackRow** - Minimalist track row component
+    - Scale animation on TV focus
+    - Play icon appears on focus
+    - Current track indicator with equalizer icon
+
+### Fixed
+
+- **Music Navigation Back Button Crash**
+  - Fixed `NoSuchMethodError: removeLast()` crash on older Android versions
+  - Replaced `removeLast()` with `removeAt(lastIndex)` for compatibility
+
+---
+
+## 2025-12-06
+
+### Added
+
+- **CC (Closed Captions) Button in Player Controls**
+  - New CC button added to the ExoPlayer control bar for quick subtitle access
+  - Located between the Aspect Ratio and Settings buttons
+  - One-tap access to subtitle selection (skips the main settings menu)
+  - Uses standard closed caption icon for easy recognition
+  - Button order: Rewind → Play/Pause → Fast Forward → Aspect Ratio → **CC** → Settings
+
+### Improved
+
+- **Frame Blending Debug Logging**
+  - Added logging to verify frame blending (soap opera effect) is working
+  - Filter Logcat by `GLVideoSurfaceView` to see:
+    - `🎬 Frame blending ENABLED/DISABLED` when toggling the setting
+    - `🎬 Frame blend strength: X.X` when adjusting strength
+    - `🎬 Frame blending active - capturing first frame` when effect is applied during playback
+
+---
+
 ## 2025-12-05
 
 ### Added
@@ -19,6 +83,7 @@ All notable changes to Elefin will be documented in this file.
 - **OpenSubtitles Settings**
   - New "OpenSubtitles API Key" setting to configure your API key
   - New "OpenSubtitles Login" setting for username/password authentication
+  - New "Clear Downloaded Subtitles" button to delete all locally saved subtitle files
   - API key and login required for downloading subtitles (search is free)
   - Settings located in the Performance section
 
@@ -69,15 +134,15 @@ All notable changes to Elefin will be documented in this file.
   - Synopsis and metadata now load instantly (removed 300ms debounce delay)
   - Faster response when navigating between items
 
-### Technical
+- **Subtitle Picker UI Improvements**
+  - Focus highlight color changed from white to purple (matches app theme)
+  - Consistent purple focus/selection color across all subtitle dialogs
+  - Applied to: Movie/Series info subtitle picker, language selection, search results, downloaded subtitles list
+  - Better visibility and visual consistency with toggle switches in settings
 
-- Added `SubtitleMapper.buildLocalSubtitleConfiguration()` for downloaded subtitle support
-- Added `OpenSubtitlesApi` client with search, login, and download functionality
-- Added `SubtitleLanguageDialog`, `SubtitleResultsDialog`, `SubtitleDownloadingDialog`, `ApiKeyRequiredDialog` composables
-- Downloaded subtitles stored in `filesDir/downloaded_subtitles/{itemId}/`
-- ExoPlayer MediaItem now includes both Jellyfin and downloaded subtitle configurations
-
----
+- **Video Player Settings Menu**
+  - ListItem focus/selection colors changed from white to dark gray for better visibility
+  - Consistent styling across audio tracks, subtitles, and playback speed menus
 
 ## 2025-12-04 part 2
 

@@ -4,6 +4,9 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Query for MPV players to check if installed (Android 11+ package visibility) -->
     <queries>
@@ -75,6 +78,10 @@
             android:exported="false"
             android:screenOrientation="landscape" />
         <activity
+            android:name=".MusicActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+        <activity
             android:name=".player.mpv.MpvTvPlayerActivity"
             android:exported="false"
             android:screenOrientation="landscape"
@@ -89,6 +96,16 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Music Player Service -->
+        <service
+            android:name=".music.player.AudioPlayerService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

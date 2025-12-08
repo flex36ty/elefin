@@ -38,9 +38,9 @@ object ServerDiscovery {
     private val json = Json { ignoreUnknownKeys = true }
     
     private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .writeTimeout(10, TimeUnit.SECONDS)
+        .connectTimeout(5, TimeUnit.SECONDS)  // Reduced from 10s for faster discovery
+        .readTimeout(5, TimeUnit.SECONDS)
+        .writeTimeout(5, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
@@ -69,6 +69,11 @@ object ServerDiscovery {
     /**
      * Build all possible URL candidates from user input.
      * Handles reverse proxies, subpaths, ports, and protocol variations.
+     * 
+     * Order is optimized for fastest discovery:
+     * 1. Local network (HTTP:8096) - most common for home servers
+     * 2. HTTPS with explicit ports - reverse proxy setups
+     * 3. HTTPS default port 443 - cloud/external servers
      */
     private fun buildUrlCandidates(input: String): List<String> {
         val normalized = input
@@ -84,61 +89,58 @@ object ServerDiscovery {
         // Check if it already has a port specified
         val hasExplicitPort = normalized.contains(Regex(":\\d+"))
         
-        val baseVariants = mutableListOf<String>()
-        
-        // Detect scheme
-        if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
-            baseVariants += normalized
-        } else {
-            // Try HTTPS first (most proxies require it)
-            baseVariants += "https://$normalized"
-            baseVariants += "http://$normalized"
-        }
+        // Check if it looks like a local IP address (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+        val isLocalIp = normalized.matches(Regex("^(192\\.168\\.|10\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.).*"))
         
         val candidates = mutableListOf<String>()
         
-        for (base in baseVariants) {
-            // Try root install
-            candidates += "$base/System/Info/Public"
-            
-            // Try HTTPS enforcer (Cloudflare, Caddy)
-            if (base.startsWith("http://")) {
-                candidates += base.replace("http://", "https://") + "/System/Info/Public"
+        // If user specified a full URL with scheme, use that first
+        if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+            candidates += "$normalized/System/Info/Public"
+            candidates += "$normalized/jellyfin/System/Info/Public"
+            return candidates.distinct()
+        }
+        
+        // For domain-only input (no port, no path)
+        if (domainOnly && !hasExplicitPort) {
+            if (isLocalIp) {
+                // LOCAL NETWORK: Try HTTP with Jellyfin default port FIRST (fastest for LAN)
+                candidates += "http://$normalized:8096/System/Info/Public"
+                candidates += "http://$normalized:8096/jellyfin/System/Info/Public"
+                
+                // Then try HTTP without port (port 80)
+                candidates += "http://$normalized/System/Info/Public"
+                candidates += "http://$normalized/jellyfin/System/Info/Public"
+                
+                // Then try HTTPS variants (less common for local)
+                candidates += "https://$normalized:8920/System/Info/Public"  // Jellyfin HTTPS default
+                candidates += "https://$normalized/System/Info/Public"
+                candidates += "https://$normalized:443/System/Info/Public"
+            } else {
+                // EXTERNAL/DOMAIN: Try HTTPS first (most proxies require it)
+                candidates += "https://$normalized/System/Info/Public"
+                candidates += "https://$normalized/jellyfin/System/Info/Public"
+                candidates += "https://$normalized/media/System/Info/Public"
+                candidates += "https://$normalized/api/System/Info/Public"
+                
+                // Then try HTTP with Jellyfin default port
+                candidates += "http://$normalized:8096/System/Info/Public"
+                candidates += "http://$normalized:8096/jellyfin/System/Info/Public"
+                
+                // Then try HTTPS with specific ports
+                candidates += "https://$normalized:8920/System/Info/Public"
+                candidates += "https://$normalized:443/System/Info/Public"
+                
+                // Finally try plain HTTP
+                candidates += "http://$normalized/System/Info/Public"
+                candidates += "http://$normalized/jellyfin/System/Info/Public"
             }
-            
-            // Try subpath `/jellyfin` (common setup)
-            candidates += "$base/jellyfin/System/Info/Public"
-            
-            // Try other common non-root paths used by proxies
-            candidates += "$base/media/System/Info/Public"
-            candidates += "$base/api/System/Info/Public"
-            
-            // Only add port variations if no explicit port was given
-            if (domainOnly && !hasExplicitPort) {
-                // Extract the base without any existing port for port variations
-                val baseForPorts = if (base.startsWith("https://")) {
-                    "https://" + base.removePrefix("https://").split("/")[0]
-                } else {
-                    "http://" + base.removePrefix("http://").split("/")[0]
-                }
-                
-                // Try Jellyfin default LAN port (8096)
-                candidates += "$baseForPorts:8096/System/Info/Public"
-                
-                // Try HTTPS reverse proxy common port
-                if (base.startsWith("https://")) {
-                    candidates += "$baseForPorts:443/System/Info/Public"
-                    candidates += "$baseForPorts:8920/System/Info/Public" // Jellyfin HTTPS default
-                }
-                
-                // Try port 80 fallback
-                if (base.startsWith("http://")) {
-                    candidates += "$baseForPorts:80/System/Info/Public"
-                }
-                
-                // Also try subpaths with ports
-                candidates += "$baseForPorts:8096/jellyfin/System/Info/Public"
-            }
+        } else {
+            // User specified a port or path - respect their input
+            candidates += "https://$normalized/System/Info/Public"
+            candidates += "http://$normalized/System/Info/Public"
+            candidates += "https://$normalized/jellyfin/System/Info/Public"
+            candidates += "http://$normalized/jellyfin/System/Info/Public"
         }
         
         return candidates.distinct()

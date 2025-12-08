@@ -35,6 +35,7 @@ data class JellyfinItem(
     val SeriesName: String? = null,
     val SeriesId: String? = null, // Parent series ID for episodes
     val Type: String? = null,
+    val CollectionType: String? = null, // Library type: "movies", "tvshows", "music", etc.
     val UserData: UserData? = null,
     val MediaSources: List<MediaSource>? = null,
     val RunTimeTicks: Long? = null,
@@ -209,6 +210,7 @@ data class JellyfinLibrary(
     val Id: String,
     val Name: String,
     val Type: String? = null,
+    val CollectionType: String? = null, // "movies", "tvshows", "music", "books", "photos", etc.
     val ImageTags: Map<String, String>? = null
 )
 
@@ -889,10 +891,12 @@ class JellyfinApiService(
             
             // Convert JellyfinItems to JellyfinLibraries
             response.Items.map { item ->
+                android.util.Log.d("JellyfinApi", "📚 Library from API: Name=${item.Name}, Type=${item.Type}, CollectionType=${item.CollectionType}")
                 JellyfinLibrary(
                     Id = item.Id,
                     Name = item.Name,
                     Type = item.Type,
+                    CollectionType = item.CollectionType, // "movies", "tvshows", "music", etc.
                     ImageTags = item.ImageTags
                 )
             }

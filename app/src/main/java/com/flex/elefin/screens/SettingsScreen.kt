@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -170,7 +171,7 @@ fun SettingsScreen(
     var sharpenStrength by remember { mutableStateOf(settings.sharpenStrength) }
     var enableFrameBlending by remember { mutableStateOf(settings.enableFrameBlending) }
     var frameBlendStrength by remember { mutableStateOf(settings.frameBlendStrength) }
-
+    
     // UI Performance settings
     var disableUIAnimations by remember { mutableStateOf(settings.disableUIAnimations) }
     var useSimpleCards by remember { mutableStateOf(settings.useSimpleCards) }
@@ -564,6 +565,7 @@ fun SettingsScreen(
                                         canIncrease = frameBlendStrength < 1.0f
                                     )
                                 }
+                                
                             }
                         }
                         
@@ -736,6 +738,71 @@ fun SettingsScreen(
                                     },
                                     dismissButton = {
                                         TextButton(onClick = { showLoginDialog = false }) {
+                                            Text("Cancel")
+                                        }
+                                    }
+                                )
+                            }
+                            
+                            // Clear Downloaded Subtitles
+                            var showClearSubtitlesDialog by remember { mutableStateOf(false) }
+                            var downloadedSubtitlesCount by remember { mutableStateOf(0) }
+                            
+                            // Count downloaded subtitles on first composition
+                            LaunchedEffect(Unit) {
+                                val subtitlesDir = java.io.File(context.filesDir, "downloaded_subtitles")
+                                downloadedSubtitlesCount = if (subtitlesDir.exists()) {
+                                    subtitlesDir.walkTopDown()
+                                        .filter { it.isFile && it.extension in listOf("srt", "vtt", "ass", "ssa", "sub") }
+                                        .count()
+                                } else 0
+                            }
+                            
+                            SettingButton(
+                                title = "Clear Downloaded Subtitles",
+                                description = if (downloadedSubtitlesCount > 0) 
+                                    "$downloadedSubtitlesCount subtitle file(s) stored locally" 
+                                else 
+                                    "No downloaded subtitles",
+                                buttonText = "Clear",
+                                onClick = { showClearSubtitlesDialog = true }
+                            )
+                            
+                            if (showClearSubtitlesDialog) {
+                                AlertDialog(
+                                    onDismissRequest = { showClearSubtitlesDialog = false },
+                                    title = { Text("Clear Downloaded Subtitles?") },
+                                    text = {
+                                        Text(
+                                            "This will delete all $downloadedSubtitlesCount downloaded subtitle file(s) from OpenSubtitles.\n\nYou can always download them again.",
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                    },
+                                    confirmButton = {
+                                        TextButton(
+                                            onClick = {
+                                                // Delete all downloaded subtitles
+                                                val subtitlesDir = java.io.File(context.filesDir, "downloaded_subtitles")
+                                                if (subtitlesDir.exists()) {
+                                                    subtitlesDir.deleteRecursively()
+                                                    android.util.Log.d("Settings", "Cleared all downloaded subtitles")
+                                                }
+                                                downloadedSubtitlesCount = 0
+                                                showClearSubtitlesDialog = false
+                                                
+                                                // Show toast
+                                                android.widget.Toast.makeText(
+                                                    context,
+                                                    "Downloaded subtitles cleared",
+                                                    android.widget.Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        ) {
+                                            Text("Clear", color = MaterialTheme.colorScheme.error)
+                                        }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { showClearSubtitlesDialog = false }) {
                                             Text("Cancel")
                                         }
                                     }

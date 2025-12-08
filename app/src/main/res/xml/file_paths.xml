@@ -3,4 +3,7 @@
     <external-files-path
         name="updates"
         path="updates/" />
+    <cache-path
+        name="cache"
+        path="/" />
 </paths>

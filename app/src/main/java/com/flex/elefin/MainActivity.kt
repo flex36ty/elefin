@@ -111,6 +111,10 @@ class MainActivity : ComponentActivity() {
                             }
                             startActivity(intent)
                         },
+                        onMusicClick = {
+                            // Navigate to Music screen
+                            startActivity(MusicActivity.createIntent(this@MainActivity))
+                        },
                         showDebugOutlines = appSettings.showDebugOutlines,
                         preloadLibraryImages = appSettings.preloadLibraryImages,
                         cacheLibraryImages = appSettings.cacheLibraryImages,

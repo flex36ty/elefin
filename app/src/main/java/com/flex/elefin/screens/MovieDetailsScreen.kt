@@ -836,6 +836,16 @@ fun SubtitleSelectionDialog(
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
                     
+                    // Custom colors for ListItem - purple focus to match toggle switches
+                    val listItemColors = androidx.tv.material3.ListItemDefaults.colors(
+                        containerColor = Color.Transparent,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        focusedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f), // Purple like toggle
+                        focusedContentColor = Color.White,
+                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                        selectedContentColor = Color.White
+                    )
+                    
                     // Vertical list of subtitle options using ListItem
                     if (isLoadingSubtitles) {
                         Box(
@@ -865,6 +875,7 @@ fun SubtitleSelectionDialog(
                                         onSubtitleSelected(null)
                                         onDismiss()
                                     },
+                                    colors = listItemColors,
                                     headlineContent = {
                                         Text(
                                             text = "None (Off)",
@@ -902,6 +913,7 @@ fun SubtitleSelectionDialog(
                                             onDismiss()
                                         }
                                     },
+                                    colors = listItemColors,
                                     headlineContent = {
                                         Column {
                                             Text(
@@ -961,6 +973,7 @@ fun SubtitleSelectionDialog(
                                             onDownloadedSubtitleSelected?.invoke(downloadedSub.filePath)
                                             onDismiss()
                                         },
+                                        colors = listItemColors,
                                         headlineContent = {
                                             Column {
                                                 Text(

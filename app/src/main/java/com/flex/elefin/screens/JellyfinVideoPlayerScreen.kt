@@ -107,6 +107,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.ClosedCaption
 
 // Picture mode / aspect ratio options
 enum class AspectMode(val label: String) {
@@ -233,6 +234,7 @@ fun JellyfinVideoPlayerScreen(
     var hasRetriedWithHls by remember { mutableStateOf(false) } // Track if we've retried with HLS for parser errors
     var currentMediaSource by remember { mutableStateOf<MediaSource?>(null) }
     var showSettingsMenu by remember { mutableStateOf(false) }
+    var settingsMenuInitialLevel by remember { mutableStateOf("main") } // Track which submenu to open to
     var showControls by remember { mutableStateOf(false) } // Custom Compose controls overlay
     var currentPosition by remember { mutableStateOf(0L) } // Current playback position in ms
     var duration by remember { mutableStateOf(0L) } // Total duration in ms
@@ -379,8 +381,8 @@ fun JellyfinVideoPlayerScreen(
                         transcodeAudio = effectiveNeedsTranscoding, // Disabled if subtitles exist
                         audioCodec = effectiveAudioCodec
                     )
-                    mediaUrl = videoUrl
                     Log.d("JellyfinPlayer", "Video URL: $videoUrl")
+                    mediaUrl = videoUrl
                     
                     // Check for next episode if this is an episode
                     // Use the simpler StartIndex approach: /Shows/{seriesId}/Episodes?StartIndex={currentIndex + 1}&Limit=1
@@ -2044,12 +2046,14 @@ fun JellyfinVideoPlayerScreen(
                                             FrameLayout.LayoutParams.MATCH_PARENT,
                                             FrameLayout.LayoutParams.MATCH_PARENT
                                         )
+                                        // Video enhancement effects
                                         this.enableFakeHDR = settings.enableFakeHDR
                                         this.enableSharpening = settings.enableSharpening
                                         this.hdrStrength = settings.hdrStrength
                                         this.sharpeningStrength = settings.sharpenStrength
                                         this.enableFrameBlending = settings.enableFrameBlending
                                         this.frameBlendStrength = settings.frameBlendStrength
+                                        
                                         glSurfaceViewRef.value = this
                                         
                                         // Set the GL surface on the player
@@ -2741,12 +2745,26 @@ fun JellyfinVideoPlayerScreen(
                                     
                                     Spacer(modifier = Modifier.width(32.dp))
                                     
+                                    // CC (Subtitles) button - quick access to subtitles menu
+                                    PlayerControlButton(
+                                        icon = Icons.Filled.ClosedCaption,
+                                        contentDescription = "Subtitles",
+                                        onClick = {
+                                            showControls = false
+                                            settingsMenuInitialLevel = "subtitles"
+                                            showSettingsMenu = true
+                                        }
+                                    )
+                                    
+                                    Spacer(modifier = Modifier.width(32.dp))
+                                    
                                     // Settings button
                                     PlayerControlButton(
                                         icon = Icons.Filled.Settings,
                                         contentDescription = "Settings",
                                         onClick = {
                                             showControls = false
+                                            settingsMenuInitialLevel = "main"
                                             showSettingsMenu = true
                                         }
                                     )
@@ -2768,10 +2786,14 @@ fun JellyfinVideoPlayerScreen(
                 item = itemDetails ?: item,
                 apiService = apiService,
                 currentSubtitleIndex = currentSubtitleIndex,
-                onDismiss = { showSettingsMenu = false },
+                onDismiss = { 
+                    showSettingsMenu = false
+                    settingsMenuInitialLevel = "main" // Reset for next time
+                },
                 player = player,
                 jellyfinSubtitleStreams = jellyfinSubtitleStreams, // Pass for composite key registration
                 downloadedSubtitles = downloadedSubtitles, // Downloaded OpenSubtitles
+                initialMenuLevel = settingsMenuInitialLevel, // Open to subtitles if CC button was pressed
                 onDownloadedSubtitleSelected = { filePath ->
                     // Select downloaded subtitle by finding its ExoPlayer track
                     scope.launch(Dispatchers.Main) {
@@ -2933,14 +2955,15 @@ fun ExoPlayerSettingsMenu(
     player: ExoPlayer? = null,
     jellyfinSubtitleStreams: List<MediaStream> = emptyList(), // For composite key registration
     downloadedSubtitles: List<com.flex.elefin.subtitles.DownloadedSubtitle> = emptyList(), // Downloaded OpenSubtitles
-    onDownloadedSubtitleSelected: ((String) -> Unit)? = null // Callback for selecting downloaded subtitle by file path
+    onDownloadedSubtitleSelected: ((String) -> Unit)? = null, // Callback for selecting downloaded subtitle by file path
+    initialMenuLevel: String = "main" // "main", "subtitles", "audio", "speed" - allows opening directly to a submenu
 ) {
     var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     var isLoadingSubtitles by remember { mutableStateOf(true) }
     var currentTracks by remember { mutableStateOf<Tracks?>(null) }
     
     // Navigation state for multi-level menu
-    var currentMenuLevel by remember { mutableStateOf("main") } // "main", "subtitles", "audio", "speed"
+    var currentMenuLevel by remember { mutableStateOf(initialMenuLevel) } // "main", "subtitles", "audio", "speed"
     
     // Focus requesters for auto-focus on first item in each menu
     val mainMenuFirstItemFocusRequester = remember { FocusRequester() }
@@ -3109,6 +3132,16 @@ fun ExoPlayerSettingsMenu(
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
                     
+                    // Custom colors for better visibility - light gray instead of white
+                    val listItemColors = androidx.tv.material3.ListItemDefaults.colors(
+                        containerColor = Color.Transparent,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        focusedContainerColor = Color(0xFF424242), // Dark gray when focused
+                        focusedContentColor = Color.White,
+                        selectedContainerColor = Color(0xFF616161), // Medium gray when selected
+                        selectedContentColor = Color.White
+                    )
+                    
                     // Show different content based on current menu level
                     when (currentMenuLevel) {
                         "main" -> {
@@ -3125,6 +3158,7 @@ fun ExoPlayerSettingsMenu(
                                         ListItem(
                                             selected = false,
                                             onClick = { currentMenuLevel = "audio" },
+                                            colors = listItemColors,
                                             headlineContent = {
                                                 Row(
                                                     verticalAlignment = Alignment.CenterVertically,
@@ -3162,6 +3196,7 @@ fun ExoPlayerSettingsMenu(
                                     ListItem(
                                         selected = false,
                                         onClick = { currentMenuLevel = "subtitles" },
+                                        colors = listItemColors,
                                         headlineContent = {
                                             Row(
                                                 verticalAlignment = Alignment.CenterVertically,
@@ -3201,6 +3236,7 @@ fun ExoPlayerSettingsMenu(
                                         ListItem(
                                             selected = false,
                                             onClick = { currentMenuLevel = "speed" },
+                                            colors = listItemColors,
                                             headlineContent = {
                                                 Row(
                                                     verticalAlignment = Alignment.CenterVertically,
@@ -3283,6 +3319,7 @@ fun ExoPlayerSettingsMenu(
                                             }
                                         }
                                     },
+                                    colors = listItemColors,
                                     headlineContent = {
                                         Column {
                                             Text(
@@ -3343,6 +3380,7 @@ fun ExoPlayerSettingsMenu(
                                     onClick = {
                                         onSubtitleSelected(null)
                                     },
+                                    colors = listItemColors,
                                     headlineContent = {
                                         Text(
                                             text = "None (Off)",
@@ -3385,6 +3423,7 @@ fun ExoPlayerSettingsMenu(
                                             onSubtitleSelected(index)
                                         }
                                     },
+                                    colors = listItemColors,
                                     headlineContent = {
                                         Column {
                                             Text(
@@ -3431,6 +3470,7 @@ fun ExoPlayerSettingsMenu(
                                             Log.d("ExoPlayerSettingsMenu", "📺 User clicked downloaded subtitle: ${downloadedSub.fileName}")
                                             onDownloadedSubtitleSelected?.invoke(downloadedSub.filePath)
                                         },
+                                        colors = listItemColors,
                                         headlineContent = {
                                             Column {
                                                 Text(
@@ -3488,6 +3528,7 @@ fun ExoPlayerSettingsMenu(
                                         exoPlayer.playbackParameters = androidx.media3.common.PlaybackParameters(speed)
                                         Log.d("ExoPlayerSettingsMenu", "Changed playback speed to ${speed}x")
                                     },
+                                    colors = listItemColors,
                                     headlineContent = {
                                         Text(
                                             text = speedText,
@@ -4350,4 +4391,5 @@ private fun AspectModeButton(
         }
     }
 }
+
 
