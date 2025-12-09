@@ -4,6 +4,79 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2025-12-09
+
+### Added
+
+- **AV1 Software Decoder Support (8-bit only)**
+  - Built Media3 AV1 decoder extension (libgav1) from source
+  - Enables 8-bit AV1 video playback on devices without hardware AV1 support
+  - Supports arm64-v8a and armeabi-v7a architectures
+  - **10-bit AV1 is NOT supported** - Android's SurfaceView cannot render 10-bit YUV from software decoders
+  - For 10-bit AV1 content, use server-side transcoding or MPV player fallback
+
+- **Server-Side Transcoding Options**
+  - New "Always Transcode" setting to force server transcoding for all content
+  - New "Transcode AV1" setting to automatically transcode AV1 content
+  - New "Transcode HEVC" setting to automatically transcode HEVC/H.265 content
+  - New "Target Codec" setting to choose between H.264 and HEVC for transcoded output
+  - New "Max Video Bitrate" slider (5-120 Mbps) to control transcoding quality
+  - New "Auto Transcode on Playback Error" setting to automatically retry with transcoding if direct play fails
+
+- **MPV Player Fallback**
+  - New "Fallback to MPV Player" setting in Playback options
+  - Automatically launches MPV player if ExoPlayer fails and transcoding is disabled
+  - Provides seamless playback for problematic content without manual intervention
+  - Requires MPV-Elefin to be installed
+
+- **Movies Library Screen**
+  - Dedicated screen for movie libraries, accessible from the home screen tab row
+  - Mirrors the home screen layout with movie-specific sections:
+    - Continue Watching (Movies)
+    - Recently Released Movies
+    - Recently Added Movies
+    - Top Unwatched Movies
+    - Recently Watched Movies
+    - Favorite Movies
+    - 2 random genre rows (e.g., "Top Movies in Action", "Top Movies in Comedy")
+  - Genre rows are randomly selected from available genres on each load/refresh
+  - Features dynamic background based on focused item
+  - Item details panel with metadata, Rotten Tomatoes ratings, and synopsis
+  - Tab row with Settings, Search, Refresh/Sort, Home buttons
+  - "Recommendations" and "[Library Name] Library" tabs
+  - Library-specific data fetching ensures each movie library shows unique content
+
+- **TV Shows Library Screen**
+  - Dedicated screen for TV show libraries, accessible from the home screen tab row
+  - Same layout structure as Movies Library with TV-specific sections:
+    - Continue Watching
+    - Recently Released Episodes (with series poster cards)
+    - Recently Added in [Library Name]
+    - Start Watching (randomly curated suggestions)
+    - Top Rated TV Shows
+    - 4 random genre rows (e.g., "More in Drama", "More in Comedy")
+  - Genre rows are randomly selected on each load/refresh
+  - Library-specific data fetching for proper separation of similar-named libraries
+
+### Improved
+
+- **Screen Transitions & Loading**
+  - Removed blocking "Loading..." text overlays from library screens
+  - Content now loads progressively without blocking the UI
+  - Faster perceived performance when navigating between screens
+  - Screens appear instantly with content populating as data arrives
+
+- **TV Show Details Screen Focus**
+  - When opening a TV show from "Recently Added" (without a specific episode), focus now defaults to Season 1 button
+  - Makes it easier to start watching a show from the beginning
+  - Continue Watching navigation still focuses on the specific episode
+
+- **Movies Library Metadata Display**
+  - Added Rotten Tomatoes rating icons (Fresh/Rotten tomato, Popcorn for audience)
+  - Added IMDb rating icon support
+  - Matches the home screen metadata display format
+
+
 ## 2025-12-08
 
 ### Added
@@ -43,6 +116,23 @@ All notable changes to Elefin will be documented in this file.
 - **Music Navigation Back Button Crash**
   - Fixed `NoSuchMethodError: removeLast()` crash on older Android versions
   - Replaced `removeLast()` with `removeAt(lastIndex)` for compatibility
+
+- **Subtitle Selection Crash in Player**
+  - Fixed `FocusRequester is not initialized` crash when selecting subtitles via player controls
+  - Added defensive try-catch blocks around focus requests in ExoPlayerSettingsMenu
+  - Added null checks and player state validation in subtitle selection logic
+
+### Improved
+
+- **Transcoding Quality**
+  - Increased default transcoding bitrate to 40 Mbps for better quality
+  - Added explicit resolution parameters (up to 4K) to preserve source quality
+  - Increased audio bitrate to 640 kbps for better audio quality
+  - Added 6-channel audio support for surround sound preservation
+
+- **Audio/Subtitle Track Selection Debugging**
+  - Added comprehensive logging to audio track selection dialogs
+  - Helps diagnose issues with track selection on series/movie info screens
 
 ---
 

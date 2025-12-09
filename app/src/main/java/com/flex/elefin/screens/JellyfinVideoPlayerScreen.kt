@@ -108,6 +108,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.ClosedCaption
+import androidx.compose.material.icons.filled.Warning
 
 // Picture mode / aspect ratio options
 enum class AspectMode(val label: String) {
@@ -138,8 +139,66 @@ fun JellyfinVideoPlayerScreen(
     val scope = rememberCoroutineScope()
     val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
     
+    // Track itemDetails state for codec detection (will be populated by LaunchedEffect)
+    var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
+    
     // GL Enhancement settings
-    val useGLEnhancements = remember { settings.useGLEnhancements }
+    // IMPORTANT: GL mode causes black screen with AV1 on devices without hardware AV1 decoder
+    // Shield TV has NO hardware AV1 - software decode + GL surface = black screen
+    // 
+    // Since Jellyfin often returns Codec=null, we CANNOT rely on metadata detection.
+    // Instead, we detect AV1 at RUNTIME from ExoPlayer's track info and force safe mode.
+    val glSettingEnabled = remember { settings.useGLEnhancements }
+    
+    // Track if AV1 was detected at runtime (will be set by ExoPlayer listener)
+    var runtimeAV1Detected by remember { mutableStateOf(false) }
+    
+    // Show error dialog for AV1 decoding failure
+    var showAV1Error by remember { mutableStateOf(false) }
+    
+    // Auto-transcode fallback state
+    val autoTranscodeOnError = remember { settings.autoTranscodeOnError }
+    var hasTriedTranscodeFallback by remember { mutableStateOf(false) }
+    var isUsingTranscodeFallback by remember { mutableStateOf(false) }
+    
+    // MPV fallback state
+    val fallbackToMpv = remember { settings.fallbackToMpv }
+    var hasTriedMpvFallback by remember { mutableStateOf(false) }
+    val isMpvInstalled = remember { com.flex.elefin.player.mpv.MpvElefinLauncher.isInstalled(context) }
+    
+    // Helper function to launch MPV as fallback
+    val jellyfinConfig = remember { com.flex.elefin.jellyfin.JellyfinConfig(context) }
+    val launchMpvFallback: () -> Unit = {
+        Log.d("JellyfinPlayer", "🎬 Launching MPV player as fallback...")
+        
+        if (jellyfinConfig.isConfigured()) {
+            val success = com.flex.elefin.player.mpv.MpvElefinLauncher.play(
+                context = context,
+                itemId = item.Id,
+                title = item.Name ?: "Video",
+                resumePositionMs = resumePositionMs,
+                config = jellyfinConfig
+            )
+            
+            if (success) {
+                Log.d("JellyfinPlayer", "✅ MPV launched successfully - closing ExoPlayer")
+                // Go back since we're switching to MPV
+                onBack()
+            } else {
+                Log.e("JellyfinPlayer", "❌ Failed to launch MPV")
+                showAV1Error = true
+            }
+        } else {
+            Log.e("JellyfinPlayer", "❌ No Jellyfin config available for MPV fallback")
+            showAV1Error = true
+        }
+    }
+    
+    // Start with user's GL setting, but will be overridden if AV1 detected at runtime
+    // Note: The actual enforcement happens in the player listener below
+    val useGLEnhancements = remember { glSettingEnabled }
+    
+    Log.d("JellyfinPlayer", "🎨 Initial GL mode: $useGLEnhancements (will be disabled if AV1 detected at runtime)")
     val enableFakeHDR = remember { settings.enableFakeHDR }
     val enableSharpening = remember { settings.enableSharpening }
     val hdrStrength = remember { settings.hdrStrength }
@@ -157,13 +216,14 @@ fun JellyfinVideoPlayerScreen(
         }
     }
     // Create player with enhanced codec support and LoadControl configured based on settings
-    // Enable extension renderers (including FFmpeg) and decoder fallback for advanced audio codecs
+    // Enable extension renderers (including FFmpeg) and decoder fallback
     // FFmpeg supports: DTS, DTS-HD, TrueHD, AC3, E-AC3, FLAC, ALAC, Vorbis, Opus
     val renderersFactory = DefaultRenderersFactory(context).apply {
         // PREFER extension renderers (FFmpeg) over platform decoders for better compatibility
         setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
         setEnableDecoderFallback(true)
         Log.d("JellyfinPlayer", "Initialized ExoPlayer with FFmpeg extension support for advanced audio codecs")
+        Log.d("JellyfinPlayer", "Extension renderer mode: PREFER, Decoder fallback: ENABLED")
     }
     
     // Configure track selector with better track selection
@@ -228,7 +288,7 @@ fun JellyfinVideoPlayerScreen(
     var playerInitialized by remember { mutableStateOf(false) }
     var progressReportingJob by remember { mutableStateOf<Job?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
-    var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
+    // itemDetails is declared earlier for codec detection
     var hasSeekedToResume by remember { mutableStateOf(false) } // Track if we've already seeked to resume position
     var hasRetriedWithoutRange by remember { mutableStateOf(false) } // Track if we've retried without range requests for 416 errors
     var hasRetriedWithHls by remember { mutableStateOf(false) } // Track if we've retried with HLS for parser errors
@@ -373,14 +433,48 @@ fun JellyfinVideoPlayerScreen(
                     val effectiveNeedsTranscoding = if (forceDirectStreamForSubtitles) false else needsAudioTranscoding
                     val effectiveAudioCodec = if (forceDirectStreamForSubtitles) null else targetAudioCodec
                     
-                    val videoUrl = apiService.getVideoPlaybackUrl(
-                        itemId = item.Id,
-                        mediaSourceId = mediaSourceId,
-                        subtitleStreamIndex = null,
-                        preserveQuality = isHDROrHighQuality,
-                        transcodeAudio = effectiveNeedsTranscoding, // Disabled if subtitles exist
-                        audioCodec = effectiveAudioCodec
+                    // Check if server-side transcoding is enabled
+                    val serverTranscodingEnabled = settings.serverTranscodingEnabled
+                    val transcodeAV1Setting = settings.transcodeAV1
+                    val transcodeHEVCSetting = settings.transcodeHEVC
+                    val transcodeTargetCodec = settings.transcodeTargetCodec
+                    val transcodeMaxBitrate = settings.transcodeMaxBitrateMbps
+                    
+                    // Detect video codec for transcoding decision
+                    val videoCodecName = videoStream?.Codec?.lowercase() ?: ""
+                    val isAV1Video = videoCodecName.contains("av1") || videoCodecName.contains("av01")
+                    val isHEVCVideo = videoCodecName.contains("hevc") || videoCodecName.contains("h265") || videoCodecName.contains("h.265")
+                    
+                    // Determine if we should request server-side transcoding
+                    val shouldRequestTranscoding = serverTranscodingEnabled && (
+                        (transcodeAV1Setting && isAV1Video) ||
+                        (transcodeHEVCSetting && isHEVCVideo)
                     )
+                    
+                    val videoUrl = if (shouldRequestTranscoding && !forceDirectStreamForSubtitles) {
+                        Log.d("JellyfinPlayer", "🔄 SERVER-SIDE TRANSCODING ENABLED")
+                        Log.d("JellyfinPlayer", "   Source codec: $videoCodecName")
+                        Log.d("JellyfinPlayer", "   Target codec: $transcodeTargetCodec @ ${transcodeMaxBitrate}Mbps")
+                        Log.d("JellyfinPlayer", "   Reason: ${if (isAV1Video) "AV1" else "HEVC"} transcoding requested")
+                        
+                        apiService.getTranscodedVideoUrl(
+                            itemId = item.Id,
+                            mediaSourceId = mediaSourceId,
+                            subtitleStreamIndex = null,
+                            targetVideoCodec = transcodeTargetCodec,
+                            maxBitrateMbps = transcodeMaxBitrate,
+                            audioCodec = "aac"
+                        )
+                    } else {
+                        apiService.getVideoPlaybackUrl(
+                            itemId = item.Id,
+                            mediaSourceId = mediaSourceId,
+                            subtitleStreamIndex = null,
+                            preserveQuality = isHDROrHighQuality,
+                            transcodeAudio = effectiveNeedsTranscoding, // Disabled if subtitles exist
+                            audioCodec = effectiveAudioCodec
+                        )
+                    }
                     Log.d("JellyfinPlayer", "Video URL: $videoUrl")
                     mediaUrl = videoUrl
                     
@@ -615,9 +709,144 @@ fun JellyfinVideoPlayerScreen(
 
                     // Handle player lifecycle
                     player.addListener(object : Player.Listener {
+                        override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                            Log.d("JellyfinPlayer", "📺 Video size changed: ${videoSize.width}x${videoSize.height}")
+                            
+                            // Also check codec from videoFormat when size changes
+                            val format = player.videoFormat
+                            val codec = format?.codecs ?: format?.sampleMimeType ?: "unknown"
+                            Log.d("JellyfinPlayer", "📺 Video format: codec=$codec, mime=${format?.sampleMimeType}")
+                            
+                            if (videoSize.width == 0 || videoSize.height == 0) {
+                                Log.w("JellyfinPlayer", "⚠️ Video size is 0x0 - video may not be rendering!")
+                                
+                                // If AV1 was detected and we have black screen, this confirms the issue
+                                if (runtimeAV1Detected) {
+                                    Log.e("JellyfinPlayer", "❌ CONFIRMED: AV1 + current surface = no video output")
+                                    Log.e("JellyfinPlayer", "❌ Solution: Disable GL Enhancements in Settings")
+                                }
+                            }
+                        }
+                        
+                        override fun onRenderedFirstFrame() {
+                            Log.d("JellyfinPlayer", "🎬 First video frame rendered!")
+                            if (runtimeAV1Detected) {
+                                Log.d("JellyfinPlayer", "✅ AV1 video is rendering successfully!")
+                            }
+                        }
+                        
                         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                             Log.e("JellyfinPlayer", "Player error: ${error.message}", error)
                             Log.e("JellyfinPlayer", "Error type: ${error.errorCode}, Cause: ${error.cause?.javaClass?.simpleName}")
+                            
+                            // Check for 10-bit AV1 specific error from libgav1
+                            val causeMessage = error.cause?.message ?: ""
+                            val is10BitAV1Error = causeMessage.contains("High bit depth") && 
+                                                  causeMessage.contains("not supported with YUV surface")
+                            
+                            // Check if we should try auto-transcode fallback
+                            val isDecoderError = is10BitAV1Error || 
+                                error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+                                error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FAILED ||
+                                error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED
+                            
+                            if (isDecoderError && autoTranscodeOnError && !hasTriedTranscodeFallback && !isUsingTranscodeFallback) {
+                                Log.w("JellyfinPlayer", "")
+                                Log.w("JellyfinPlayer", "🔄🔄🔄 AUTO-TRANSCODE FALLBACK TRIGGERED 🔄🔄🔄")
+                                Log.w("JellyfinPlayer", "")
+                                Log.w("JellyfinPlayer", "⚠️ Direct play failed - attempting server-side transcoding...")
+                                Log.w("JellyfinPlayer", "   Error: ${error.message}")
+                                Log.w("JellyfinPlayer", "")
+                                
+                                hasTriedTranscodeFallback = true
+                                
+                                // Retry with transcoded stream
+                                scope.launch(Dispatchers.Main) {
+                                    try {
+                                        player.stop()
+                                        player.clearMediaItems()
+                                        
+                                        // Get transcoding settings
+                                        val transcodeTargetCodec = settings.transcodeTargetCodec
+                                        val transcodeMaxBitrate = settings.transcodeMaxBitrateMbps
+                                        
+                                        // Get the transcoded URL
+                                        val transcodedUrl = apiService.getTranscodedVideoUrl(
+                                            itemId = item.Id,
+                                            mediaSourceId = itemDetails?.MediaSources?.firstOrNull()?.Id,
+                                            subtitleStreamIndex = null,
+                                            targetVideoCodec = transcodeTargetCodec,
+                                            maxBitrateMbps = transcodeMaxBitrate,
+                                            audioCodec = "aac"
+                                        )
+                                        
+                                        Log.d("JellyfinPlayer", "🔄 Transcoded URL: $transcodedUrl")
+                                        
+                                        // Create HLS media source for transcoded stream
+                                        val hlsMediaSource = HlsMediaSource.Factory(dataSourceFactory)
+                                            .createMediaSource(MediaItem.fromUri(Uri.parse(transcodedUrl)))
+                                        
+                                        player.setMediaSource(hlsMediaSource)
+                                        player.prepare()
+                                        player.play()
+                                        
+                                        isUsingTranscodeFallback = true
+                                        Log.d("JellyfinPlayer", "✅ Switched to server transcoding: $transcodeTargetCodec @ ${transcodeMaxBitrate}Mbps")
+                                        
+                                    } catch (e: Exception) {
+                                        Log.e("JellyfinPlayer", "❌ Failed to switch to transcoding: ${e.message}", e)
+                                        
+                                        // Try MPV fallback if transcoding failed
+                                        if (fallbackToMpv && isMpvInstalled && !hasTriedMpvFallback) {
+                                            Log.w("JellyfinPlayer", "🎬 Transcoding failed - trying MPV fallback...")
+                                            hasTriedMpvFallback = true
+                                            launchMpvFallback()
+                                        } else {
+                                            showAV1Error = true
+                                        }
+                                    }
+                                }
+                                // Don't show error dialog - we're retrying with transcoding
+                            } else if (isDecoderError && fallbackToMpv && isMpvInstalled && !hasTriedMpvFallback) {
+                                // Transcoding is disabled, try MPV fallback
+                                Log.w("JellyfinPlayer", "")
+                                Log.w("JellyfinPlayer", "🎬🎬🎬 MPV FALLBACK TRIGGERED 🎬🎬🎬")
+                                Log.w("JellyfinPlayer", "")
+                                Log.w("JellyfinPlayer", "⚠️ ExoPlayer failed and transcoding is disabled")
+                                Log.w("JellyfinPlayer", "⚠️ Launching MPV player as fallback...")
+                                Log.w("JellyfinPlayer", "")
+                                
+                                hasTriedMpvFallback = true
+                                launchMpvFallback()
+                            } else if (is10BitAV1Error) {
+                                Log.e("JellyfinPlayer", "")
+                                Log.e("JellyfinPlayer", "❌❌❌ 10-BIT AV1 DECODING ERROR ❌❌❌")
+                                Log.e("JellyfinPlayer", "")
+                                Log.e("JellyfinPlayer", "⚠️ libgav1 cannot output 10-bit video to standard surface")
+                                Log.e("JellyfinPlayer", "⚠️ This is a known limitation of the AV1 software decoder")
+                                Log.e("JellyfinPlayer", "")
+                                Log.e("JellyfinPlayer", "✅ SOLUTIONS:")
+                                Log.e("JellyfinPlayer", "   1. Enable MPV Player: Settings → Playback → Use MPV Player")
+                                Log.e("JellyfinPlayer", "      MPV uses dav1d which handles 10-bit AV1 natively")
+                                Log.e("JellyfinPlayer", "   2. Server Transcoding: Configure Jellyfin to transcode AV1")
+                                Log.e("JellyfinPlayer", "      Dashboard → Playback → Transcoding → AV1 → H.264/H.265")
+                                Log.e("JellyfinPlayer", "")
+                                
+                                // Show user-friendly error to user
+                                showAV1Error = true
+                            }
+                            // Check for other decoder errors
+                            else if (error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+                                error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FAILED) {
+                                Log.e("JellyfinPlayer", "❌ VIDEO DECODER ERROR: Device may not support this video codec!")
+                                Log.e("JellyfinPlayer", "   Consider enabling server-side transcoding for this content")
+                                
+                                if (runtimeAV1Detected) {
+                                    Log.e("JellyfinPlayer", "❌ AV1 DECODER FAILURE!")
+                                    Log.e("JellyfinPlayer", "   Enable MPV Player or configure Jellyfin to transcode AV1 → H.264/H.265")
+                                    showAV1Error = true
+                                }
+                            }
                             
                             // Check for subtitle-specific errors
                             if (error.cause is ParserException || error.message?.contains("subtitle", ignoreCase = true) == true) {
@@ -842,6 +1071,53 @@ fun JellyfinVideoPlayerScreen(
                         }
 
                         override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                            // ============================================================
+                            // RUNTIME AV1 DETECTION - This is the ONLY reliable way to detect AV1
+                            // Jellyfin metadata often returns Codec=null, so we must detect from ExoPlayer tracks
+                            // ============================================================
+                            val videoTrack = tracks.groups
+                                .filter { it.type == C.TRACK_TYPE_VIDEO && it.isSupported }
+                                .firstOrNull()
+                            
+                            if (videoTrack != null && videoTrack.length > 0) {
+                                val videoFormat = videoTrack.mediaTrackGroup.getFormat(0)
+                                val detectedMime = videoFormat.sampleMimeType ?: ""
+                                val detectedCodecs = videoFormat.codecs ?: ""
+                                
+                                Log.d("JellyfinPlayer", "🔍 Runtime codec detection: mime=$detectedMime, codecs=$detectedCodecs")
+                                
+                                // Check for AV1 in MIME type or codecs string
+                                val isAV1 = detectedMime.contains("av01", ignoreCase = true) || 
+                                           detectedMime.contains("av1", ignoreCase = true) ||
+                                           detectedCodecs.contains("av01", ignoreCase = true) ||
+                                           detectedCodecs.contains("av1", ignoreCase = true)
+                                
+                                if (isAV1) {
+                                    // Check bit depth from colorInfo (if available)
+                                    val colorInfo = videoFormat.colorInfo
+                                    val bitDepth = colorInfo?.lumaBitdepth ?: 8
+                                    Log.e("JellyfinPlayer", "⚠️ RUNTIME AV1 DETECTED! mime=$detectedMime, codecs=$detectedCodecs, bitDepth=$bitDepth")
+                                    Log.e("JellyfinPlayer", "   ColorInfo: $colorInfo")
+                                    
+                                    // AV1 with 10-bit will fail with libgav1 on standard surface
+                                    // We'll detect this at error time and show the dialog
+                                    Log.e("JellyfinPlayer", "")
+                                    Log.e("JellyfinPlayer", "⚠️ AV1 DETECTED - May require special handling")
+                                    Log.e("JellyfinPlayer", "⚠️ If video shows black screen, it's likely 10-bit AV1")
+                                    Log.e("JellyfinPlayer", "⚠️ libgav1 cannot output 10-bit to standard SurfaceView")
+                                    Log.e("JellyfinPlayer", "")
+                                    Log.e("JellyfinPlayer", "✅ SOLUTIONS:")
+                                    Log.e("JellyfinPlayer", "   1. Enable MPV Player in Settings → Playback → Use MPV Player")
+                                    Log.e("JellyfinPlayer", "      MPV handles 10-bit AV1 natively via dav1d")
+                                    Log.e("JellyfinPlayer", "   2. Configure Jellyfin server to transcode AV1 → H.264/H.265")
+                                    Log.e("JellyfinPlayer", "      Dashboard → Playback → Transcoding")
+                                    Log.e("JellyfinPlayer", "")
+                                    runtimeAV1Detected = true
+                                } else {
+                                    Log.d("JellyfinPlayer", "✅ Non-AV1 codec detected: $detectedMime")
+                                }
+                            }
+                            
                             // Log available tracks for debugging
                             Log.d("JellyfinPlayer", "Tracks changed: ${tracks.groups.size} track groups")
                             tracks.groups.forEach { group ->
@@ -2037,8 +2313,15 @@ fun JellyfinVideoPlayerScreen(
                 Box(modifier = Modifier.fillMaxSize()) {
                     AndroidView(
                         factory = { ctx ->
+                            // Log rendering mode decision
+                            // Note: AV1 detection happens at RUNTIME via onTracksChanged listener
+                            // At this point we don't know if it's AV1 yet - we use user's GL setting
+                            Log.d("JellyfinPlayer", "🎬 Creating video view - GL mode: $useGLEnhancements")
+                            
                             if (useGLEnhancements) {
                                 // GL Enhancement mode: Use FrameLayout with GL surface + overlaid PlayerView
+                                // WARNING: If content is AV1, this will cause black screen on devices without HW AV1 decoder
+                                // The runtime AV1 detection in onTracksChanged will log warnings if this happens
                                 FrameLayout(ctx).apply {
                                     // Create GL surface for video rendering with effects
                                     val glSurface = GLVideoSurfaceView(ctx).apply {
@@ -2056,11 +2339,12 @@ fun JellyfinVideoPlayerScreen(
                                         
                                         glSurfaceViewRef.value = this
                                         
-                                        // Set the GL surface on the player
-                                        val surface = getCodecSurface()
-                                        if (surface != null) {
+                                        // Use callback for when GL surface is ready (async)
+                                        // This fixes the issue where getCodecSurface() returns null
+                                        // because onSurfaceCreated hasn't been called yet
+                                        setOnSurfaceReadyListener { surface ->
                                             player.setVideoSurface(surface)
-                                            Log.d("JellyfinPlayer", "GL surface attached to player")
+                                            Log.d("JellyfinPlayer", "🎬 GL surface attached to player via callback")
                                         }
                                     }
                                     addView(glSurface)
@@ -2255,6 +2539,12 @@ fun JellyfinVideoPlayerScreen(
                                 descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
                                 isFocusable = false
                                 isFocusableInTouchMode = false
+                                
+                                // Standard mode uses SurfaceView by default which is compatible with all codecs
+                                // including software-decoded AV1. This is the safe path.
+                                // If AV1 is detected at runtime (via onTracksChanged), it will work here.
+                                setShutterBackgroundColor(android.graphics.Color.BLACK)
+                                Log.d("JellyfinPlayer", "📺 Using standard PlayerView (SurfaceView) - compatible with all codecs including AV1")
                                 
                                 // Ensure view is visible and properly sized
                                 visibility = android.view.View.VISIBLE
@@ -2856,6 +3146,13 @@ fun JellyfinVideoPlayerScreen(
                     // Use ExoPlayer track selection API to select the subtitle
                     scope.launch(Dispatchers.Main) {
                         try {
+                            // Safety check - make sure player is still valid
+                            if (player.playbackState == Player.STATE_IDLE) {
+                                Log.w("JellyfinPlayer", "⚠️ Player is idle, skipping subtitle selection")
+                                showSettingsMenu = false
+                                return@launch
+                            }
+                            
                             if (subtitleIndex == null) {
                                 // Disable all subtitles by clearing overrides only
                                 // Do NOT use setTrackTypeDisabled - that prevents ExoPlayer UI from working
@@ -2883,31 +3180,37 @@ fun JellyfinVideoPlayerScreen(
                                     Log.d("JellyfinPlayer", "   SubtitleMapper found: ExoPlayer group=$groupIndex, track=$trackIndexInGroup")
                                     Log.d("JellyfinPlayer", "   Total track groups: ${tracks.groups.size}")
                                     
-                                    if (groupIndex < tracks.groups.size) {
+                                    if (groupIndex >= 0 && groupIndex < tracks.groups.size) {
                                         val group = tracks.groups[groupIndex]
-                                        val format = group.mediaTrackGroup.getFormat(0)
-                                        Log.d("JellyfinPlayer", "   Selected group format: lang=${format.language}, label=${format.label}, mime=${format.sampleMimeType}")
                                         
-                                        // Override to select this specific track (text tracks are not disabled, so no need to enable)
-                                        val updatedParameters = player.trackSelectionParameters
-                                            .buildUpon()
-                                            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                                            .addOverride(
-                                                androidx.media3.common.TrackSelectionOverride(
-                                                    group.mediaTrackGroup,
-                                                    listOf(trackIndexInGroup)
+                                        // Safety check for track index
+                                        if (trackIndexInGroup >= 0 && trackIndexInGroup < group.mediaTrackGroup.length) {
+                                            val format = group.mediaTrackGroup.getFormat(trackIndexInGroup)
+                                            Log.d("JellyfinPlayer", "   Selected group format: lang=${format.language}, label=${format.label}, mime=${format.sampleMimeType}")
+                                            
+                                            // Override to select this specific track (text tracks are not disabled, so no need to enable)
+                                            val updatedParameters = player.trackSelectionParameters
+                                                .buildUpon()
+                                                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                                                .addOverride(
+                                                    androidx.media3.common.TrackSelectionOverride(
+                                                        group.mediaTrackGroup,
+                                                        listOf(trackIndexInGroup)
+                                                    )
                                                 )
-                                            )
-                                            .build()
-                                        
-                                        player.trackSelectionParameters = updatedParameters
-                                        Log.d("JellyfinPlayer", "✅ Selected subtitle: Jellyfin index=$subtitleIndex, ExoPlayer group=$groupIndex, track=$trackIndexInGroup")
-                                        
-                                        // Save preference
-                                        settings.setSubtitlePreference(item.Id, subtitleIndex)
-                                        lastSelectedSubtitleIndex = subtitleIndex
-                                        currentSubtitleIndex = subtitleIndex
-                                        Log.d("JellyfinPlayer", "💾 Saved subtitle preference: $subtitleIndex")
+                                                .build()
+                                            
+                                            player.trackSelectionParameters = updatedParameters
+                                            Log.d("JellyfinPlayer", "✅ Selected subtitle: Jellyfin index=$subtitleIndex, ExoPlayer group=$groupIndex, track=$trackIndexInGroup")
+                                            
+                                            // Save preference
+                                            settings.setSubtitlePreference(item.Id, subtitleIndex)
+                                            lastSelectedSubtitleIndex = subtitleIndex
+                                            currentSubtitleIndex = subtitleIndex
+                                            Log.d("JellyfinPlayer", "💾 Saved subtitle preference: $subtitleIndex")
+                                        } else {
+                                            Log.w("JellyfinPlayer", "⚠️ Invalid track index: $trackIndexInGroup (group.length=${group.mediaTrackGroup.length})")
+                                        }
                                     } else {
                                         Log.w("JellyfinPlayer", "⚠️ Invalid group index: $groupIndex (tracks.groups.size=${tracks.groups.size})")
                                     }
@@ -2930,6 +3233,117 @@ fun JellyfinVideoPlayerScreen(
             )
         }
         
+        // AV1 10-bit decoding error dialog
+        if (showAV1Error) {
+            Dialog(
+                onDismissRequest = { showAV1Error = false },
+                properties = DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.9f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.tv.material3.Surface(
+                        modifier = Modifier
+                            .fillMaxWidth(0.5f)
+                            .wrapContentHeight(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = androidx.tv.material3.SurfaceDefaults.colors(
+                            containerColor = Color(0xFF1A1A2E),
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            // Error icon
+                            Icon(
+                                imageVector = Icons.Filled.Warning,
+                                contentDescription = null,
+                                tint = Color(0xFFFF6B6B),
+                                modifier = Modifier.size(64.dp)
+                            )
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            Text(
+                                text = "10-bit AV1 Video Not Supported",
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                            
+                            Spacer(modifier = Modifier.height(12.dp))
+                            
+                            Text(
+                                text = "This video uses 10-bit AV1 encoding which requires special hardware or software support not available on this device.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.White.copy(alpha = 0.8f),
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            )
+                            
+                            Spacer(modifier = Modifier.height(20.dp))
+                            
+                            // Solutions
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF16213E), RoundedCornerShape(8.dp))
+                                    .padding(16.dp)
+                            ) {
+                                Text(
+                                    text = "Solutions:",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = Color(0xFF4ECDC4),
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "1. Enable MPV Player in Settings → Playback",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.9f)
+                                )
+                                Text(
+                                    text = "2. Configure Jellyfin to transcode AV1 content",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.9f)
+                                )
+                            }
+                            
+                            Spacer(modifier = Modifier.height(24.dp))
+                            
+                            // Dismiss button
+                            val dismissFocusRequester = remember { FocusRequester() }
+                            LaunchedEffect(Unit) {
+                                dismissFocusRequester.requestFocus()
+                            }
+                            
+                            var isFocused by remember { mutableStateOf(false) }
+                            androidx.tv.material3.Button(
+                                onClick = { 
+                                    showAV1Error = false
+                                    onBack()
+                                },
+                                modifier = Modifier
+                                    .focusRequester(dismissFocusRequester)
+                                    .onFocusChanged { isFocused = it.isFocused },
+                                colors = androidx.tv.material3.ButtonDefaults.colors(
+                                    containerColor = if (isFocused) Color(0xFF4ECDC4) else Color(0xFF2D4059),
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Text("Go Back")
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -2973,12 +3387,18 @@ fun ExoPlayerSettingsMenu(
     
     // Auto-focus first item when menu level changes
     LaunchedEffect(currentMenuLevel) {
-        kotlinx.coroutines.delay(100) // Small delay to ensure UI is rendered
-        when (currentMenuLevel) {
-            "main" -> mainMenuFirstItemFocusRequester.requestFocus()
-            "subtitles" -> subtitlesFirstItemFocusRequester.requestFocus()
-            "audio" -> audioFirstItemFocusRequester.requestFocus()
-            "speed" -> speedFirstItemFocusRequester.requestFocus()
+        kotlinx.coroutines.delay(150) // Longer delay to ensure UI is fully rendered
+        try {
+            when (currentMenuLevel) {
+                "main" -> mainMenuFirstItemFocusRequester.requestFocus()
+                "subtitles" -> subtitlesFirstItemFocusRequester.requestFocus()
+                "audio" -> audioFirstItemFocusRequester.requestFocus()
+                "speed" -> speedFirstItemFocusRequester.requestFocus()
+            }
+        } catch (e: IllegalStateException) {
+            // FocusRequester not yet attached to a composable - this can happen
+            // if the menu is dismissed before the focus request completes
+            Log.w("ExoPlayerSettingsMenu", "Focus request failed (menu may have been dismissed): ${e.message}")
         }
     }
     

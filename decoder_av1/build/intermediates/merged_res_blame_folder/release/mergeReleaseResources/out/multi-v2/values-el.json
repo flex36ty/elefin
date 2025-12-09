@@ -1,0 +1,68 @@
+{
+    "logs": [
+        {
+            "outputFile": "androidx.media3.decoder.av1.decoder_av1-release-7:/values-el/values-el.xml",
+            "map": [
+                {
+                    "source": "C:\\Users\\flex360\\.gradle\\caches\\8.13\\transforms\\160653a8b6165ba32ece3e72d13078ff\\transformed\\core-1.8.0\\res\\values-el\\values-el.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "100",
+                        "endOffsets": "151"
+                    },
+                    "to": {
+                        "startLines": "11",
+                        "startColumns": "4",
+                        "startOffsets": "716",
+                        "endColumns": "100",
+                        "endOffsets": "812"
+                    }
+                },
+                {
+                    "source": "C:\\Users\\flex360\\.gradle\\caches\\8.13\\transforms\\050b87369ffcea2827ab561d3cf0b2ea\\transformed\\media3-exoplayer-1.8.0\\res\\values-el\\values-el.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7,8,9,10",
+                        "startColumns": "4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,126,184,242,305,379,455,554,649",
+                        "endColumns": "70,57,57,62,73,75,98,94,66",
+                        "endOffsets": "121,179,237,300,374,450,549,644,711"
+                    }
+                }
+            ]
+        },
+        {
+            "outputFile": "androidx.media3.decoder.av1.decoder_av1-mergeReleaseResources-5:/values-el/values-el.xml",
+            "map": [
+                {
+                    "source": "C:\\Users\\flex360\\.gradle\\caches\\8.13\\transforms\\160653a8b6165ba32ece3e72d13078ff\\transformed\\core-1.8.0\\res\\values-el\\values-el.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "100",
+                        "endOffsets": "151"
+                    },
+                    "to": {
+                        "startLines": "11",
+                        "startColumns": "4",
+                        "startOffsets": "716",
+                        "endColumns": "100",
+                        "endOffsets": "812"
+                    }
+                },
+                {
+                    "source": "C:\\Users\\flex360\\.gradle\\caches\\8.13\\transforms\\050b87369ffcea2827ab561d3cf0b2ea\\transformed\\media3-exoplayer-1.8.0\\res\\values-el\\values-el.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7,8,9,10",
+                        "startColumns": "4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,126,184,242,305,379,455,554,649",
+                        "endColumns": "70,57,57,62,73,75,98,94,66",
+                        "endOffsets": "121,179,237,300,374,450,549,644,711"
+                    }
+                }
+            ]
+        }
+    ]
+}

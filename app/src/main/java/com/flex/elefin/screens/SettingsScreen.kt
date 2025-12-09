@@ -152,6 +152,16 @@ fun SettingsScreen(
     var autoUpdateEnabled by remember { mutableStateOf(settings.autoUpdateEnabled) }
     var skipIntroEnabled by remember { mutableStateOf(settings.skipIntroEnabled) }
     var skipCreditsEnabled by remember { mutableStateOf(settings.skipCreditsEnabled) }
+    
+    // Server-side transcoding settings
+    var serverTranscodingEnabled by remember { mutableStateOf(settings.serverTranscodingEnabled) }
+    var transcodeAV1 by remember { mutableStateOf(settings.transcodeAV1) }
+    var transcodeHEVC by remember { mutableStateOf(settings.transcodeHEVC) }
+    var transcodeTargetCodec by remember { mutableStateOf(settings.transcodeTargetCodec) }
+    var transcodeMaxBitrate by remember { mutableStateOf(settings.transcodeMaxBitrateMbps) }
+    var autoTranscodeOnError by remember { mutableStateOf(settings.autoTranscodeOnError) }
+    var fallbackToMpv by remember { mutableStateOf(settings.fallbackToMpv) }
+    
     var showUpdateDialog by remember { mutableStateOf(false) }
     var latestRelease by remember { mutableStateOf<com.flex.elefin.updater.GitHubRelease?>(null) }
     var checkingForUpdates by remember { mutableStateOf(false) }
@@ -424,6 +434,104 @@ fun SettingsScreen(
                                     settings.skipCreditsEnabled = skipCreditsEnabled
                                 }
                             )
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            // Server-Side Transcoding Section Header
+                            Text(
+                                text = "Server-Side Transcoding",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                            
+                            // Auto-transcode on playback error
+                            SettingToggle(
+                                title = "Auto-Transcode on Error",
+                                description = "Automatically retry with server transcoding when direct play fails",
+                                isEnabled = autoTranscodeOnError,
+                                onToggle = {
+                                    autoTranscodeOnError = !autoTranscodeOnError
+                                    settings.autoTranscodeOnError = autoTranscodeOnError
+                                }
+                            )
+                            
+                            // Fallback to MPV player
+                            SettingToggle(
+                                title = "Fallback to MPV Player",
+                                description = if (isMpvInstalled) {
+                                    "Use MPV when ExoPlayer fails and transcoding is disabled (MPV installed ✓)"
+                                } else {
+                                    "Use MPV when ExoPlayer fails (requires mpv-elefin to be installed)"
+                                },
+                                isEnabled = fallbackToMpv,
+                                onToggle = {
+                                    fallbackToMpv = !fallbackToMpv
+                                    settings.fallbackToMpv = fallbackToMpv
+                                }
+                            )
+                            
+                            // Server Transcoding Master Toggle
+                            SettingToggle(
+                                title = "Always Transcode",
+                                description = "Always request server transcoding for selected codecs (AV1, HEVC)",
+                                isEnabled = serverTranscodingEnabled,
+                                onToggle = {
+                                    serverTranscodingEnabled = !serverTranscodingEnabled
+                                    settings.serverTranscodingEnabled = serverTranscodingEnabled
+                                }
+                            )
+                            
+                            if (serverTranscodingEnabled) {
+                                // Transcode AV1
+                                SettingToggle(
+                                    title = "Transcode AV1",
+                                    description = "Request transcoding for AV1 video (recommended for Shield TV)",
+                                    isEnabled = transcodeAV1,
+                                    onToggle = {
+                                        transcodeAV1 = !transcodeAV1
+                                        settings.transcodeAV1 = transcodeAV1
+                                    }
+                                )
+                                
+                                // Transcode HEVC
+                                SettingToggle(
+                                    title = "Transcode HEVC/H.265",
+                                    description = "Request transcoding for HEVC video (only if device doesn't support it)",
+                                    isEnabled = transcodeHEVC,
+                                    onToggle = {
+                                        transcodeHEVC = !transcodeHEVC
+                                        settings.transcodeHEVC = transcodeHEVC
+                                    }
+                                )
+                                
+                                // Target Codec
+                                SettingCycle(
+                                    title = "Target Codec",
+                                    description = "Transcode to: ${transcodeTargetCodec.uppercase()}",
+                                    currentValue = transcodeTargetCodec.uppercase(),
+                                    onCycle = {
+                                        transcodeTargetCodec = if (transcodeTargetCodec == "h264") "hevc" else "h264"
+                                        settings.transcodeTargetCodec = transcodeTargetCodec
+                                    }
+                                )
+                                
+                                // Max Bitrate
+                                SettingSlider(
+                                    title = "Max Video Bitrate",
+                                    description = "${transcodeMaxBitrate} Mbps (higher = better quality)",
+                                    onDecrease = {
+                                        transcodeMaxBitrate = (transcodeMaxBitrate - 5).coerceAtLeast(5)
+                                        settings.transcodeMaxBitrateMbps = transcodeMaxBitrate
+                                    },
+                                    onIncrease = {
+                                        transcodeMaxBitrate = (transcodeMaxBitrate + 5).coerceAtMost(120)
+                                        settings.transcodeMaxBitrateMbps = transcodeMaxBitrate
+                                    },
+                                    canDecrease = transcodeMaxBitrate > 5,
+                                    canIncrease = transcodeMaxBitrate < 120
+                                )
+                            }
                             
                             Spacer(modifier = Modifier.height(8.dp))
                             

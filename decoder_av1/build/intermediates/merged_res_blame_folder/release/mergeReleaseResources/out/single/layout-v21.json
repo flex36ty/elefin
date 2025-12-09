@@ -1,0 +1,18 @@
+[
+    {
+        "merged": "androidx.media3.decoder.av1.decoder_av1-release-7:/layout-v21/notification_action_tombstone.xml",
+        "source": "androidx.media3.decoder.av1.decoder_av1-core-1.8.0-1:/layout-v21/notification_action_tombstone.xml"
+    },
+    {
+        "merged": "androidx.media3.decoder.av1.decoder_av1-release-7:/layout-v21/notification_action.xml",
+        "source": "androidx.media3.decoder.av1.decoder_av1-core-1.8.0-1:/layout-v21/notification_action.xml"
+    },
+    {
+        "merged": "androidx.media3.decoder.av1.decoder_av1-release-7:/layout-v21/notification_template_icon_group.xml",
+        "source": "androidx.media3.decoder.av1.decoder_av1-core-1.8.0-1:/layout-v21/notification_template_icon_group.xml"
+    },
+    {
+        "merged": "androidx.media3.decoder.av1.decoder_av1-release-7:/layout-v21/notification_template_custom_big.xml",
+        "source": "androidx.media3.decoder.av1.decoder_av1-core-1.8.0-1:/layout-v21/notification_template_custom_big.xml"
+    }
+]

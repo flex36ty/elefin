@@ -42,6 +42,19 @@ class GLVideoSurfaceView @JvmOverloads constructor(
     
     private val transformMatrix = FloatArray(16)
     
+    // Callback for when the surface is ready
+    private var onSurfaceReadyCallback: ((Surface) -> Unit)? = null
+    
+    /**
+     * Set a callback to be notified when the GL surface is ready.
+     * This is needed because surface creation is asynchronous.
+     */
+    fun setOnSurfaceReadyListener(callback: (Surface) -> Unit) {
+        onSurfaceReadyCallback = callback
+        // If surface is already ready, call immediately
+        codecSurface?.let { callback(it) }
+    }
+    
     // Frame blending resources
     private var prevFrameFBO: Int = 0
     private var prevFrameTexture: Int = 0
@@ -178,6 +191,14 @@ class GLVideoSurfaceView @JvmOverloads constructor(
         
         // Create the Surface given to ExoPlayer
         codecSurface = Surface(surfaceTexture)
+        
+        // Notify callback that surface is ready (on main thread)
+        codecSurface?.let { surface ->
+            post {
+                Log.d(TAG, "🎬 GL Surface ready, notifying callback")
+                onSurfaceReadyCallback?.invoke(surface)
+            }
+        }
         
         // Initialize shader programs
         shaderProgram = createShaderProgram()

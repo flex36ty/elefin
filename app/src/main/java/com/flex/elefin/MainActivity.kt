@@ -115,6 +115,14 @@ class MainActivity : ComponentActivity() {
                             // Navigate to Music screen
                             startActivity(MusicActivity.createIntent(this@MainActivity))
                         },
+                        onMoviesLibraryClick = { libraryId, libraryName ->
+                            // Navigate to Movies Library screen
+                            startActivity(MoviesLibraryActivity.createIntent(this@MainActivity, libraryId, libraryName))
+                        },
+                        onTvShowsLibraryClick = { libraryId, libraryName ->
+                            // Navigate to TV Shows Library screen
+                            startActivity(TvShowsLibraryActivity.createIntent(this@MainActivity, libraryId, libraryName))
+                        },
                         showDebugOutlines = appSettings.showDebugOutlines,
                         preloadLibraryImages = appSettings.preloadLibraryImages,
                         cacheLibraryImages = appSettings.cacheLibraryImages,

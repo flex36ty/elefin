@@ -62,6 +62,15 @@ class AppSettings(context: Context) {
         private const val KEY_OPENSUBTITLES_API_KEY = "opensubtitles_api_key"
         private const val KEY_OPENSUBTITLES_USERNAME = "opensubtitles_username"
         private const val KEY_OPENSUBTITLES_PASSWORD = "opensubtitles_password"
+        
+        // Server-side transcoding settings
+        private const val KEY_SERVER_TRANSCODING_ENABLED = "server_transcoding_enabled"
+        private const val KEY_TRANSCODE_AV1 = "transcode_av1"
+        private const val KEY_TRANSCODE_HEVC = "transcode_hevc"
+        private const val KEY_TRANSCODE_TARGET_CODEC = "transcode_target_codec"
+        private const val KEY_TRANSCODE_MAX_BITRATE = "transcode_max_bitrate"
+        private const val KEY_AUTO_TRANSCODE_ON_ERROR = "auto_transcode_on_error"
+        private const val KEY_FALLBACK_TO_MPV = "fallback_to_mpv"
     }
 
     var isMpvEnabled: Boolean
@@ -310,5 +319,41 @@ class AppSettings(context: Context) {
     var openSubtitlesPassword: String
         get() = prefs.getString(KEY_OPENSUBTITLES_PASSWORD, "") ?: ""
         set(value) = prefs.edit().putString(KEY_OPENSUBTITLES_PASSWORD, value).apply()
+    
+    // Server-side transcoding settings
+    // Master switch for server-side transcoding
+    var serverTranscodingEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SERVER_TRANSCODING_ENABLED, false) // Disabled by default
+        set(value) = prefs.edit().putBoolean(KEY_SERVER_TRANSCODING_ENABLED, value).apply()
+    
+    // Transcode AV1 content (device doesn't support AV1 hardware decoding)
+    var transcodeAV1: Boolean
+        get() = prefs.getBoolean(KEY_TRANSCODE_AV1, true) // Enabled by default when transcoding is on
+        set(value) = prefs.edit().putBoolean(KEY_TRANSCODE_AV1, value).apply()
+    
+    // Transcode HEVC/H.265 content (for older devices without HEVC support)
+    var transcodeHEVC: Boolean
+        get() = prefs.getBoolean(KEY_TRANSCODE_HEVC, false) // Disabled by default
+        set(value) = prefs.edit().putBoolean(KEY_TRANSCODE_HEVC, value).apply()
+    
+    // Target codec for transcoding: "h264" or "hevc"
+    var transcodeTargetCodec: String
+        get() = prefs.getString(KEY_TRANSCODE_TARGET_CODEC, "h264") ?: "h264"
+        set(value) = prefs.edit().putString(KEY_TRANSCODE_TARGET_CODEC, value).apply()
+    
+    // Maximum bitrate for transcoded video in Mbps (default: 40 Mbps for high quality, range: 5-120)
+    var transcodeMaxBitrateMbps: Int
+        get() = prefs.getInt(KEY_TRANSCODE_MAX_BITRATE, 40).coerceIn(5, 120)
+        set(value) = prefs.edit().putInt(KEY_TRANSCODE_MAX_BITRATE, value.coerceIn(5, 120)).apply()
+    
+    // Automatically switch to transcoding when direct play fails (codec not supported, decoder error, etc.)
+    var autoTranscodeOnError: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_TRANSCODE_ON_ERROR, true) // Enabled by default
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_TRANSCODE_ON_ERROR, value).apply()
+    
+    // Fallback to MPV player when ExoPlayer fails and transcoding is disabled/unavailable
+    var fallbackToMpv: Boolean
+        get() = prefs.getBoolean(KEY_FALLBACK_TO_MPV, true) // Enabled by default
+        set(value) = prefs.edit().putBoolean(KEY_FALLBACK_TO_MPV, value).apply()
 }
 

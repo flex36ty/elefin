@@ -1,0 +1,68 @@
+{
+    "logs": [
+        {
+            "outputFile": "androidx.media3.decoder.av1.decoder_av1-release-7:/values-fr-rCA/values-fr-rCA.xml",
+            "map": [
+                {
+                    "source": "C:\\Users\\flex360\\.gradle\\caches\\8.13\\transforms\\050b87369ffcea2827ab561d3cf0b2ea\\transformed\\media3-exoplayer-1.8.0\\res\\values-fr-rCA\\values-fr-rCA.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7,8,9,10",
+                        "startColumns": "4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,129,194,272,344,427,503,600,693",
+                        "endColumns": "73,64,77,71,82,75,96,92,91",
+                        "endOffsets": "124,189,267,339,422,498,595,688,780"
+                    }
+                },
+                {
+                    "source": "C:\\Users\\flex360\\.gradle\\caches\\8.13\\transforms\\160653a8b6165ba32ece3e72d13078ff\\transformed\\core-1.8.0\\res\\values-fr-rCA\\values-fr-rCA.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "100",
+                        "endOffsets": "151"
+                    },
+                    "to": {
+                        "startLines": "11",
+                        "startColumns": "4",
+                        "startOffsets": "785",
+                        "endColumns": "100",
+                        "endOffsets": "881"
+                    }
+                }
+            ]
+        },
+        {
+            "outputFile": "androidx.media3.decoder.av1.decoder_av1-mergeReleaseResources-5:/values-fr-rCA/values-fr-rCA.xml",
+            "map": [
+                {
+                    "source": "C:\\Users\\flex360\\.gradle\\caches\\8.13\\transforms\\050b87369ffcea2827ab561d3cf0b2ea\\transformed\\media3-exoplayer-1.8.0\\res\\values-fr-rCA\\values-fr-rCA.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7,8,9,10",
+                        "startColumns": "4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,129,194,272,344,427,503,600,693",
+                        "endColumns": "73,64,77,71,82,75,96,92,91",
+                        "endOffsets": "124,189,267,339,422,498,595,688,780"
+                    }
+                },
+                {
+                    "source": "C:\\Users\\flex360\\.gradle\\caches\\8.13\\transforms\\160653a8b6165ba32ece3e72d13078ff\\transformed\\core-1.8.0\\res\\values-fr-rCA\\values-fr-rCA.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "100",
+                        "endOffsets": "151"
+                    },
+                    "to": {
+                        "startLines": "11",
+                        "startColumns": "4",
+                        "startOffsets": "785",
+                        "endColumns": "100",
+                        "endOffsets": "881"
+                    }
+                }
+            ]
+        }
+    ]
+}

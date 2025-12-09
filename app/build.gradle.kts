@@ -144,11 +144,19 @@ dependencies {
     implementation(libs.media3.transformer)
     
     // -------------------------------------------------------------
-    // FFmpeg Audio Decoder (Jellyfin-provided)
+    // FFmpeg Decoder (Jellyfin-provided)
     // -------------------------------------------------------------
-    // Adds support for: DTS, DTS-HD, TrueHD, AC3, E-AC3, and 30+ codecs
+    // Audio: DTS, DTS-HD, TrueHD, AC3, E-AC3, FLAC, ALAC, Vorbis, Opus
     // Licensed under GPLv3 (compatible with Jellyfin ecosystem)
     implementation(libs.jellyfin.media3.ffmpeg.decoder)
+    
+    // -------------------------------------------------------------
+    // AV1 Video Decoder (libgav1 software decoder)
+    // -------------------------------------------------------------
+    // Enables AV1 playback on devices without hardware AV1 support
+    // Uses Google's libgav1 for software decoding
+    // Shield TV and many Android TV devices need this for AV1
+    implementation(project(":decoder_av1"))
     
     // -------------------------------------------------------------
     // MPV Player (Optional - can be enabled in settings)

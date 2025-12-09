@@ -1,0 +1,3 @@
+ninja: Entering directory `C:\Users\flex360\AndroidStudioProjects\elefin\decoder_av1\.cxx\Release\1ap1i714\arm64-v8a'
+[0/2] Re-checking globbed directories...
+ninja: no work to do.

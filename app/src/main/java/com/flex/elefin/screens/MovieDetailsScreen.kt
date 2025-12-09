@@ -1154,10 +1154,16 @@ fun AudioSelectionDialog(
     
     // Fetch full item details to get MediaSources with audio streams
     LaunchedEffect(item.Id, apiService) {
+        Log.d("AudioDialog", "LaunchedEffect triggered for item ${item.Id}, apiService=${apiService != null}")
         if (apiService != null) {
             withContext(Dispatchers.IO) {
                 try {
                     val details = apiService.getItemDetails(item.Id)
+                    Log.d("AudioDialog", "Fetched details: ${details?.Name}, MediaSources: ${details?.MediaSources?.size ?: 0}")
+                    details?.MediaSources?.firstOrNull()?.MediaStreams?.let { streams ->
+                        val audioStreams = streams.filter { it.Type == "Audio" }
+                        Log.d("AudioDialog", "Found ${audioStreams.size} audio streams: ${audioStreams.map { "Index=${it.Index}, Lang=${it.Language}, Codec=${it.Codec}" }}")
+                    }
                     itemDetails = details
                     isLoadingAudio = false
                 } catch (e: kotlinx.coroutines.CancellationException) {
@@ -1168,15 +1174,18 @@ fun AudioSelectionDialog(
                 }
             }
         } else {
+            Log.w("AudioDialog", "apiService is null, cannot fetch audio tracks")
             isLoadingAudio = false
         }
     }
     
     // Get audio streams from MediaSources
     val audioStreams = remember(itemDetails?.MediaSources) {
-        itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
+        val streams = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
             ?.filter { it.Type == "Audio" }
             ?.sortedBy { it.Index ?: 0 } ?: emptyList()
+        Log.d("AudioDialog", "audioStreams remember computed: ${streams.size} streams")
+        streams
     }
     
     val context = LocalContext.current

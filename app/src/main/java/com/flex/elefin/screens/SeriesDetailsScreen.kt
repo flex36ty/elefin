@@ -159,6 +159,9 @@ fun SeriesDetailsScreen(
     
     // FocusRequester map for episodes (used for initial focus)
     val episodeFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    
+    // FocusRequester for first season button (used when no initial episode is provided)
+    val firstSeasonFocusRequester = remember { FocusRequester() }
 
     // Fetch full series details - load in parallel for faster loading
     LaunchedEffect(item.Id, apiService) {
@@ -309,6 +312,21 @@ fun SeriesDetailsScreen(
                         hasPerformedInitialFocus = true // Mark as done on error to prevent retrying
                     }
                 }
+            }
+        }
+    }
+    
+    // Focus on Season 1 button when no initial episode is provided
+    // This runs when the screen loads from "Recently Added" or similar without a specific episode
+    LaunchedEffect(initialEpisodeId, seasons.isNotEmpty(), isLoadingSeasons) {
+        if (initialEpisodeId == null && seasons.isNotEmpty() && !isLoadingSeasons) {
+            // Wait for UI to be ready
+            delay(300)
+            try {
+                firstSeasonFocusRequester.requestFocus()
+                Log.d("SeriesDetailsScreen", "Focused on Season 1 button (no initial episode)")
+            } catch (e: Exception) {
+                Log.w("SeriesDetailsScreen", "Could not focus on Season 1 button: ${e.message}")
             }
         }
     }
@@ -497,7 +515,8 @@ fun SeriesDetailsScreen(
                     selectedSeasonIndex = selectedSeasonIndex,
                     onSeasonSelected = { index ->
                         selectedSeasonIndex = index
-                    }
+                    },
+                    firstSeasonFocusRequester = firstSeasonFocusRequester
                 )
             }
 
@@ -942,7 +961,8 @@ fun SeriesBottomContainer(
     showDebugOutlines: Boolean = false,
     seasons: List<JellyfinItem> = emptyList(),
     selectedSeasonIndex: Int = 0,
-    onSeasonSelected: (Int) -> Unit = {}
+    onSeasonSelected: (Int) -> Unit = {},
+    firstSeasonFocusRequester: FocusRequester? = null
 ) {
     val context = LocalContext.current
     val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
@@ -1091,6 +1111,14 @@ fun SeriesBottomContainer(
                                 Button(
                                     onClick = { onSeasonSelected(index) },
                                     modifier = Modifier
+                                        .then(
+                                            // Add focus requester for first season button
+                                            if (index == 0 && firstSeasonFocusRequester != null) {
+                                                Modifier.focusRequester(firstSeasonFocusRequester)
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
                                         .then(
                                             if (isFocused) {
                                                 Modifier
@@ -2227,7 +2255,9 @@ fun EpisodeActionButtonsRow(
             apiService = apiService,
             onDismiss = { showAudioDialog = false },
             onAudioSelected = { audioIndex ->
+                Log.d("EpisodeAudioDialog", "onAudioSelected callback: saving audioIndex=$audioIndex for episode=${episode.Id}")
                 settings.setAudioPreference(episode.Id, audioIndex)
+                storedAudioIndex = audioIndex
                 showAudioDialog = false
             }
         )
@@ -3001,10 +3031,16 @@ fun EpisodeAudioSelectionDialog(
     
     // Fetch full item details to get MediaSources with audio streams
     LaunchedEffect(item.Id, apiService) {
+        Log.d("EpisodeAudioDialog", "LaunchedEffect triggered for item ${item.Id}, apiService=${apiService != null}")
         if (apiService != null) {
             withContext(Dispatchers.IO) {
                 try {
                     val details = apiService.getItemDetails(item.Id)
+                    Log.d("EpisodeAudioDialog", "Fetched details: ${details?.Name}, MediaSources: ${details?.MediaSources?.size ?: 0}")
+                    details?.MediaSources?.firstOrNull()?.MediaStreams?.let { streams ->
+                        val audioStreams = streams.filter { it.Type == "Audio" }
+                        Log.d("EpisodeAudioDialog", "Found ${audioStreams.size} audio streams: ${audioStreams.map { "Index=${it.Index}, Lang=${it.Language}, Codec=${it.Codec}" }}")
+                    }
                     itemDetails = details
                     isLoadingAudio = false
                 } catch (e: kotlinx.coroutines.CancellationException) {
@@ -3015,15 +3051,18 @@ fun EpisodeAudioSelectionDialog(
                 }
             }
         } else {
+            Log.w("EpisodeAudioDialog", "apiService is null, cannot fetch audio tracks")
             isLoadingAudio = false
         }
     }
     
     // Get audio streams from MediaSources
     val audioStreams = remember(itemDetails?.MediaSources) {
-        itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
+        val streams = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
             ?.filter { it.Type == "Audio" }
             ?.sortedBy { it.Index ?: 0 } ?: emptyList()
+        Log.d("EpisodeAudioDialog", "audioStreams remember computed: ${streams.size} streams")
+        streams
     }
     
     val context = LocalContext.current
@@ -3094,11 +3133,14 @@ fun EpisodeAudioSelectionDialog(
                                     }
                                 }
                                 val isSelected = stream.Index != null && stream.Index == storedAudioIndex
+                                Log.d("EpisodeAudioDialog", "Rendering audio track: $audioTitle, Index=${stream.Index}, isSelected=$isSelected")
                                 
                                 ListItem(
                                     selected = isSelected,
                                     onClick = {
+                                        Log.d("EpisodeAudioDialog", "Audio track clicked: $audioTitle, Index=${stream.Index}")
                                         stream.Index?.let { index ->
+                                            Log.d("EpisodeAudioDialog", "Calling onAudioSelected with index=$index")
                                             onAudioSelected(index)
                                             onDismiss()
                                         }

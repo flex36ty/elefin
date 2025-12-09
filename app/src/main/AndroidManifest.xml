@@ -82,6 +82,14 @@
             android:exported="false"
             android:screenOrientation="landscape" />
         <activity
+            android:name=".MoviesLibraryActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+        <activity
+            android:name=".TvShowsLibraryActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+        <activity
             android:name=".player.mpv.MpvTvPlayerActivity"
             android:exported="false"
             android:screenOrientation="landscape"

@@ -1,0 +1,22 @@
+[
+    {
+        "merged": "androidx.media3.decoder.av1.decoder_av1-release-7:/drawable-hdpi-v4/notification_bg_low_pressed.9.png",
+        "source": "androidx.media3.decoder.av1.decoder_av1-core-1.8.0-1:/drawable-hdpi-v4/notification_bg_low_pressed.9.png"
+    },
+    {
+        "merged": "androidx.media3.decoder.av1.decoder_av1-release-7:/drawable-hdpi-v4/notification_bg_low_normal.9.png",
+        "source": "androidx.media3.decoder.av1.decoder_av1-core-1.8.0-1:/drawable-hdpi-v4/notification_bg_low_normal.9.png"
+    },
+    {
+        "merged": "androidx.media3.decoder.av1.decoder_av1-release-7:/drawable-hdpi-v4/notify_panel_notification_icon_bg.png",
+        "source": "androidx.media3.decoder.av1.decoder_av1-core-1.8.0-1:/drawable-hdpi-v4/notify_panel_notification_icon_bg.png"
+    },
+    {
+        "merged": "androidx.media3.decoder.av1.decoder_av1-release-7:/drawable-hdpi-v4/notification_bg_normal.9.png",
+        "source": "androidx.media3.decoder.av1.decoder_av1-core-1.8.0-1:/drawable-hdpi-v4/notification_bg_normal.9.png"
+    },
+    {
+        "merged": "androidx.media3.decoder.av1.decoder_av1-release-7:/drawable-hdpi-v4/notification_bg_normal_pressed.9.png",
+        "source": "androidx.media3.decoder.av1.decoder_av1-core-1.8.0-1:/drawable-hdpi-v4/notification_bg_normal_pressed.9.png"
+    }
+]

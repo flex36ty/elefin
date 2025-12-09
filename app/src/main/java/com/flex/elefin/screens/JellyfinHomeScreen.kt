@@ -139,6 +139,8 @@ enum class SortType {
 fun JellyfinHomeScreen(
     onItemClick: (JellyfinItem, Long) -> Unit = { _, _ -> },
     onMusicClick: () -> Unit = {},
+    onMoviesLibraryClick: (libraryId: String, libraryName: String) -> Unit = { _, _ -> },
+    onTvShowsLibraryClick: (libraryId: String, libraryName: String) -> Unit = { _, _ -> },
     showDebugOutlines: Boolean = false,
     preloadLibraryImages: Boolean = false,
     cacheLibraryImages: Boolean = true,
@@ -837,12 +839,14 @@ fun JellyfinHomeScreen(
                                 libraries.find { it.Id == itemId }?.Name ?: ""
                             }
                             
-                            // Check if this is a music library
+                            // Check if this is a music, movies, or TV shows library
                             val library = libraries.find { it.Id == itemId }
                             val isMusicLibrary = !isCollectionsTab && library?.CollectionType == "music"
+                            val isMoviesLibrary = !isCollectionsTab && library?.CollectionType == "movies"
+                            val isTvShowsLibrary = !isCollectionsTab && library?.CollectionType == "tvshows"
                             
                             // Debug log for library detection
-                            android.util.Log.d("JellyfinHomeScreen", "Library: ${library?.Name}, CollectionType: ${library?.CollectionType}, isMusicLibrary: $isMusicLibrary")
+                            android.util.Log.d("JellyfinHomeScreen", "Library: ${library?.Name}, CollectionType: ${library?.CollectionType}, isMusicLibrary: $isMusicLibrary, isMoviesLibrary: $isMoviesLibrary, isTvShowsLibrary: $isTvShowsLibrary")
                             
                             Tab(
                                 selected = isSelected,
@@ -854,6 +858,20 @@ fun JellyfinHomeScreen(
                                     if (isMusicLibrary) {
                                         android.util.Log.d("JellyfinHomeScreen", "🎵 Music library clicked! Navigating to music screen...")
                                         onMusicClick()
+                                        return@Tab
+                                    }
+                                    
+                                    // Handle movies library specially - navigate to movies library screen
+                                    if (isMoviesLibrary && library != null) {
+                                        android.util.Log.d("JellyfinHomeScreen", "🎬 Movies library clicked! Navigating to movies library screen...")
+                                        onMoviesLibraryClick(library.Id, library.Name)
+                                        return@Tab
+                                    }
+                                    
+                                    // Handle TV shows library specially - navigate to TV shows library screen
+                                    if (isTvShowsLibrary && library != null) {
+                                        android.util.Log.d("JellyfinHomeScreen", "📺 TV Shows library clicked! Navigating to TV shows library screen...")
+                                        onTvShowsLibraryClick(library.Id, library.Name)
                                         return@Tab
                                     }
                                     
@@ -1480,32 +1498,8 @@ fun JellyfinHomeScreen(
                             )
                         }
                     }
-                } else {
-                    // Loading state for library items
-                    Spacer(modifier = Modifier.height(86.dp)) // Add space below tab row (reduced by 40% from 144: 144 * 0.6 = 86)
-                    androidx.tv.material3.Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-                        colors = androidx.tv.material3.SurfaceDefaults.colors(
-                            containerColor = Color.Transparent
-                        )
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 54.dp, top = 24.dp, end = 38.dp)
-                                .height(400.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Loading...",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                        }
-                    }
                 }
+                // Loading state removed - content loads progressively without blocking UI
             }
             
             // Show collections in grid (like libraries) when Collections tab is selected
@@ -1655,31 +1649,8 @@ fun JellyfinHomeScreen(
                     }
                 }
                 
-                // Show loading indicator while items are being fetched
-                if (items.isEmpty() && collections.isNotEmpty() && collections.all { collectionItems[it.Id].isNullOrEmpty() }) {
-                    androidx.tv.material3.Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-                        colors = androidx.tv.material3.SurfaceDefaults.colors(
-                            containerColor = Color.Transparent
-                        )
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 54.dp, top = 24.dp, end = 38.dp)
-                                .height(400.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Loading...",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                        }
-                    }
-                } else {
+                // Loading state removed - content loads progressively without blocking UI
+                if (items.isNotEmpty() || collections.isEmpty() || collections.any { !collectionItems[it.Id].isNullOrEmpty() }) {
                     // A-Z Index state for collections - only show when sorted alphabetically AND not in low power mode
                     val showCollectionAlphabetIndex = sortType == SortType.Alphabetically && !lowPowerMode.value
                     val collectionColumns = 6

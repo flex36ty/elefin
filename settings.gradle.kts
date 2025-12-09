@@ -24,4 +24,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "elefin"
 include(":app")
+include(":decoder_av1")
  
