@@ -1,6 +1,7 @@
 package com.flex.elefin.screens
 
 import android.util.Log
+import com.flex.elefin.ui.TvBringIntoViewProvider
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -327,6 +328,8 @@ fun MoviesLibraryScreen(
     }
     
     // Main content (same structure as home screen)
+    // Wrap with TV-optimized bring-into-view behavior for better focus handling
+    TvBringIntoViewProvider {
     Box(Modifier.fillMaxSize()) {
         // Featured carousel with backdrop - extends behind bottom container
         Box(
@@ -845,7 +848,7 @@ fun MoviesLibraryScreen(
                     item {
                         Column(
                             modifier = Modifier
-                                .padding(top = 12.dp)
+                                .padding(top = 24.dp) // Increased to ensure "Continue Watching" title is visible
                                 .focusRequester(focusRequester)
                         ) {
                             // Continue Watching row - using vertical poster cards
@@ -859,7 +862,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
-                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)),
+                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                     modifier = if (debugOutlinesEnabled) {
@@ -906,7 +909,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
-                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)),
+                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                     modifier = if (debugOutlinesEnabled) {
@@ -949,7 +952,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
-                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)),
+                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                     modifier = if (debugOutlinesEnabled) {
@@ -992,7 +995,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
-                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)),
+                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                     modifier = if (debugOutlinesEnabled) {
@@ -1035,7 +1038,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
-                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)),
+                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                     modifier = if (debugOutlinesEnabled) {
@@ -1078,7 +1081,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
-                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)),
+                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                     modifier = if (debugOutlinesEnabled) {
@@ -1121,7 +1124,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
-                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)),
+                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                     modifier = if (debugOutlinesEnabled) {
@@ -1164,7 +1167,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
-                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)),
+                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                     modifier = if (debugOutlinesEnabled) {
@@ -1488,6 +1491,7 @@ fun MoviesLibraryScreen(
                 }
             }
         }
+    } // TvBringIntoViewProvider
         
         // Sort dialog
         if (showSortDialog) {

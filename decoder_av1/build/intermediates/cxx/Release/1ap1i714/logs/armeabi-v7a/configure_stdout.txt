@@ -1,3 +1,0 @@
--- Configuring done
--- Generating done
--- Build files have been written to: C:/Users/flex360/AndroidStudioProjects/elefin/decoder_av1/.cxx/Release/1ap1i714/armeabi-v7a

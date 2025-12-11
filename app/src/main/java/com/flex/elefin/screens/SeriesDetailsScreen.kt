@@ -223,93 +223,55 @@ fun SeriesDetailsScreen(
     // Track if we've already done the initial focus to prevent refocusing when seasons change
     var hasPerformedInitialFocus by remember { mutableStateOf(false) }
     
-    // Handle initial episode focus - find the season containing the episode and focus on it
-    // Only run once when initialEpisodeId is set, not when episodes change
+    // Handle initial episode focus - find the season containing the episode and switch to it
+    // The actual focus is handled by SeriesBottomContainer once the correct episodes are loaded
     LaunchedEffect(initialEpisodeId, seasons, apiService, isLoadingEpisodes) {
         if (initialEpisodeId != null && !hasPerformedInitialFocus && apiService != null && seasons.isNotEmpty() && !isLoadingEpisodes) {
+            Log.d("SeriesDetailsScreen", "🔍 Looking for episode ID: $initialEpisodeId in ${seasons.size} seasons")
+            
             // Check if the episode is in the currently loaded episodes
             val targetEpisode = episodes.find { it.Id == initialEpisodeId }
             if (targetEpisode != null) {
-                // Episode is in current season - focus on it
-                withContext(Dispatchers.Main) {
-                    focusedEpisode = targetEpisode
-                    // Request focus on the episode card with retries to ensure composable is ready
-                    val focusRequester = episodeFocusRequesters.getOrPut(targetEpisode.Id) { FocusRequester() }
-                    delay(1000) // Longer delay to ensure UI is ready and LazyColumn has composed
-                    // Try to request focus with retries
-                    var retries = 0
-                    val maxRetries = 20
-                    var success = false
-                    while (retries < maxRetries && !success) {
-                        try {
-                            focusRequester.requestFocus()
-                            Log.d("SeriesDetailsScreen", "Focused on initial episode: ${targetEpisode.Name}")
-                            success = true
-                        } catch (e: IllegalStateException) {
-                            retries++
-                            if (retries < maxRetries) {
-                                delay(300)
-                            } else {
-                                Log.w("SeriesDetailsScreen", "Failed to request focus on initial episode after $maxRetries retries: ${e.message}")
-                            }
-                        } catch (e: Exception) {
-                            Log.e("SeriesDetailsScreen", "Unexpected error requesting focus: ${e.message}", e)
-                            break
-                        }
-                    }
-                    hasPerformedInitialFocus = true
-                }
+                // Episode is in current season - SeriesBottomContainer will handle focus
+                Log.d("SeriesDetailsScreen", "✅ Episode found in current season: ${targetEpisode.Name} (S${targetEpisode.ParentIndexNumber}E${targetEpisode.IndexNumber})")
+                focusedEpisode = targetEpisode
+                hasPerformedInitialFocus = true
             } else {
                 // Episode not in current season - search through all seasons to find it
+                Log.d("SeriesDetailsScreen", "Episode not in current season (${episodes.size} episodes loaded), searching all ${seasons.size} seasons...")
                 withContext(Dispatchers.IO) {
                     try {
                         var found = false
                         for ((index, season) in seasons.withIndex()) {
+                            Log.d("SeriesDetailsScreen", "Searching season ${season.IndexNumber ?: index} (index $index, ID: ${season.Id})...")
                             val seasonEpisodes = apiService.getEpisodes(item.Id, season.Id)
+                            Log.d("SeriesDetailsScreen", "  - Found ${seasonEpisodes.size} episodes in this season")
                             val episodeInSeason = seasonEpisodes.find { it.Id == initialEpisodeId }
                             if (episodeInSeason != null) {
-                                // Found the episode in this season
+                                // Found the episode in this season - switch to it
+                                Log.d("SeriesDetailsScreen", "✅ Found episode in season ${season.IndexNumber ?: index}: ${episodeInSeason.Name}")
                                 withContext(Dispatchers.Main) {
                                     selectedSeasonIndex = index
                                     episodes = seasonEpisodes
                                     focusedEpisode = episodeInSeason
-                                    // Request focus on the episode card with retries to ensure composable is ready
-                                    val focusRequester = episodeFocusRequesters.getOrPut(episodeInSeason.Id) { FocusRequester() }
-                                    delay(1200) // Longer delay to ensure episodes are loaded and UI is ready
-                                    // Try to request focus with retries
-                                    var retries = 0
-                                    val maxRetries = 20
-                                    var success = false
-                                    while (retries < maxRetries && !success) {
-                                        try {
-                                            focusRequester.requestFocus()
-                                            Log.d("SeriesDetailsScreen", "Found initial episode in season ${index + 1}, focused: ${episodeInSeason.Name}")
-                                            success = true
-                                        } catch (e: IllegalStateException) {
-                                            retries++
-                                            if (retries < maxRetries) {
-                                                delay(300)
-                                            } else {
-                                                Log.w("SeriesDetailsScreen", "Failed to request focus on initial episode after $maxRetries retries: ${e.message}")
-                                            }
-                                        } catch (e: Exception) {
-                                            Log.e("SeriesDetailsScreen", "Unexpected error requesting focus: ${e.message}", e)
-                                            break
-                                        }
-                                    }
-                                    hasPerformedInitialFocus = true
+                                    Log.d("SeriesDetailsScreen", "Switched to season index=$index with ${seasonEpisodes.size} episodes, SeriesBottomContainer will handle focus")
+                                    // Don't set hasPerformedInitialFocus here - let SeriesBottomContainer handle focus
                                 }
                                 found = true
                                 break
                             }
                         }
                         if (!found) {
-                            Log.w("SeriesDetailsScreen", "Could not find episode with ID: $initialEpisodeId")
-                            hasPerformedInitialFocus = true // Mark as done even if not found to prevent retrying
+                            Log.w("SeriesDetailsScreen", "❌ Could not find episode with ID: $initialEpisodeId in any of ${seasons.size} seasons")
+                            withContext(Dispatchers.Main) {
+                                hasPerformedInitialFocus = true // Mark as done even if not found to prevent retrying
+                            }
                         }
                     } catch (e: Exception) {
                         Log.e("SeriesDetailsScreen", "Error finding initial episode", e)
-                        hasPerformedInitialFocus = true // Mark as done on error to prevent retrying
+                        withContext(Dispatchers.Main) {
+                            hasPerformedInitialFocus = true // Mark as done on error to prevent retrying
+                        }
                     }
                 }
             }
@@ -580,6 +542,7 @@ fun SeriesTopContainer(
     apiService: JellyfinApiService?,
     showDebugOutlines: Boolean = false
 ) {
+    val context = LocalContext.current
     // Use itemDetails if available, otherwise fall back to item
     val displayItem = itemDetails ?: item
     Box(
@@ -667,7 +630,8 @@ fun SeriesTopContainer(
                 ) {
                     EpisodeMetadataRow(
                         episode = focusedEpisode,
-                        seasonNumber = selectedSeasonIndex + 1,
+                        // Use episode's ParentIndexNumber (actual season number from API)
+                        seasonNumber = focusedEpisode.ParentIndexNumber ?: (selectedSeasonIndex + 1),
                         apiService = apiService,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -809,6 +773,7 @@ fun SeriesTopContainer(
                             color = Color.White.copy(alpha = 0.9f)
                         )
                     }
+                    
                 }
                 
                 // Synopsis (from series)
@@ -884,6 +849,7 @@ fun SeriesSeasonSelectorContainer(
                 )
                 
                 // Season buttons - left aligned
+                // The selected season always shows full "Season X" text so users know which season they're browsing
                 LazyRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -893,13 +859,17 @@ fun SeriesSeasonSelectorContainer(
                         val season = seasons[index]
                         var isFocused by remember { mutableStateOf(false) }
                         val isSelected = index == selectedSeasonIndex
-                        val seasonNumber = index + 1
+                        // Use the actual season number from API, fallback to index+1 if not available
+                        val seasonNumber = season.IndexNumber ?: (index + 1)
+                        
+                        // Show expanded button if focused OR if this is the selected season
+                        val showExpanded = isFocused || isSelected
                         
                         Button(
                             onClick = { onSeasonSelected(index) },
                             modifier = Modifier
                                 .then(
-                                    if (isFocused) {
+                                    if (showExpanded) {
                                         Modifier
                                             .wrapContentWidth()
                                             .height(28.dp)
@@ -921,8 +891,8 @@ fun SeriesSeasonSelectorContainer(
                             ),
                             contentPadding = PaddingValues(8.dp)
                         ) {
-                            if (!isFocused) {
-                                // Show just the number when unfocused
+                            if (!showExpanded) {
+                                // Show just the number when unfocused and not selected
                                 Text(
                                     text = seasonNumber.toString(),
                                     style = MaterialTheme.typography.labelLarge.copy(
@@ -931,10 +901,11 @@ fun SeriesSeasonSelectorContainer(
                                     )
                                 )
                             } else {
-                                // Show "Season X" when focused
+                                // Show "Season X" when focused or selected
                                 Text(
                                     text = "Season $seasonNumber",
                                     style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                         fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
                                     ),
                                     modifier = Modifier.padding(horizontal = 12.dp)
@@ -975,24 +946,40 @@ fun SeriesBottomContainer(
     // FocusRequester for the last focused episode (to restore focus when pressing up)
     val lastFocusedEpisodeRequester = episodeFocusRequesters ?: remember { mutableMapOf<String, FocusRequester>() }
     
+    // LazyListState for episodes row - needed to scroll to target episode before focusing
+    val episodesLazyListState = rememberLazyListState()
+    
     // Track if we've already done the initial focus to prevent refocusing when episodes change
     var hasPerformedInitialFocus by remember { mutableStateOf(false) }
     
     // Handle initial episode focus when episodes are loaded
-    // Only run once when initialEpisodeId is set, not when episodes change
-    LaunchedEffect(initialEpisodeId, isLoadingEpisodes, episodes.size) {
+    // Retries when episodes change (e.g., when season switches to the correct one)
+    LaunchedEffect(initialEpisodeId, isLoadingEpisodes, episodes) {
         if (initialEpisodeId != null && !hasPerformedInitialFocus && episodes.isNotEmpty() && !isLoadingEpisodes) {
             val targetEpisode = episodes.find { it.Id == initialEpisodeId }
             if (targetEpisode != null) {
+                // Find the index of the target episode
+                val targetIndex = episodes.indexOfFirst { it.Id == initialEpisodeId }
+                Log.d("SeriesBottomContainer", "Found target episode at index $targetIndex: ${targetEpisode.Name} (S${targetEpisode.ParentIndexNumber}E${targetEpisode.IndexNumber})")
+                
                 focusedEpisode = targetEpisode
                 lastFocusedEpisode = targetEpisode
                 onEpisodeFocused(targetEpisode)
+                
+                // First, scroll to the target episode to ensure it's composed
+                if (targetIndex >= 0) {
+                    Log.d("SeriesBottomContainer", "Scrolling to episode index $targetIndex...")
+                    episodesLazyListState.scrollToItem(targetIndex)
+                    // Wait for scroll and composition to complete
+                    kotlinx.coroutines.delay(500)
+                }
+                
                 // Request focus on the episode card with retries to ensure composable is ready
                 // Get or create the focusRequester - it will be attached when EpisodeCard composes
                 val focusRequester = lastFocusedEpisodeRequester.getOrPut(targetEpisode.Id) { FocusRequester() }
-                // Wait longer for composition to complete and UI to be ready
-                // LazyColumn needs time to compose all items
-                kotlinx.coroutines.delay(1000)
+                // Wait for composition to complete
+                kotlinx.coroutines.delay(500)
+                
                 // Try to request focus with retries
                 var retries = 0
                 val maxRetries = 20
@@ -1000,7 +987,7 @@ fun SeriesBottomContainer(
                 while (retries < maxRetries && !success) {
                     try {
                         focusRequester.requestFocus()
-                        Log.d("SeriesBottomContainer", "Focused on initial episode: ${targetEpisode.Name}")
+                        Log.d("SeriesBottomContainer", "✅ Successfully focused on initial episode: ${targetEpisode.Name}")
                         success = true
                     } catch (e: IllegalStateException) {
                         retries++
@@ -1018,8 +1005,10 @@ fun SeriesBottomContainer(
                 }
                 hasPerformedInitialFocus = true
             } else {
-                // Episode not found, mark as performed to prevent retrying
-                hasPerformedInitialFocus = true
+                // Episode not found in current episodes list - don't mark as performed
+                // The parent LaunchedEffect in SeriesDetailsScreen will switch to the correct season
+                // and episodes will update, triggering this LaunchedEffect again
+                Log.d("SeriesBottomContainer", "Episode $initialEpisodeId not found in current episodes (${episodes.size} items), waiting for correct season to load...")
             }
         }
     }
@@ -1097,7 +1086,18 @@ fun SeriesBottomContainer(
                         )
                         
                         // Season buttons - left aligned
+                        // The selected season always shows full "Season X" text so users know which season they're browsing
+                        val seasonRowState = rememberLazyListState()
+                        
+                        // Scroll to the selected season when it changes
+                        LaunchedEffect(selectedSeasonIndex) {
+                            if (selectedSeasonIndex >= 0 && seasons.isNotEmpty()) {
+                                seasonRowState.animateScrollToItem(selectedSeasonIndex)
+                            }
+                        }
+                        
                         LazyRow(
+                            state = seasonRowState,
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                             contentPadding = PaddingValues(horizontal = 0.dp) // Left aligned, no padding
@@ -1106,7 +1106,11 @@ fun SeriesBottomContainer(
                                 val season = seasons[index]
                                 var isFocused by remember { mutableStateOf(false) }
                                 val isSelected = index == selectedSeasonIndex
-                                val seasonNumber = index + 1
+                                // Use the actual season number from API, fallback to index+1 if not available
+                                val seasonNumber = season.IndexNumber ?: (index + 1)
+                                
+                                // Show expanded button if focused OR if this is the selected season
+                                val showExpanded = isFocused || isSelected
                                 
                                 Button(
                                     onClick = { onSeasonSelected(index) },
@@ -1120,7 +1124,7 @@ fun SeriesBottomContainer(
                                             }
                                         )
                                         .then(
-                                            if (isFocused) {
+                                            if (showExpanded) {
                                                 Modifier
                                                     .wrapContentWidth()
                                                     .height(28.dp)
@@ -1137,6 +1141,25 @@ fun SeriesBottomContainer(
                                         .onFocusChanged { focusState ->
                                             isFocused = focusState.isFocused
                                         }
+                                        .onKeyEvent { keyEvent ->
+                                            // When pressing down from season buttons, restore focus to last focused episode
+                                            if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionDown) {
+                                                val episodeToFocus = lastFocusedEpisode ?: episodes.firstOrNull()
+                                                if (episodeToFocus != null) {
+                                                    try {
+                                                        lastFocusedEpisodeRequester[episodeToFocus.Id]?.requestFocus()
+                                                        true
+                                                    } catch (e: Exception) {
+                                                        Log.w("SeriesBottomContainer", "Failed to restore focus to episode: ${e.message}")
+                                                        false
+                                                    }
+                                                } else {
+                                                    false
+                                                }
+                                            } else {
+                                                false
+                                            }
+                                        }
                                         .clip(CircleShape),
                                     colors = ButtonDefaults.colors(
                                         containerColor = MaterialTheme.colorScheme.surface,
@@ -1144,8 +1167,8 @@ fun SeriesBottomContainer(
                                     ),
                                     contentPadding = PaddingValues(8.dp)
                                 ) {
-                                    if (!isFocused) {
-                                        // Show just the number when unfocused
+                                    if (!showExpanded) {
+                                        // Show just the number when unfocused and not selected
                                         Text(
                                             text = seasonNumber.toString(),
                                             style = MaterialTheme.typography.labelLarge.copy(
@@ -1154,10 +1177,11 @@ fun SeriesBottomContainer(
                                             )
                                         )
                                     } else {
-                                        // Show "Season X" when focused
+                                        // Show "Season X" when focused or selected
                                         Text(
                                             text = "Season $seasonNumber",
                                             style = MaterialTheme.typography.labelLarge.copy(
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                                 fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
                                             ),
                                             modifier = Modifier.padding(horizontal = 12.dp)
@@ -1204,10 +1228,8 @@ fun SeriesBottomContainer(
                                 }
                             )
                     ) {
-                        val lazyListState = rememberLazyListState()
-                        
                         LazyRow(
-                            state = lazyListState,
+                            state = episodesLazyListState,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .then(

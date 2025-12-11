@@ -204,6 +204,17 @@ fun JellyfinVideoPlayerScreen(
     val hdrStrength = remember { settings.hdrStrength }
     val sharpenStrength = remember { settings.sharpenStrength }
     
+    // New video enhancement settings
+    val enableDenoise = remember { settings.enableDenoise }
+    val denoiseStrength = remember { settings.denoiseStrength }
+    val enableDeband = remember { settings.enableDeband }
+    val debandStrength = remember { settings.debandStrength }
+    val enableFXAA = remember { settings.enableFXAA }
+    val videoBrightness = remember { settings.videoBrightness }
+    val videoContrast = remember { settings.videoContrast }
+    val videoSaturation = remember { settings.videoSaturation }
+    val videoColorTemperature = remember { settings.videoColorTemperature }
+    
     // Load stored audio preference if not provided
     val storedAudioPreference = remember(item.Id) {
         if (audioStreamIndex == null) {
@@ -793,6 +804,11 @@ fun JellyfinVideoPlayerScreen(
                                         isUsingTranscodeFallback = true
                                         Log.d("JellyfinPlayer", "✅ Switched to server transcoding: $transcodeTargetCodec @ ${transcodeMaxBitrate}Mbps")
                                         
+                                        // Report playback start for transcode fallback
+                                        scope.launch(Dispatchers.IO) {
+                                            apiService.reportPlaybackStart(item.Id, 0)
+                                        }
+                                        
                                     } catch (e: Exception) {
                                         Log.e("JellyfinPlayer", "❌ Failed to switch to transcoding: ${e.message}", e)
                                         
@@ -971,6 +987,11 @@ fun JellyfinVideoPlayerScreen(
                                             playerInitialized = true // Mark as initialized after retry
                                             
                                             Log.d("JellyfinPlayer", "Retried playback without range requests")
+                                            
+                                            // Report playback start for retry
+                                            scope.launch(Dispatchers.IO) {
+                                                apiService.reportPlaybackStart(item.Id, 0)
+                                            }
                                         } catch (e: Exception) {
                                             Log.e("JellyfinPlayer", "Error retrying playback without range requests", e)
                                         }
@@ -1053,6 +1074,11 @@ fun JellyfinVideoPlayerScreen(
                                         
                                         // Update mediaUrl for reference
                                         mediaUrl = mp4Url
+                                        
+                                        // Report playback start for HLS retry
+                                        scope.launch(Dispatchers.IO) {
+                                            apiService.reportPlaybackStart(item.Id, 0)
+                                        }
                                         
                                         Log.d("JellyfinPlayer", "Retried playback with MP4 transcoding")
                                     } catch (e: Exception) {
@@ -1716,10 +1742,15 @@ fun JellyfinVideoPlayerScreen(
                                         }
                                     }
                                     // Seek to resume position only once, when player first becomes ready
-                                    if (resumePositionMs > 0 && !hasSeekedToResume) {
-                                        player.seekTo(resumePositionMs)
-                                        hasSeekedToResume = true
-                                        Log.d("JellyfinPlayer", "Seeked to resume position: ${resumePositionMs}ms")
+                                    // Use fresh PositionTicks from itemDetails if available (more accurate than Intent's resumePositionMs)
+                                    if (!hasSeekedToResume) {
+                                        val freshPositionMs = itemDetails?.UserData?.PositionTicks?.let { it / 10_000 } ?: 0L
+                                        val actualResumePosition = if (freshPositionMs > 0) freshPositionMs else resumePositionMs
+                                        if (actualResumePosition > 0) {
+                                            player.seekTo(actualResumePosition)
+                                            hasSeekedToResume = true
+                                            Log.d("JellyfinPlayer", "Seeked to resume position: ${actualResumePosition}ms (fresh: ${freshPositionMs}ms, intent: ${resumePositionMs}ms)")
+                                        }
                                     }
                                 }
                                 Player.STATE_BUFFERING -> {
@@ -1847,6 +1878,21 @@ fun JellyfinVideoPlayerScreen(
                     
                     playerInitialized = true
                     Log.d("JellyfinPlayer", "Player initialized and started")
+                    
+                    // Report playback start to Jellyfin (REQUIRED before progress reports work)
+                    // Use fresh PositionTicks from itemDetails if available
+                    scope.launch(Dispatchers.IO) {
+                        val freshPositionMs = itemDetails?.UserData?.PositionTicks?.let { it / 10_000 } ?: 0L
+                        val actualStartPosition = if (freshPositionMs > 0) freshPositionMs else resumePositionMs
+                        val startPositionTicks = actualStartPosition * 10_000L
+                        Log.d("JellyfinPlayer", "🎬 Reporting playback START for item ${item.Id} at ${actualStartPosition}ms (fresh: ${freshPositionMs}ms)")
+                        val success = apiService.reportPlaybackStart(item.Id, startPositionTicks)
+                        if (success) {
+                            Log.d("JellyfinPlayer", "✅ Playback start reported successfully")
+                        } else {
+                            Log.w("JellyfinPlayer", "❌ Playback start report failed!")
+                        }
+                    }
                     
                     // Request focus on PlayerView so it can receive key events
                     playerViewRef.value?.requestFocus()
@@ -2040,13 +2086,20 @@ fun JellyfinVideoPlayerScreen(
                         if (positionTicks > 0) {
                             // Report on background thread
                             withContext(Dispatchers.IO) {
-                                apiService.reportPlaybackProgress(
+                                Log.d("JellyfinPlayer", "📊 Reporting progress: ${currentPositionMs}ms (${currentPositionMs/1000}s) paused=$isPaused")
+                                val success = apiService.reportPlaybackProgress(
                                     itemId = item.Id,
                                     positionTicks = positionTicks,
                                     isPaused = isPaused
                                 )
-                                Log.d("JellyfinPlayer", "Reported playback progress: ${currentPositionMs}ms (paused: $isPaused)")
+                                if (success) {
+                                    Log.d("JellyfinPlayer", "✅ Progress reported successfully")
+                                } else {
+                                    Log.w("JellyfinPlayer", "❌ Progress report failed")
+                                }
                             }
+                        } else {
+                            Log.d("JellyfinPlayer", "⏭️ Skipping progress report - position is 0")
                         }
                     } catch (e: Exception) {
                         Log.w("JellyfinPlayer", "Error reporting playback progress", e)
@@ -2214,6 +2267,7 @@ fun JellyfinVideoPlayerScreen(
                     contentFrame?.setAspectRatio(0f)
                 }
             }
+            
             Log.d("ExoPlayer", "Applied aspect mode: ${currentAspectMode.label}, contentFrame: ${contentFrame != null}")
         }
     }
@@ -2336,6 +2390,17 @@ fun JellyfinVideoPlayerScreen(
                                         this.sharpeningStrength = settings.sharpenStrength
                                         this.enableFrameBlending = settings.enableFrameBlending
                                         this.frameBlendStrength = settings.frameBlendStrength
+                                        
+                                        // New video enhancement effects
+                                        this.enableDenoise = settings.enableDenoise
+                                        this.denoiseStrength = settings.denoiseStrength
+                                        this.enableDeband = settings.enableDeband
+                                        this.debandStrength = settings.debandStrength
+                                        this.enableFXAA = settings.enableFXAA
+                                        this.brightness = settings.videoBrightness
+                                        this.contrast = settings.videoContrast
+                                        this.saturation = settings.videoSaturation
+                                        this.colorTemperature = settings.videoColorTemperature
                                         
                                         glSurfaceViewRef.value = this
                                         

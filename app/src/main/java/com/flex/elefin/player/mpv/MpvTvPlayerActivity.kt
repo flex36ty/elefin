@@ -192,6 +192,18 @@ private fun MpvPlayerScreen(
         }
     }
 
+    // Report playback start when MPV view is ready
+    var hasReportedStart by remember { mutableStateOf(false) }
+    LaunchedEffect(mpvViewRef) {
+        if (mpvViewRef != null && apiService != null && itemId.isNotEmpty() && !hasReportedStart) {
+            withContext(Dispatchers.IO) {
+                val startPositionTicks = resumePositionMs * 10_000L
+                apiService.reportPlaybackStart(itemId, startPositionTicks)
+                hasReportedStart = true
+            }
+        }
+    }
+
     // Progress reporting to Jellyfin (every 10 seconds)
     LaunchedEffect(isPlaying, mpvViewRef) {
         if (isPlaying && mpvViewRef != null && apiService != null && itemId.isNotEmpty()) {

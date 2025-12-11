@@ -49,7 +49,12 @@ data class JellyfinItem(
     val ParentIndexNumber: Int? = null, // Season number for episodes
     val ChildCount: Int? = null, // Number of child items (e.g., episodes for Series)
     val NextEpisodeId: String? = null // ID of the next episode for autoplay
-)
+) {
+    // Helper to get the last played date from either UserData or calculate from position
+    fun getLastPlayedDateForSort(): String {
+        return UserData?.LastPlayedDate ?: "1970-01-01T00:00:00.0000000Z"
+    }
+}
 
 @Stable
 @Serializable
@@ -159,7 +164,8 @@ data class UserData(
     @SerialName("PlaybackPositionTicks")
     val PositionTicks: Long? = null,
     val Played: Boolean? = null,
-    val UnplayedItemCount: Int? = null // Number of unwatched episodes for Series
+    val UnplayedItemCount: Int? = null, // Number of unwatched episodes for Series
+    val LastPlayedDate: String? = null // ISO date string for when item was last played
 )
 
 @Serializable
@@ -248,16 +254,26 @@ class JellyfinApiService(
         return try {
             val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
             val url = URLBuilder().takeFrom("${base}Users/$userId/Items/Resume").apply {
-                parameters.append("Fields", "ImageTags,UserData,SeriesName,SeriesId") // Request ImageTags to get Thumb images
-                parameters.append("SortBy", "DatePlayed") // Sort by when the item was last played
-                parameters.append("SortOrder", "Descending") // Most recently played first
+                // Explicitly include Type field to ensure proper routing in UI
+                parameters.append("Fields", "ImageTags,UserData,SeriesName,SeriesId,Type")
+                parameters.append("SortBy", "DatePlayed")
+                parameters.append("SortOrder", "Descending")
             }.buildString()
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
                 header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
-            response.Items
+            
+            // Log raw order from server
+            android.util.Log.d("JellyfinAPI", "Continue Watching RAW order: ${response.Items.mapIndexed { i, it -> "$i: ${it.Name} (LastPlayed: ${it.UserData?.LastPlayedDate})" }}")
+            
+            // Sort client-side by LastPlayedDate (most recently played first)
+            val sorted = response.Items.sortedByDescending { item ->
+                item.getLastPlayedDateForSort()
+            }
+            android.util.Log.d("JellyfinAPI", "Continue Watching SORTED order: ${sorted.mapIndexed { i, it -> "$i: ${it.Name} (LastPlayed: ${it.UserData?.LastPlayedDate})" }}")
+            sorted
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()
@@ -270,7 +286,8 @@ class JellyfinApiService(
             val url = URLBuilder().takeFrom("${base}Shows/NextUp").apply {
                 parameters.append("UserId", userId)
                 parameters.append("Limit", limit.toString())
-                parameters.append("Fields", "ImageTags,UserData,SeriesName,SeriesId") // Request ImageTags to get Thumb images
+                // Explicitly include Type field to ensure proper routing in UI
+                parameters.append("Fields", "ImageTags,UserData,SeriesName,SeriesId,Type") // Request ImageTags to get Thumb images
                 parameters.append("EnableResumable", "false") // Next Up shows episodes you haven't started yet
             }.buildString()
             
@@ -282,6 +299,156 @@ class JellyfinApiService(
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()
+        }
+    }
+    
+    /**
+     * Get the next up episode for a specific series
+     * This is the episode the user should watch next based on their watch history
+     * @param seriesId The series ID to get the next up episode for
+     * @return The next up episode, or null if the series is fully watched or not started
+     */
+    suspend fun getNextUpForSeries(seriesId: String): JellyfinItem? {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Shows/NextUp").apply {
+                parameters.append("UserId", userId)
+                parameters.append("SeriesId", seriesId)
+                parameters.append("Limit", "1")
+                // Explicitly include Type field to ensure proper routing in UI
+                parameters.append("Fields", "ImageTags,UserData,SeriesName,SeriesId,IndexNumber,ParentIndexNumber,Type")
+                parameters.append("EnableResumable", "true") // Include in-progress episodes
+            }.buildString()
+            
+            android.util.Log.d("JellyfinAPI", "Fetching NextUp for series: $seriesId")
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
+            }.body()
+            
+            val nextUpEpisode = response.Items.firstOrNull()
+            if (nextUpEpisode != null) {
+                android.util.Log.d("JellyfinAPI", "✅ Found NextUp for series $seriesId: ${nextUpEpisode.Name} (S${nextUpEpisode.ParentIndexNumber}E${nextUpEpisode.IndexNumber})")
+            } else {
+                android.util.Log.d("JellyfinAPI", "No NextUp episode found for series $seriesId (series may be fully watched or not started)")
+            }
+            nextUpEpisode
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error fetching NextUp for series $seriesId", e)
+            e.printStackTrace()
+            null
+        }
+    }
+    
+    /**
+     * Get the first episode of a series (Season 1 Episode 1)
+     * Used as a fallback when no unwatched episodes are found
+     * @param seriesId The series ID
+     * @return The first episode (S1E1), or null if no episodes exist
+     */
+    suspend fun getFirstEpisode(seriesId: String): JellyfinItem? {
+        return try {
+            android.util.Log.d("JellyfinAPI", "Getting first episode (S1E1) for series: $seriesId")
+            
+            // Get all seasons for the series
+            val seasons = getSeasons(seriesId)
+            if (seasons.isEmpty()) {
+                android.util.Log.d("JellyfinAPI", "No seasons found for series $seriesId")
+                return null
+            }
+            
+            // Prefer Season 1 over Specials (Season 0)
+            val sortedSeasons = seasons.sortedBy { it.IndexNumber ?: 0 }
+            val regularSeasons = sortedSeasons.filter { (it.IndexNumber ?: 0) > 0 }
+            
+            // Get the first regular season (Season 1), or fall back to Specials if no regular seasons
+            val firstSeason = regularSeasons.firstOrNull() ?: sortedSeasons.firstOrNull()
+            if (firstSeason == null) {
+                android.util.Log.d("JellyfinAPI", "No first season found for series $seriesId")
+                return null
+            }
+            
+            // Get episodes from the first season
+            val episodes = getEpisodes(seriesId, firstSeason.Id)
+            
+            // Return the first episode (sorted by IndexNumber)
+            val firstEpisode = episodes.sortedBy { it.IndexNumber ?: 0 }.firstOrNull()
+            if (firstEpisode != null) {
+                android.util.Log.d("JellyfinAPI", "✅ Found first episode: ${firstEpisode.Name} (S${firstEpisode.ParentIndexNumber}E${firstEpisode.IndexNumber})")
+            } else {
+                android.util.Log.d("JellyfinAPI", "No episodes found in first season for series $seriesId")
+            }
+            firstEpisode
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error getting first episode for series $seriesId", e)
+            e.printStackTrace()
+            null
+        }
+    }
+    
+    /**
+     * Get the first unwatched episode for a series
+     * This searches through all seasons to find the first episode that hasn't been watched
+     * Used as a fallback when NextUp API returns no results (e.g., user hasn't started the series)
+     * @param seriesId The series ID
+     * @return The first unwatched episode, or null if all episodes are watched
+     */
+    suspend fun getFirstUnwatchedEpisode(seriesId: String): JellyfinItem? {
+        return try {
+            android.util.Log.d("JellyfinAPI", "Finding first unwatched episode for series: $seriesId")
+            
+            // Get all seasons for the series
+            val seasons = getSeasons(seriesId)
+            if (seasons.isEmpty()) {
+                android.util.Log.d("JellyfinAPI", "No seasons found for series $seriesId")
+                return null
+            }
+            
+            // Separate regular seasons (1+) from Specials (0)
+            val sortedSeasons = seasons.sortedBy { it.IndexNumber ?: 0 }
+            val regularSeasons = sortedSeasons.filter { (it.IndexNumber ?: 0) > 0 }
+            val specialsSeason = sortedSeasons.find { (it.IndexNumber ?: 0) == 0 }
+            
+            // First, look for unwatched episodes in regular seasons (Season 1+)
+            for (season in regularSeasons) {
+                val episodes = getEpisodes(seriesId, season.Id)
+                
+                // Find the first unwatched episode in this season
+                for (episode in episodes.sortedBy { it.IndexNumber ?: 0 }) {
+                    val isWatched = episode.UserData?.Played == true
+                    val isInProgress = (episode.UserData?.PlayedPercentage ?: 0.0) > 0 && 
+                                       (episode.UserData?.PlayedPercentage ?: 0.0) < 90
+                    
+                    // Return this episode if it's unwatched or in-progress
+                    if (!isWatched || isInProgress) {
+                        android.util.Log.d("JellyfinAPI", "✅ Found first unwatched episode: ${episode.Name} (S${episode.ParentIndexNumber}E${episode.IndexNumber}, watched=${isWatched}, inProgress=$isInProgress)")
+                        return episode
+                    }
+                }
+            }
+            
+            // If all regular seasons are watched, check Specials (Season 0) as fallback
+            if (specialsSeason != null) {
+                val episodes = getEpisodes(seriesId, specialsSeason.Id)
+                for (episode in episodes.sortedBy { it.IndexNumber ?: 0 }) {
+                    val isWatched = episode.UserData?.Played == true
+                    val isInProgress = (episode.UserData?.PlayedPercentage ?: 0.0) > 0 && 
+                                       (episode.UserData?.PlayedPercentage ?: 0.0) < 90
+                    
+                    if (!isWatched || isInProgress) {
+                        android.util.Log.d("JellyfinAPI", "✅ Found first unwatched Specials episode: ${episode.Name} (S${episode.ParentIndexNumber}E${episode.IndexNumber}, watched=${isWatched}, inProgress=$isInProgress)")
+                        return episode
+                    }
+                }
+            }
+            
+            android.util.Log.d("JellyfinAPI", "All episodes watched for series $seriesId")
+            null
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error finding first unwatched episode for series $seriesId", e)
+            e.printStackTrace()
+            null
         }
     }
 
@@ -412,8 +579,8 @@ class JellyfinApiService(
                 parameters.append("SortOrder", "Descending")
                 parameters.append("Limit", limit.toString())
                 parameters.append("Recursive", "true")
-                // Request SeriesId, SeriesName, IndexNumber, ParentIndexNumber, and ImageTags fields for episodes
-                parameters.append("Fields", "SeriesId,SeriesName,IndexNumber,ParentIndexNumber,ImageTags")
+                // Request SeriesId, SeriesName, IndexNumber, ParentIndexNumber, ImageTags, and Type fields for episodes
+                parameters.append("Fields", "SeriesId,SeriesName,IndexNumber,ParentIndexNumber,ImageTags,Type")
             }.buildString()
             
             val response: ItemsResponse = client.get(url) {
@@ -461,7 +628,8 @@ class JellyfinApiService(
                 parameters.append("SortOrder", "Descending")
                 parameters.append("Limit", limit.toString())
                 parameters.append("Recursive", "true")
-                parameters.append("Fields", "SeriesId,SeriesName,IndexNumber,ParentIndexNumber,ImageTags")
+                // Explicitly include Type field to ensure proper routing in UI
+                parameters.append("Fields", "SeriesId,SeriesName,IndexNumber,ParentIndexNumber,ImageTags,Type")
             }.buildString()
             
             val response: ItemsResponse = client.get(url) {
@@ -1088,7 +1256,7 @@ class JellyfinApiService(
             val url = URLBuilder().takeFrom("${base}Shows/${seriesId}/Episodes").apply {
                 parameters.append("UserId", userId)
                 parameters.append("SeasonId", seasonId)
-                parameters.append("Fields", "Overview,UserData,SeriesName,SeriesId,ImageTags")
+                parameters.append("Fields", "Overview,UserData,SeriesName,SeriesId,ImageTags,IndexNumber,ParentIndexNumber,Type")
             }.buildString()
             
             val response: ItemsResponse = client.get(url) {
@@ -1311,7 +1479,11 @@ class JellyfinApiService(
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
                 header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
-            response.Items
+            
+            // Sort client-side by LastPlayedDate (most recently played first)
+            response.Items.sortedByDescending { item ->
+                item.getLastPlayedDateForSort()
+            }
         } catch (e: Exception) {
             android.util.Log.e("JellyfinAPI", "Error fetching continue watching movies", e)
             emptyList()
@@ -1422,7 +1594,11 @@ class JellyfinApiService(
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
                 header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
-            response.Items
+            
+            // Sort client-side by LastPlayedDate (most recently played first)
+            response.Items.sortedByDescending { item ->
+                item.getLastPlayedDateForSort()
+            }
         } catch (e: Exception) {
             android.util.Log.e("JellyfinAPI", "Error fetching continue watching movies from library $libraryId", e)
             emptyList()
@@ -1526,7 +1702,8 @@ class JellyfinApiService(
             val url = URLBuilder().takeFrom("${base}Users/$userId/Items/Resume").apply {
                 parameters.append("IncludeItemTypes", "Episode")
                 parameters.append("ParentId", libraryId)
-                parameters.append("Fields", "ImageTags,UserData,SeriesName,SeriesId,IndexNumber,ParentIndexNumber")
+                // Explicitly include Type field to ensure proper routing in UI
+                parameters.append("Fields", "ImageTags,UserData,SeriesName,SeriesId,IndexNumber,ParentIndexNumber,Type")
                 parameters.append("SortBy", "DatePlayed")
                 parameters.append("SortOrder", "Descending")
                 parameters.append("Limit", limit.toString())
@@ -1536,7 +1713,11 @@ class JellyfinApiService(
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
                 header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
             }.body()
-            response.Items
+            
+            // Sort client-side by LastPlayedDate (most recently played first)
+            response.Items.sortedByDescending { item ->
+                item.getLastPlayedDateForSort()
+            }
         } catch (e: Exception) {
             android.util.Log.e("JellyfinAPI", "Error fetching continue watching episodes from library $libraryId", e)
             emptyList()
@@ -1556,7 +1737,8 @@ class JellyfinApiService(
                 parameters.append("SortBy", "PremiereDate")
                 parameters.append("SortOrder", "Descending")
                 parameters.append("Limit", limit.toString())
-                parameters.append("Fields", "ImageTags,SeriesName,SeriesId,IndexNumber,ParentIndexNumber,PremiereDate")
+                // Explicitly include Type field to ensure proper routing in UI
+                parameters.append("Fields", "ImageTags,SeriesName,SeriesId,IndexNumber,ParentIndexNumber,PremiereDate,Type")
             }.buildString()
             
             val response: ItemsResponse = client.get(url) {
@@ -1790,6 +1972,55 @@ class JellyfinApiService(
     }
 
     /**
+     * Report playback started to Jellyfin
+     * POST /Sessions/Playing
+     * This MUST be called before reportPlaybackProgress to establish a session
+     * Reference: https://api.jellyfin.org/
+     * 
+     * @param itemId The item ID being played
+     * @param positionTicks Starting playback position in ticks
+     */
+    suspend fun reportPlaybackStart(
+        itemId: String,
+        positionTicks: Long = 0
+    ): Boolean {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = "${base}Sessions/Playing"
+            
+            val deviceId = config?.deviceId ?: ""
+            val authHeader = if (deviceId.isNotEmpty()) {
+                "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"$deviceId\", Token=\"$accessToken\", Version=\"1.1.5\""
+            } else {
+                "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\""
+            }
+            
+            // Build request body as JSON string
+            val requestBody = buildString {
+                append("{")
+                append("\"ItemId\":\"$itemId\",")
+                append("\"PositionTicks\":$positionTicks,")
+                append("\"PlayMethod\":\"DirectStream\",")
+                append("\"CanSeek\":true")
+                append("}")
+            }
+            
+            val response = client.post(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", authHeader)
+                contentType(ContentType.Application.Json)
+                setBody(requestBody)
+            }
+            android.util.Log.d("JellyfinAPI", "✅ Reported playback START for item $itemId at position $positionTicks ticks (status: ${response.status})")
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "❌ Error reporting playback start", e)
+            e.printStackTrace()
+            false
+        }
+    }
+
+    /**
      * Report playback progress to Jellyfin
      * POST /Sessions/Playing/Progress
      * Reference: https://api.jellyfin.org/
@@ -1833,15 +2064,16 @@ class JellyfinApiService(
                 append("}")
             }
             
-            client.post(url) {
+            val response = client.post(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
                 header("X-Emby-Authorization", authHeader)
                 contentType(ContentType.Application.Json)
                 setBody(requestBody)
             }
+            android.util.Log.d("JellyfinAPI", "📊 Reported playback PROGRESS for item $itemId at ${positionTicks / 10_000_000}s (status: ${response.status})")
             true
         } catch (e: Exception) {
-            android.util.Log.e("JellyfinAPI", "Error reporting playback progress", e)
+            android.util.Log.e("JellyfinAPI", "❌ Error reporting playback progress", e)
             e.printStackTrace()
             false
         }
@@ -1875,16 +2107,16 @@ class JellyfinApiService(
                 append("}")
             }
             
-            client.post(url) {
+            val response = client.post(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
                 header("X-Emby-Authorization", authHeader)
                 contentType(ContentType.Application.Json)
                 setBody(requestBody)
             }
-            android.util.Log.d("JellyfinAPI", "Reported playback stopped for item $itemId at position $positionTicks ticks")
+            android.util.Log.d("JellyfinAPI", "🛑 Reported playback STOPPED for item $itemId at ${positionTicks / 10_000_000}s (status: ${response.status})")
             true
         } catch (e: Exception) {
-            android.util.Log.e("JellyfinAPI", "Error reporting playback stopped", e)
+            android.util.Log.e("JellyfinAPI", "❌ Error reporting playback stopped", e)
             e.printStackTrace()
             false
         }

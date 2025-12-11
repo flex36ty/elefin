@@ -105,6 +105,69 @@ class GLVideoSurfaceView @JvmOverloads constructor(
             requestRender()
         }
     
+    // Denoise effect (removes compression noise and mosquito artifacts)
+    var enableDenoise: Boolean = false
+        set(value) {
+            field = value
+            Log.d(TAG, "🎬 Denoise ${if (value) "ENABLED" else "DISABLED"}")
+            requestRender()
+        }
+    
+    var denoiseStrength: Float = 0.5f
+        set(value) {
+            field = value.coerceIn(0f, 1f)
+            Log.d(TAG, "🎬 Denoise strength: $field")
+            requestRender()
+        }
+    
+    // Deband effect (removes color banding and film grain)
+    var enableDeband: Boolean = false
+        set(value) {
+            field = value
+            Log.d(TAG, "🎬 Deband ${if (value) "ENABLED" else "DISABLED"}")
+            requestRender()
+        }
+    
+    var debandStrength: Float = 0.5f
+        set(value) {
+            field = value.coerceIn(0f, 1f)
+            Log.d(TAG, "🎬 Deband strength: $field")
+            requestRender()
+        }
+    
+    // FXAA anti-aliasing (reduces jagged edges)
+    var enableFXAA: Boolean = false
+        set(value) {
+            field = value
+            Log.d(TAG, "🎬 FXAA ${if (value) "ENABLED" else "DISABLED"}")
+            requestRender()
+        }
+    
+    // Color grading
+    var brightness: Float = 0.0f
+        set(value) {
+            field = value.coerceIn(-0.5f, 0.5f)
+            requestRender()
+        }
+    
+    var contrast: Float = 1.0f
+        set(value) {
+            field = value.coerceIn(0.5f, 2.0f)
+            requestRender()
+        }
+    
+    var saturation: Float = 1.0f
+        set(value) {
+            field = value.coerceIn(0f, 2.0f)
+            requestRender()
+        }
+    
+    var colorTemperature: Float = 0.0f  // -1.0 = cool (blue), 1.0 = warm (orange)
+        set(value) {
+            field = value.coerceIn(-1f, 1f)
+            requestRender()
+        }
+    
     // Vertex coordinates for the quad (full screen)
     private val vertexCoords = floatArrayOf(
         -1.0f, -1.0f,  // Bottom-left
@@ -113,12 +176,12 @@ class GLVideoSurfaceView @JvmOverloads constructor(
          1.0f,  1.0f   // Top-right
     )
     
-    // Texture coordinates (flipped vertically for video)
+    // Texture coordinates (standard - let SurfaceTexture transform matrix handle orientation)
     private val textureCoords = floatArrayOf(
-        0.0f, 1.0f,  // Bottom-left
-        1.0f, 1.0f,  // Bottom-right
-        0.0f, 0.0f,  // Top-left
-        1.0f, 0.0f   // Top-right
+        0.0f, 0.0f,  // Bottom-left
+        1.0f, 0.0f,  // Bottom-right
+        0.0f, 1.0f,  // Top-left
+        1.0f, 1.0f   // Top-right
     )
     
     init {
@@ -353,6 +416,17 @@ class GLVideoSurfaceView @JvmOverloads constructor(
         val prevTextureHandle = GLES20.glGetUniformLocation(shaderProgram, "uPrevTexture")
         val hasPrevFrameHandle = GLES20.glGetUniformLocation(shaderProgram, "uHasPrevFrame")
         
+        // New effect uniforms
+        val enableDenoiseHandle = GLES20.glGetUniformLocation(shaderProgram, "uEnableDenoise")
+        val denoiseStrengthHandle = GLES20.glGetUniformLocation(shaderProgram, "uDenoiseStrength")
+        val enableDebandHandle = GLES20.glGetUniformLocation(shaderProgram, "uEnableDeband")
+        val debandStrengthHandle = GLES20.glGetUniformLocation(shaderProgram, "uDebandStrength")
+        val enableFXAAHandle = GLES20.glGetUniformLocation(shaderProgram, "uEnableFXAA")
+        val brightnessHandle = GLES20.glGetUniformLocation(shaderProgram, "uBrightness")
+        val contrastHandle = GLES20.glGetUniformLocation(shaderProgram, "uContrast")
+        val saturationHandle = GLES20.glGetUniformLocation(shaderProgram, "uSaturation")
+        val colorTempHandle = GLES20.glGetUniformLocation(shaderProgram, "uColorTemperature")
+        
         // Enable vertex arrays
         GLES20.glEnableVertexAttribArray(positionHandle)
         GLES20.glEnableVertexAttribArray(texCoordHandle)
@@ -391,6 +465,17 @@ class GLVideoSurfaceView @JvmOverloads constructor(
         GLES20.glUniform1i(enableBlendHandle, if (enableFrameBlending) 1 else 0)
         GLES20.glUniform1f(blendStrengthHandle, frameBlendStrength)
         GLES20.glUniform1i(hasPrevFrameHandle, if (hasPreviousFrame) 1 else 0)
+        
+        // Set new effect uniforms
+        GLES20.glUniform1i(enableDenoiseHandle, if (enableDenoise) 1 else 0)
+        GLES20.glUniform1f(denoiseStrengthHandle, denoiseStrength)
+        GLES20.glUniform1i(enableDebandHandle, if (enableDeband) 1 else 0)
+        GLES20.glUniform1f(debandStrengthHandle, debandStrength)
+        GLES20.glUniform1i(enableFXAAHandle, if (enableFXAA) 1 else 0)
+        GLES20.glUniform1f(brightnessHandle, brightness)
+        GLES20.glUniform1f(contrastHandle, contrast)
+        GLES20.glUniform1f(saturationHandle, saturation)
+        GLES20.glUniform1f(colorTempHandle, colorTemperature)
         
         // Draw the quad
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
@@ -547,7 +632,7 @@ class GLVideoSurfaceView @JvmOverloads constructor(
             }
         """
         
-        // Fragment shader with fake HDR, sharpening, and frame blending effects
+        // Fragment shader with all video enhancement effects
         private const val FRAGMENT_SHADER = """
             #extension GL_OES_EGL_image_external : require
             precision mediump float;
@@ -563,6 +648,17 @@ class GLVideoSurfaceView @JvmOverloads constructor(
             uniform float uBlendStrength;
             uniform vec2 uTexelSize;
             
+            // New effect uniforms
+            uniform int uEnableDenoise;
+            uniform float uDenoiseStrength;
+            uniform int uEnableDeband;
+            uniform float uDebandStrength;
+            uniform int uEnableFXAA;
+            uniform float uBrightness;
+            uniform float uContrast;
+            uniform float uSaturation;
+            uniform float uColorTemperature;
+            
             varying vec2 vTexCoord;
             
             // Helper: Calculate luminance
@@ -570,8 +666,94 @@ class GLVideoSurfaceView @JvmOverloads constructor(
                 return dot(color, vec3(0.299, 0.587, 0.114));
             }
             
+            // Helper: Random function for deband dithering
+            float rand(vec2 co) {
+                return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+            }
+            
             void main() {
                 vec3 color = texture2D(uTexture, vTexCoord).rgb;
+                
+                // ============================================
+                // FXAA Anti-aliasing (applied first for best results)
+                // ============================================
+                if (uEnableFXAA == 1) {
+                    // Sample neighboring pixels
+                    vec3 rgbNW = texture2D(uTexture, vTexCoord + vec2(-uTexelSize.x, -uTexelSize.y)).rgb;
+                    vec3 rgbNE = texture2D(uTexture, vTexCoord + vec2(uTexelSize.x, -uTexelSize.y)).rgb;
+                    vec3 rgbSW = texture2D(uTexture, vTexCoord + vec2(-uTexelSize.x, uTexelSize.y)).rgb;
+                    vec3 rgbSE = texture2D(uTexture, vTexCoord + vec2(uTexelSize.x, uTexelSize.y)).rgb;
+                    vec3 rgbM = color;
+                    
+                    // Calculate luminance for each sample
+                    float lumaNW = getLuma(rgbNW);
+                    float lumaNE = getLuma(rgbNE);
+                    float lumaSW = getLuma(rgbSW);
+                    float lumaSE = getLuma(rgbSE);
+                    float lumaM = getLuma(rgbM);
+                    
+                    // Calculate edge direction
+                    float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));
+                    float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));
+                    
+                    // Edge detection
+                    vec2 dir;
+                    dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));
+                    dir.y = ((lumaNW + lumaSW) - (lumaNE + lumaSE));
+                    
+                    float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * 0.25 * 0.25, 0.0078125);
+                    float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);
+                    
+                    dir = min(vec2(4.0, 4.0), max(vec2(-4.0, -4.0), dir * rcpDirMin)) * uTexelSize;
+                    
+                    // Sample along edge
+                    vec3 rgbA = 0.5 * (
+                        texture2D(uTexture, vTexCoord + dir * (1.0/3.0 - 0.5)).rgb +
+                        texture2D(uTexture, vTexCoord + dir * (2.0/3.0 - 0.5)).rgb
+                    );
+                    vec3 rgbB = rgbA * 0.5 + 0.25 * (
+                        texture2D(uTexture, vTexCoord + dir * -0.5).rgb +
+                        texture2D(uTexture, vTexCoord + dir * 0.5).rgb
+                    );
+                    
+                    float lumaB = getLuma(rgbB);
+                    
+                    if (lumaB < lumaMin || lumaB > lumaMax) {
+                        color = rgbA;
+                    } else {
+                        color = rgbB;
+                    }
+                }
+                
+                // ============================================
+                // Denoise (Gaussian blur for noise reduction)
+                // ============================================
+                if (uEnableDenoise == 1) {
+                    vec3 sum = vec3(0.0);
+                    float radius = 1.0 + uDenoiseStrength * 1.5;  // 1.0 to 2.5 pixel radius
+                    float count = 0.0;
+                    
+                    // 3x3 to 5x5 adaptive kernel based on strength
+                    for (float x = -2.0; x <= 2.0; x += 1.0) {
+                        for (float y = -2.0; y <= 2.0; y += 1.0) {
+                            float dist = length(vec2(x, y));
+                            if (dist <= radius) {
+                                // Gaussian weight
+                                float weight = exp(-(dist * dist) / (2.0 * radius * radius));
+                                vec2 offset = vec2(x, y) * uTexelSize;
+                                sum += texture2D(uTexture, vTexCoord + offset).rgb * weight;
+                                count += weight;
+                            }
+                        }
+                    }
+                    
+                    vec3 blurred = sum / count;
+                    
+                    // Edge-aware blending: preserve edges while smoothing flat areas
+                    float edgeStrength = abs(getLuma(color) - getLuma(blurred));
+                    float blendFactor = uDenoiseStrength * (1.0 - smoothstep(0.0, 0.1, edgeStrength));
+                    color = mix(color, blurred, blendFactor);
+                }
                 
                 // ============================================
                 // Frame Blending (soap opera effect)
@@ -596,6 +778,29 @@ class GLVideoSurfaceView @JvmOverloads constructor(
                 }
                 
                 // ============================================
+                // Deband (removes color banding with dithering)
+                // ============================================
+                if (uEnableDeband == 1) {
+                    // Add subtle noise to break up banding
+                    float noise = (rand(vTexCoord) - 0.5) * uDebandStrength * 0.02;
+                    color += vec3(noise);
+                    
+                    // Sample neighbors and smooth out banding
+                    vec3 n1 = texture2D(uTexture, vTexCoord + vec2(uTexelSize.x * 2.0, 0.0)).rgb;
+                    vec3 n2 = texture2D(uTexture, vTexCoord + vec2(-uTexelSize.x * 2.0, 0.0)).rgb;
+                    vec3 n3 = texture2D(uTexture, vTexCoord + vec2(0.0, uTexelSize.y * 2.0)).rgb;
+                    vec3 n4 = texture2D(uTexture, vTexCoord + vec2(0.0, -uTexelSize.y * 2.0)).rgb;
+                    
+                    vec3 avg = (n1 + n2 + n3 + n4) * 0.25;
+                    
+                    // Only smooth when colors are very similar (banding detection)
+                    float diff = length(color - avg);
+                    if (diff < 0.03 * uDebandStrength) {
+                        color = mix(color, avg, uDebandStrength * 0.5);
+                    }
+                }
+                
+                // ============================================
                 // Fake HDR (SDR to fake HDR simulation)
                 // ============================================
                 if (uEnableHDR == 1) {
@@ -605,6 +810,29 @@ class GLVideoSurfaceView @JvmOverloads constructor(
                     
                     float luma = getLuma(color);
                     color = mix(vec3(luma), color, 1.15);
+                }
+                
+                // ============================================
+                // Color Grading (brightness, contrast, saturation, temperature)
+                // ============================================
+                // Brightness
+                color += vec3(uBrightness);
+                
+                // Contrast (around 0.5 midpoint)
+                color = (color - 0.5) * uContrast + 0.5;
+                
+                // Saturation
+                float luma = getLuma(color);
+                color = mix(vec3(luma), color, uSaturation);
+                
+                // Color Temperature (warm/cool shift)
+                if (uColorTemperature != 0.0) {
+                    // Warm = add red/yellow, reduce blue
+                    // Cool = add blue, reduce red/yellow
+                    float temp = uColorTemperature * 0.1;
+                    color.r += temp;
+                    color.g += temp * 0.5;
+                    color.b -= temp;
                 }
                 
                 // Final clamp

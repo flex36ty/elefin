@@ -51,6 +51,15 @@ class AppSettings(context: Context) {
         private const val KEY_SHARPEN_STRENGTH = "sharpen_strength"
         private const val KEY_ENABLE_FRAME_BLENDING = "enable_frame_blending"
         private const val KEY_FRAME_BLEND_STRENGTH = "frame_blend_strength"
+        private const val KEY_ENABLE_DENOISE = "enable_denoise"
+        private const val KEY_DENOISE_STRENGTH = "denoise_strength"
+        private const val KEY_ENABLE_DEBAND = "enable_deband"
+        private const val KEY_DEBAND_STRENGTH = "deband_strength"
+        private const val KEY_ENABLE_FXAA = "enable_fxaa"
+        private const val KEY_VIDEO_BRIGHTNESS = "video_brightness"
+        private const val KEY_VIDEO_CONTRAST = "video_contrast"
+        private const val KEY_VIDEO_SATURATION = "video_saturation"
+        private const val KEY_VIDEO_COLOR_TEMP = "video_color_temperature"
         
         // UI performance settings
         private const val KEY_DISABLE_UI_ANIMATIONS = "disable_ui_animations"
@@ -284,6 +293,51 @@ class AppSettings(context: Context) {
     var frameBlendStrength: Float
         get() = prefs.getFloat(KEY_FRAME_BLEND_STRENGTH, 0.5f).coerceIn(0.0f, 1.0f)
         set(value) = prefs.edit().putFloat(KEY_FRAME_BLEND_STRENGTH, value.coerceIn(0.0f, 1.0f)).apply()
+    
+    // Denoise - removes compression noise and mosquito artifacts
+    var enableDenoise: Boolean
+        get() = prefs.getBoolean(KEY_ENABLE_DENOISE, false)
+        set(value) = prefs.edit().putBoolean(KEY_ENABLE_DENOISE, value).apply()
+    
+    // Denoise strength (0.0 - 1.0, default: 0.5)
+    var denoiseStrength: Float
+        get() = prefs.getFloat(KEY_DENOISE_STRENGTH, 0.5f).coerceIn(0.0f, 1.0f)
+        set(value) = prefs.edit().putFloat(KEY_DENOISE_STRENGTH, value.coerceIn(0.0f, 1.0f)).apply()
+    
+    // Deband - removes color banding and film grain
+    var enableDeband: Boolean
+        get() = prefs.getBoolean(KEY_ENABLE_DEBAND, false)
+        set(value) = prefs.edit().putBoolean(KEY_ENABLE_DEBAND, value).apply()
+    
+    // Deband strength (0.0 - 1.0, default: 0.5)
+    var debandStrength: Float
+        get() = prefs.getFloat(KEY_DEBAND_STRENGTH, 0.5f).coerceIn(0.0f, 1.0f)
+        set(value) = prefs.edit().putFloat(KEY_DEBAND_STRENGTH, value.coerceIn(0.0f, 1.0f)).apply()
+    
+    // FXAA anti-aliasing - reduces jagged edges
+    var enableFXAA: Boolean
+        get() = prefs.getBoolean(KEY_ENABLE_FXAA, false)
+        set(value) = prefs.edit().putBoolean(KEY_ENABLE_FXAA, value).apply()
+    
+    // Color grading: Brightness (-0.5 to 0.5, default: 0.0)
+    var videoBrightness: Float
+        get() = prefs.getFloat(KEY_VIDEO_BRIGHTNESS, 0.0f).coerceIn(-0.5f, 0.5f)
+        set(value) = prefs.edit().putFloat(KEY_VIDEO_BRIGHTNESS, value.coerceIn(-0.5f, 0.5f)).apply()
+    
+    // Color grading: Contrast (0.5 to 2.0, default: 1.0)
+    var videoContrast: Float
+        get() = prefs.getFloat(KEY_VIDEO_CONTRAST, 1.0f).coerceIn(0.5f, 2.0f)
+        set(value) = prefs.edit().putFloat(KEY_VIDEO_CONTRAST, value.coerceIn(0.5f, 2.0f)).apply()
+    
+    // Color grading: Saturation (0.0 to 2.0, default: 1.0)
+    var videoSaturation: Float
+        get() = prefs.getFloat(KEY_VIDEO_SATURATION, 1.0f).coerceIn(0.0f, 2.0f)
+        set(value) = prefs.edit().putFloat(KEY_VIDEO_SATURATION, value.coerceIn(0.0f, 2.0f)).apply()
+    
+    // Color grading: Color temperature (-1.0 = cool/blue, 1.0 = warm/orange, default: 0.0)
+    var videoColorTemperature: Float
+        get() = prefs.getFloat(KEY_VIDEO_COLOR_TEMP, 0.0f).coerceIn(-1.0f, 1.0f)
+        set(value) = prefs.edit().putFloat(KEY_VIDEO_COLOR_TEMP, value.coerceIn(-1.0f, 1.0f)).apply()
     
     // UI performance settings
     var disableUIAnimations: Boolean

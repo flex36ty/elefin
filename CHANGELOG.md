@@ -4,9 +4,25 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
-## 2025-12-09
+- **Auto-Focus Next Episode on Series Open**
+  - When opening a TV show from the library or home screen, automatically focuses on the next episode to watch
+  - Uses Jellyfin's NextUp API to find the next episode based on watch history
+  - Falls back to finding the first unwatched episode if the series hasn't been started
+  - Continue Watching and Next Up rows continue to work as before (focusing on the specific episode clicked)
 
-### Added
+- **Series Details Screen - Always Show Selected Season**
+  - The currently selected season button now always shows the full "Season X" text
+  - Previously, season buttons would collapse to just the number when browsing episodes
+  - Now users can always see which season they're viewing, even when focused on episodes
+  - Selected season has a subtle highlight to make it more visible
+
+- **TV-Optimized Navigation with Pivot-Style Scrolling**
+  - Implemented custom `BringIntoViewSpec` for smoother TV navigation animations
+  - Horizontal scrolling uses pivot-style behavior: focused card stays at the 3rd position while the row scrolls underneath
+  - Works symmetrically for both left and right navigation
+  - Card moves to edge positions only when reaching the start or end of a row
+  - Vertical scrolling positions rows with their titles visible at the top of the viewport
+  - Spring animations for smooth, natural-feeling transitions
 
 - **AV1 Software Decoder Support (8-bit only)**
   - Built Media3 AV1 decoder extension (libgav1) from source

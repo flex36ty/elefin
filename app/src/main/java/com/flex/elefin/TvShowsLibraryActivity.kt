@@ -38,10 +38,12 @@ class TvShowsLibraryActivity : ComponentActivity() {
                             // Route to appropriate details screen based on item type
                             val intent = when (item.Type) {
                                 "Series" -> {
+                                    // Auto-focus on the next episode the user needs to watch
                                     SeriesDetailsActivity.createIntent(
                                         context = this@TvShowsLibraryActivity,
                                         item = item,
-                                        fromLibrary = true
+                                        fromLibrary = true,
+                                        autoFocusNextUp = true
                                     )
                                 }
                                 "Episode" -> {
@@ -71,7 +73,8 @@ class TvShowsLibraryActivity : ComponentActivity() {
                                     SeriesDetailsActivity.createIntent(
                                         context = this@TvShowsLibraryActivity,
                                         item = item,
-                                        fromLibrary = true
+                                        fromLibrary = true,
+                                        autoFocusNextUp = true
                                     )
                                 }
                             }

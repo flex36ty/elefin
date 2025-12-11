@@ -1,2 +1,0 @@
---- Running combined CXX flags test, flags: -fno-stack-protector;-Wall;-Wextra;-Wmissing-declarations;-Wno-sign-compare;-fvisibility=hidden;-fvisibility-inlines-hidden;-Wframe-larger-than=196608;-Wextra-semi;-Wmissing-prototypes;-Wshorten-64-to-32;-Wextra-semi-stmt
---- Passed combined CXX flags test

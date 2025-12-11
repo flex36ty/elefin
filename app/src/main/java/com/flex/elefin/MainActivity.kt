@@ -68,10 +68,12 @@ class MainActivity : ComponentActivity() {
                             // Route to appropriate details screen based on item type
                             val intent = when (item.Type) {
                                 "Series" -> {
+                                    // Auto-focus on the next episode the user needs to watch
                                     SeriesDetailsActivity.createIntent(
                                         context = this@MainActivity,
                                         item = item,
-                                        fromLibrary = false // From home screen
+                                        fromLibrary = false, // From home screen
+                                        autoFocusNextUp = true
                                     )
                                 }
                                 "Episode" -> {

@@ -81,7 +81,12 @@ class CastInfoActivity : ComponentActivity() {
                                 startActivity(intent)
                             }
                             "Series" -> {
-                                val intent = SeriesDetailsActivity.createIntent(this, item)
+                                // Auto-focus on the next episode the user needs to watch
+                                val intent = SeriesDetailsActivity.createIntent(
+                                    context = this,
+                                    item = item,
+                                    autoFocusNextUp = true
+                                )
                                 startActivity(intent)
                             }
                         }

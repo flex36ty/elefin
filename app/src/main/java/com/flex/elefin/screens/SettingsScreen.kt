@@ -121,14 +121,35 @@ fun SettingsScreen(
     var isMpvInstalled by remember { mutableStateOf(false) }
     var isMpvDownloading by remember { mutableStateOf(false) }
     var mpvDownloadProgress by remember { mutableStateOf(0f) }
+    var mpvInstallCheckTrigger by remember { mutableStateOf(0) }
     
-    // Check if mpv-elefin is installed
-    LaunchedEffect(Unit) {
+    // Check if mpv-elefin is installed (re-checks when mpvInstallCheckTrigger changes)
+    LaunchedEffect(mpvInstallCheckTrigger) {
         isMpvInstalled = try {
             context.packageManager.getPackageInfo("com.flex.mpvelefin", 0)
             true
         } catch (e: PackageManager.NameNotFoundException) {
             false
+        }
+    }
+    
+    // Periodically check for MPV installation after download is triggered
+    LaunchedEffect(isMpvDownloading) {
+        if (!isMpvDownloading && mpvInstallCheckTrigger > 0) {
+            // After download completes, periodically check if MPV was installed
+            repeat(10) { // Check for up to ~30 seconds
+                kotlinx.coroutines.delay(3000)
+                val nowInstalled = try {
+                    context.packageManager.getPackageInfo("com.flex.mpvelefin", 0)
+                    true
+                } catch (e: PackageManager.NameNotFoundException) {
+                    false
+                }
+                if (nowInstalled) {
+                    isMpvInstalled = true
+                    return@LaunchedEffect
+                }
+            }
         }
     }
     var debugOutlinesEnabled by remember { mutableStateOf(settings.showDebugOutlines) }
@@ -181,6 +202,15 @@ fun SettingsScreen(
     var sharpenStrength by remember { mutableStateOf(settings.sharpenStrength) }
     var enableFrameBlending by remember { mutableStateOf(settings.enableFrameBlending) }
     var frameBlendStrength by remember { mutableStateOf(settings.frameBlendStrength) }
+    var enableDenoise by remember { mutableStateOf(settings.enableDenoise) }
+    var denoiseStrength by remember { mutableStateOf(settings.denoiseStrength) }
+    var enableDeband by remember { mutableStateOf(settings.enableDeband) }
+    var debandStrength by remember { mutableStateOf(settings.debandStrength) }
+    var enableFXAA by remember { mutableStateOf(settings.enableFXAA) }
+    var videoBrightness by remember { mutableStateOf(settings.videoBrightness) }
+    var videoContrast by remember { mutableStateOf(settings.videoContrast) }
+    var videoSaturation by remember { mutableStateOf(settings.videoSaturation) }
+    var videoColorTemperature by remember { mutableStateOf(settings.videoColorTemperature) }
     
     // UI Performance settings
     var disableUIAnimations by remember { mutableStateOf(settings.disableUIAnimations) }
@@ -383,6 +413,9 @@ fun SettingsScreen(
                                                     
                                                     Toast.makeText(context, "Installing mpv-elefin...", Toast.LENGTH_SHORT).show()
                                                     
+                                                    // Trigger re-check of MPV installation status
+                                                    mpvInstallCheckTrigger++
+                                                    
                                                 } catch (e: Exception) {
                                                     android.util.Log.e("Settings", "Failed to download mpv-elefin", e)
                                                     Toast.makeText(context, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
@@ -579,12 +612,28 @@ fun SettingsScreen(
                                     useGLEnhancements = !useGLEnhancements
                                     settings.useGLEnhancements = useGLEnhancements
                                     if (!useGLEnhancements) {
+                                        // Reset all GL effects when disabled
                                         enableFakeHDR = false
                                         enableSharpening = false
                                         enableFrameBlending = false
+                                        enableDenoise = false
+                                        enableDeband = false
+                                        enableFXAA = false
                                         settings.enableFakeHDR = false
                                         settings.enableSharpening = false
                                         settings.enableFrameBlending = false
+                                        settings.enableDenoise = false
+                                        settings.enableDeband = false
+                                        settings.enableFXAA = false
+                                        // Reset color grading to defaults
+                                        videoBrightness = 0.0f
+                                        videoContrast = 1.0f
+                                        videoSaturation = 1.0f
+                                        videoColorTemperature = 0.0f
+                                        settings.videoBrightness = 0.0f
+                                        settings.videoContrast = 1.0f
+                                        settings.videoSaturation = 1.0f
+                                        settings.videoColorTemperature = 0.0f
                                     }
                                 }
                             )
@@ -673,6 +722,151 @@ fun SettingsScreen(
                                         canIncrease = frameBlendStrength < 1.0f
                                     )
                                 }
+                                
+                                // Denoise
+                                SettingToggle(
+                                    title = "Denoise",
+                                    description = "Removes compression noise and mosquito artifacts",
+                                    isEnabled = enableDenoise,
+                                    onToggle = {
+                                        enableDenoise = !enableDenoise
+                                        settings.enableDenoise = enableDenoise
+                                    }
+                                )
+                                
+                                if (enableDenoise) {
+                                    SettingSlider(
+                                        title = "Denoise Strength",
+                                        description = "Strength: %.1f (range: 0.0-1.0)".format(denoiseStrength),
+                                        onDecrease = {
+                                            denoiseStrength = (denoiseStrength - 0.1f).coerceAtLeast(0.0f)
+                                            settings.denoiseStrength = denoiseStrength
+                                        },
+                                        onIncrease = {
+                                            denoiseStrength = (denoiseStrength + 0.1f).coerceAtMost(1.0f)
+                                            settings.denoiseStrength = denoiseStrength
+                                        },
+                                        canDecrease = denoiseStrength > 0.0f,
+                                        canIncrease = denoiseStrength < 1.0f
+                                    )
+                                }
+                                
+                                // Deband
+                                SettingToggle(
+                                    title = "Deband",
+                                    description = "Removes color banding and film grain from gradients",
+                                    isEnabled = enableDeband,
+                                    onToggle = {
+                                        enableDeband = !enableDeband
+                                        settings.enableDeband = enableDeband
+                                    }
+                                )
+                                
+                                if (enableDeband) {
+                                    SettingSlider(
+                                        title = "Deband Strength",
+                                        description = "Strength: %.1f (range: 0.0-1.0)".format(debandStrength),
+                                        onDecrease = {
+                                            debandStrength = (debandStrength - 0.1f).coerceAtLeast(0.0f)
+                                            settings.debandStrength = debandStrength
+                                        },
+                                        onIncrease = {
+                                            debandStrength = (debandStrength + 0.1f).coerceAtMost(1.0f)
+                                            settings.debandStrength = debandStrength
+                                        },
+                                        canDecrease = debandStrength > 0.0f,
+                                        canIncrease = debandStrength < 1.0f
+                                    )
+                                }
+                                
+                                // FXAA Anti-aliasing
+                                SettingToggle(
+                                    title = "FXAA Anti-aliasing",
+                                    description = "Reduces jagged edges, great for 720p on 4K TVs",
+                                    isEnabled = enableFXAA,
+                                    onToggle = {
+                                        enableFXAA = !enableFXAA
+                                        settings.enableFXAA = enableFXAA
+                                    }
+                                )
+                                
+                                Spacer(modifier = Modifier.height(16.dp))
+                                
+                                // Color Grading Section Header
+                                Text(
+                                    text = "Color Grading",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                                
+                                // Brightness
+                                SettingSlider(
+                                    title = "Brightness",
+                                    description = "Brightness: %+.2f (range: -0.5 to +0.5)".format(videoBrightness),
+                                    onDecrease = {
+                                        videoBrightness = (videoBrightness - 0.05f).coerceAtLeast(-0.5f)
+                                        settings.videoBrightness = videoBrightness
+                                    },
+                                    onIncrease = {
+                                        videoBrightness = (videoBrightness + 0.05f).coerceAtMost(0.5f)
+                                        settings.videoBrightness = videoBrightness
+                                    },
+                                    canDecrease = videoBrightness > -0.5f,
+                                    canIncrease = videoBrightness < 0.5f
+                                )
+                                
+                                // Contrast
+                                SettingSlider(
+                                    title = "Contrast",
+                                    description = "Contrast: %.2f (range: 0.5 to 2.0)".format(videoContrast),
+                                    onDecrease = {
+                                        videoContrast = (videoContrast - 0.1f).coerceAtLeast(0.5f)
+                                        settings.videoContrast = videoContrast
+                                    },
+                                    onIncrease = {
+                                        videoContrast = (videoContrast + 0.1f).coerceAtMost(2.0f)
+                                        settings.videoContrast = videoContrast
+                                    },
+                                    canDecrease = videoContrast > 0.5f,
+                                    canIncrease = videoContrast < 2.0f
+                                )
+                                
+                                // Saturation
+                                SettingSlider(
+                                    title = "Saturation",
+                                    description = "Saturation: %.2f (range: 0.0 to 2.0)".format(videoSaturation),
+                                    onDecrease = {
+                                        videoSaturation = (videoSaturation - 0.1f).coerceAtLeast(0.0f)
+                                        settings.videoSaturation = videoSaturation
+                                    },
+                                    onIncrease = {
+                                        videoSaturation = (videoSaturation + 0.1f).coerceAtMost(2.0f)
+                                        settings.videoSaturation = videoSaturation
+                                    },
+                                    canDecrease = videoSaturation > 0.0f,
+                                    canIncrease = videoSaturation < 2.0f
+                                )
+                                
+                                // Color Temperature
+                                SettingSlider(
+                                    title = "Color Temperature",
+                                    description = when {
+                                        videoColorTemperature < -0.1f -> "Cool (Blue): %.2f".format(videoColorTemperature)
+                                        videoColorTemperature > 0.1f -> "Warm (Orange): %+.2f".format(videoColorTemperature)
+                                        else -> "Neutral: %.2f".format(videoColorTemperature)
+                                    },
+                                    onDecrease = {
+                                        videoColorTemperature = (videoColorTemperature - 0.1f).coerceAtLeast(-1.0f)
+                                        settings.videoColorTemperature = videoColorTemperature
+                                    },
+                                    onIncrease = {
+                                        videoColorTemperature = (videoColorTemperature + 0.1f).coerceAtMost(1.0f)
+                                        settings.videoColorTemperature = videoColorTemperature
+                                    },
+                                    canDecrease = videoColorTemperature > -1.0f,
+                                    canIncrease = videoColorTemperature < 1.0f
+                                )
                                 
                             }
                         }

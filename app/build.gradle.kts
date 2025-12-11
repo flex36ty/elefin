@@ -104,7 +104,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation("com.google.code.gson:gson:2.11.0")
 
-    // GitHub updater
+    // GitHub updater + YouTube trailer extraction
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // -------------------------------------------------------------
