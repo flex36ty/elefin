@@ -28,7 +28,6 @@
     "variantName": "release",
     "isDebuggableEnabled": false,
     "validAbiList": [
-      "armeabi-v7a",
       "arm64-v8a"
     ],
     "buildTargetSet": [
@@ -157,6 +156,7 @@
         "rootBuildGradleFolder": "C:\\Users\\flex360\\AndroidStudioProjects\\elefin",
         "sdkFolder": "C:\\Users\\flex360\\AppData\\Local\\Android\\Sdk",
         "isBuildOnlyTargetAbiEnabled": true,
+        "ideBuildTargetAbi": "arm64-v8a,armeabi-v7a,armeabi",
         "isCmakeBuildCohabitationEnabled": false,
         "isPrefabEnabled": false
       },

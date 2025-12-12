@@ -83,7 +83,6 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import com.flex.elefin.jellyfin.JellyfinConfig
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import android.content.Intent
@@ -203,15 +202,6 @@ fun SettingsScreen(
     var sharpenStrength by remember { mutableStateOf(settings.sharpenStrength) }
     var enableFrameBlending by remember { mutableStateOf(settings.enableFrameBlending) }
     var frameBlendStrength by remember { mutableStateOf(settings.frameBlendStrength) }
-    var enableDenoise by remember { mutableStateOf(settings.enableDenoise) }
-    var denoiseStrength by remember { mutableStateOf(settings.denoiseStrength) }
-    var enableDeband by remember { mutableStateOf(settings.enableDeband) }
-    var debandStrength by remember { mutableStateOf(settings.debandStrength) }
-    var enableFXAA by remember { mutableStateOf(settings.enableFXAA) }
-    var videoBrightness by remember { mutableStateOf(settings.videoBrightness) }
-    var videoContrast by remember { mutableStateOf(settings.videoContrast) }
-    var videoSaturation by remember { mutableStateOf(settings.videoSaturation) }
-    var videoColorTemperature by remember { mutableStateOf(settings.videoColorTemperature) }
     
     // UI Performance settings
     var disableUIAnimations by remember { mutableStateOf(settings.disableUIAnimations) }
@@ -327,122 +317,121 @@ fun SettingsScreen(
                                 }
                             )
                             
-                            // Download/Update MPV Button
-                            Spacer(modifier = Modifier.height(4.dp))
-                            
-                            if (isMpvDownloading) {
-                                // Show download progress
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            // Download MPV Button
+                            if (!isMpvInstalled) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                
+                                if (isMpvDownloading) {
+                                    // Show download progress
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 8.dp)
                                     ) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(20.dp),
-                                            strokeWidth = 2.dp,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                        Text(
-                                            text = if (isMpvInstalled) "Updating mpv-elefin... ${(mpvDownloadProgress * 100).toInt()}%" 
-                                                   else "Downloading mpv-elefin... ${(mpvDownloadProgress * 100).toInt()}%",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurface
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(20.dp),
+                                                strokeWidth = 2.dp,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(
+                                                text = "Downloading mpv-elefin... ${(mpvDownloadProgress * 100).toInt()}%",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        LinearProgressIndicator(
+                                            progress = { mpvDownloadProgress },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            color = MaterialTheme.colorScheme.primary,
                                         )
                                     }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    LinearProgressIndicator(
-                                        progress = { mpvDownloadProgress },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        color = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
-                            } else {
-                                // Download/Update button
-                                Button(
-                                    onClick = {
-                                        scope.launch {
-                                            isMpvDownloading = true
-                                            mpvDownloadProgress = 0f
-                                            
-                                            try {
-                                                val mpvApkUrl = "https://github.com/flex36ty/elefin/releases/download/1.1.11/mpv-universal-release.apk"
-                                                val apkFile = File(context.cacheDir, "mpv-elefin.apk")
+                                } else {
+                                    // Download button
+                                    Button(
+                                        onClick = {
+                                            scope.launch {
+                                                isMpvDownloading = true
+                                                mpvDownloadProgress = 0f
                                                 
-                                                // Download the APK
-                                                withContext(Dispatchers.IO) {
-                                                    val url = java.net.URL(mpvApkUrl)
-                                                    val connection = url.openConnection() as java.net.HttpURLConnection
-                                                    connection.instanceFollowRedirects = true
-                                                    connection.connect()
+                                                try {
+                                                    val mpvApkUrl = "https://github.com/flex36ty/elefin/releases/download/1.1.11/mpv-universal-release.apk"
+                                                    val apkFile = File(context.cacheDir, "mpv-elefin.apk")
                                                     
-                                                    val fileLength = connection.contentLength.toLong()
-                                                    
-                                                    connection.inputStream.use { input ->
-                                                        apkFile.outputStream().use { output ->
-                                                            val buffer = ByteArray(8192)
-                                                            var bytesRead: Int
-                                                            var totalBytesRead = 0L
-                                                            
-                                                            while (input.read(buffer).also { bytesRead = it } != -1) {
-                                                                output.write(buffer, 0, bytesRead)
-                                                                totalBytesRead += bytesRead
-                                                                if (fileLength > 0) {
-                                                                    mpvDownloadProgress = totalBytesRead.toFloat() / fileLength
+                                                    // Download the APK
+                                                    withContext(Dispatchers.IO) {
+                                                        val url = java.net.URL(mpvApkUrl)
+                                                        val connection = url.openConnection() as java.net.HttpURLConnection
+                                                        connection.instanceFollowRedirects = true
+                                                        connection.connect()
+                                                        
+                                                        val fileLength = connection.contentLength.toLong()
+                                                        
+                                                        connection.inputStream.use { input ->
+                                                            apkFile.outputStream().use { output ->
+                                                                val buffer = ByteArray(8192)
+                                                                var bytesRead: Int
+                                                                var totalBytesRead = 0L
+                                                                
+                                                                while (input.read(buffer).also { bytesRead = it } != -1) {
+                                                                    output.write(buffer, 0, bytesRead)
+                                                                    totalBytesRead += bytesRead
+                                                                    if (fileLength > 0) {
+                                                                        mpvDownloadProgress = totalBytesRead.toFloat() / fileLength
+                                                                    }
                                                                 }
                                                             }
                                                         }
                                                     }
+                                                    
+                                                    // Install the APK
+                                                    val apkUri = FileProvider.getUriForFile(
+                                                        context,
+                                                        "${context.packageName}.fileprovider",
+                                                        apkFile
+                                                    )
+                                                    
+                                                    val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                                                        setDataAndType(apkUri, "application/vnd.android.package-archive")
+                                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                    }
+                                                    context.startActivity(installIntent)
+                                                    
+                                                    Toast.makeText(context, "Installing mpv-elefin...", Toast.LENGTH_SHORT).show()
+                                                    
+                                                    // Trigger re-check of MPV installation status
+                                                    mpvInstallCheckTrigger++
+                                                    
+                                                } catch (e: Exception) {
+                                                    android.util.Log.e("Settings", "Failed to download mpv-elefin", e)
+                                                    Toast.makeText(context, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
+                                                } finally {
+                                                    isMpvDownloading = false
+                                                    mpvDownloadProgress = 0f
                                                 }
-                                                
-                                                // Install the APK
-                                                val apkUri = FileProvider.getUriForFile(
-                                                    context,
-                                                    "${context.packageName}.fileprovider",
-                                                    apkFile
-                                                )
-                                                
-                                                val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                                                    setDataAndType(apkUri, "application/vnd.android.package-archive")
-                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                                }
-                                                context.startActivity(installIntent)
-                                                
-                                                Toast.makeText(context, if (isMpvInstalled) "Updating mpv-elefin..." else "Installing mpv-elefin...", Toast.LENGTH_SHORT).show()
-                                                
-                                                // Trigger re-check of MPV installation status
-                                                mpvInstallCheckTrigger++
-                                                
-                                            } catch (e: Exception) {
-                                                android.util.Log.e("Settings", "Failed to download mpv-elefin", e)
-                                                Toast.makeText(context, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
-                                            } finally {
-                                                isMpvDownloading = false
-                                                mpvDownloadProgress = 0f
                                             }
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp),
-                                    colors = ButtonDefaults.colors(
-                                        containerColor = if (isMpvInstalled) MaterialTheme.colorScheme.secondaryContainer 
-                                                        else MaterialTheme.colorScheme.primaryContainer,
-                                        contentColor = if (isMpvInstalled) MaterialTheme.colorScheme.onSecondaryContainer 
-                                                      else MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                ) {
-                                    Icon(
-                                        imageVector = if (isMpvInstalled) Icons.Default.Refresh else Icons.Default.Download,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(if (isMpvInstalled) "Update mpv-elefin from GitHub" else "Download & Install mpv-elefin")
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp),
+                                        colors = ButtonDefaults.colors(
+                                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Download,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Download & Install mpv-elefin")
+                                    }
                                 }
                             }
                             
@@ -614,28 +603,12 @@ fun SettingsScreen(
                                     useGLEnhancements = !useGLEnhancements
                                     settings.useGLEnhancements = useGLEnhancements
                                     if (!useGLEnhancements) {
-                                        // Reset all GL effects when disabled
                                         enableFakeHDR = false
                                         enableSharpening = false
                                         enableFrameBlending = false
-                                        enableDenoise = false
-                                        enableDeband = false
-                                        enableFXAA = false
                                         settings.enableFakeHDR = false
                                         settings.enableSharpening = false
                                         settings.enableFrameBlending = false
-                                        settings.enableDenoise = false
-                                        settings.enableDeband = false
-                                        settings.enableFXAA = false
-                                        // Reset color grading to defaults
-                                        videoBrightness = 0.0f
-                                        videoContrast = 1.0f
-                                        videoSaturation = 1.0f
-                                        videoColorTemperature = 0.0f
-                                        settings.videoBrightness = 0.0f
-                                        settings.videoContrast = 1.0f
-                                        settings.videoSaturation = 1.0f
-                                        settings.videoColorTemperature = 0.0f
                                     }
                                 }
                             )
@@ -724,151 +697,6 @@ fun SettingsScreen(
                                         canIncrease = frameBlendStrength < 1.0f
                                     )
                                 }
-                                
-                                // Denoise
-                                SettingToggle(
-                                    title = "Denoise",
-                                    description = "Removes compression noise and mosquito artifacts",
-                                    isEnabled = enableDenoise,
-                                    onToggle = {
-                                        enableDenoise = !enableDenoise
-                                        settings.enableDenoise = enableDenoise
-                                    }
-                                )
-                                
-                                if (enableDenoise) {
-                                    SettingSlider(
-                                        title = "Denoise Strength",
-                                        description = "Strength: %.1f (range: 0.0-1.0)".format(denoiseStrength),
-                                        onDecrease = {
-                                            denoiseStrength = (denoiseStrength - 0.1f).coerceAtLeast(0.0f)
-                                            settings.denoiseStrength = denoiseStrength
-                                        },
-                                        onIncrease = {
-                                            denoiseStrength = (denoiseStrength + 0.1f).coerceAtMost(1.0f)
-                                            settings.denoiseStrength = denoiseStrength
-                                        },
-                                        canDecrease = denoiseStrength > 0.0f,
-                                        canIncrease = denoiseStrength < 1.0f
-                                    )
-                                }
-                                
-                                // Deband
-                                SettingToggle(
-                                    title = "Deband",
-                                    description = "Removes color banding and film grain from gradients",
-                                    isEnabled = enableDeband,
-                                    onToggle = {
-                                        enableDeband = !enableDeband
-                                        settings.enableDeband = enableDeband
-                                    }
-                                )
-                                
-                                if (enableDeband) {
-                                    SettingSlider(
-                                        title = "Deband Strength",
-                                        description = "Strength: %.1f (range: 0.0-1.0)".format(debandStrength),
-                                        onDecrease = {
-                                            debandStrength = (debandStrength - 0.1f).coerceAtLeast(0.0f)
-                                            settings.debandStrength = debandStrength
-                                        },
-                                        onIncrease = {
-                                            debandStrength = (debandStrength + 0.1f).coerceAtMost(1.0f)
-                                            settings.debandStrength = debandStrength
-                                        },
-                                        canDecrease = debandStrength > 0.0f,
-                                        canIncrease = debandStrength < 1.0f
-                                    )
-                                }
-                                
-                                // FXAA Anti-aliasing
-                                SettingToggle(
-                                    title = "FXAA Anti-aliasing",
-                                    description = "Reduces jagged edges, great for 720p on 4K TVs",
-                                    isEnabled = enableFXAA,
-                                    onToggle = {
-                                        enableFXAA = !enableFXAA
-                                        settings.enableFXAA = enableFXAA
-                                    }
-                                )
-                                
-                                Spacer(modifier = Modifier.height(16.dp))
-                                
-                                // Color Grading Section Header
-                                Text(
-                                    text = "Color Grading",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(vertical = 8.dp)
-                                )
-                                
-                                // Brightness
-                                SettingSlider(
-                                    title = "Brightness",
-                                    description = "Brightness: %+.2f (range: -0.5 to +0.5)".format(videoBrightness),
-                                    onDecrease = {
-                                        videoBrightness = (videoBrightness - 0.05f).coerceAtLeast(-0.5f)
-                                        settings.videoBrightness = videoBrightness
-                                    },
-                                    onIncrease = {
-                                        videoBrightness = (videoBrightness + 0.05f).coerceAtMost(0.5f)
-                                        settings.videoBrightness = videoBrightness
-                                    },
-                                    canDecrease = videoBrightness > -0.5f,
-                                    canIncrease = videoBrightness < 0.5f
-                                )
-                                
-                                // Contrast
-                                SettingSlider(
-                                    title = "Contrast",
-                                    description = "Contrast: %.2f (range: 0.5 to 2.0)".format(videoContrast),
-                                    onDecrease = {
-                                        videoContrast = (videoContrast - 0.1f).coerceAtLeast(0.5f)
-                                        settings.videoContrast = videoContrast
-                                    },
-                                    onIncrease = {
-                                        videoContrast = (videoContrast + 0.1f).coerceAtMost(2.0f)
-                                        settings.videoContrast = videoContrast
-                                    },
-                                    canDecrease = videoContrast > 0.5f,
-                                    canIncrease = videoContrast < 2.0f
-                                )
-                                
-                                // Saturation
-                                SettingSlider(
-                                    title = "Saturation",
-                                    description = "Saturation: %.2f (range: 0.0 to 2.0)".format(videoSaturation),
-                                    onDecrease = {
-                                        videoSaturation = (videoSaturation - 0.1f).coerceAtLeast(0.0f)
-                                        settings.videoSaturation = videoSaturation
-                                    },
-                                    onIncrease = {
-                                        videoSaturation = (videoSaturation + 0.1f).coerceAtMost(2.0f)
-                                        settings.videoSaturation = videoSaturation
-                                    },
-                                    canDecrease = videoSaturation > 0.0f,
-                                    canIncrease = videoSaturation < 2.0f
-                                )
-                                
-                                // Color Temperature
-                                SettingSlider(
-                                    title = "Color Temperature",
-                                    description = when {
-                                        videoColorTemperature < -0.1f -> "Cool (Blue): %.2f".format(videoColorTemperature)
-                                        videoColorTemperature > 0.1f -> "Warm (Orange): %+.2f".format(videoColorTemperature)
-                                        else -> "Neutral: %.2f".format(videoColorTemperature)
-                                    },
-                                    onDecrease = {
-                                        videoColorTemperature = (videoColorTemperature - 0.1f).coerceAtLeast(-1.0f)
-                                        settings.videoColorTemperature = videoColorTemperature
-                                    },
-                                    onIncrease = {
-                                        videoColorTemperature = (videoColorTemperature + 0.1f).coerceAtMost(1.0f)
-                                        settings.videoColorTemperature = videoColorTemperature
-                                    },
-                                    canDecrease = videoColorTemperature > -1.0f,
-                                    canIncrease = videoColorTemperature < 1.0f
-                                )
                                 
                             }
                         }

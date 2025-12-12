@@ -1228,6 +1228,16 @@ fun AudioSelectionDialog(
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
                     
+                    // Custom colors for ListItem - purple focus to match subtitle selector
+                    val listItemColors = androidx.tv.material3.ListItemDefaults.colors(
+                        containerColor = Color.Transparent,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        focusedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                        focusedContentColor = Color.White,
+                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                        selectedContentColor = Color.White
+                    )
+                    
                     // Vertical list of audio track options
                     if (isLoadingAudio) {
                         Box(
@@ -1269,6 +1279,7 @@ fun AudioSelectionDialog(
                                             onDismiss()
                                         }
                                     },
+                                    colors = listItemColors,
                                     headlineContent = {
                                         Column {
                                             Text(
@@ -1346,6 +1357,13 @@ fun ActionButtonsRow(
     }
     
     val displayItem = itemDetails ?: item
+    
+    // Check if media has multiple audio tracks
+    val audioStreamCount = remember(displayItem.MediaSources) {
+        displayItem.MediaSources?.firstOrNull()?.MediaStreams
+            ?.count { it.Type == "Audio" } ?: 0
+    }
+    val hasMultiAudio = audioStreamCount > 1
     
     // Log UserData for debugging
     Log.d("ActionButtonsRow", "Checking resume status for item: ${displayItem.Id} (${displayItem.Name})")
@@ -1553,51 +1571,53 @@ fun ActionButtonsRow(
         }
         }
         
-        // Audio track button
-        var audioFocused by remember { mutableStateOf(false) }
-        
-        Button(
-            onClick = {
-                showAudioDialog = true
-            },
-            modifier = Modifier
-                .then(
-                    if (audioFocused) {
-                        Modifier
-                            .wrapContentWidth()
-                            .height(28.dp)
-                    } else {
-                        Modifier.size(28.dp)
-                    }
-                )
-                .animateContentSize(
-                    animationSpec = tween(
-                        durationMillis = 300,
-                        easing = FastOutSlowInEasing
+        // Audio track button (only show if media has multiple audio tracks)
+        if (hasMultiAudio) {
+            var audioFocused by remember { mutableStateOf(false) }
+            
+            Button(
+                onClick = {
+                    showAudioDialog = true
+                },
+                modifier = Modifier
+                    .then(
+                        if (audioFocused) {
+                            Modifier
+                                .wrapContentWidth()
+                                .height(28.dp)
+                        } else {
+                            Modifier.size(28.dp)
+                        }
                     )
+                    .animateContentSize(
+                        animationSpec = tween(
+                            durationMillis = 300,
+                            easing = FastOutSlowInEasing
+                        )
+                    )
+                    .onFocusChanged { audioFocused = it.isFocused }
+                    .clip(CircleShape),
+                colors = ButtonDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ),
+                contentPadding = PaddingValues(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.VolumeUp,
+                    contentDescription = "Audio Track",
+                    modifier = Modifier.size(14.3.dp)
                 )
-                .onFocusChanged { audioFocused = it.isFocused }
-                .clip(CircleShape),
-            colors = ButtonDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.onSurface
-            ),
-            contentPadding = PaddingValues(8.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.VolumeUp,
-                contentDescription = "Audio Track",
-                modifier = Modifier.size(14.3.dp)
-            )
-            if (audioFocused) {
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "Audio",
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                    ),
-                    modifier = Modifier.padding(horizontal = 12.dp)
-                )
+                if (audioFocused) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Audio",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
+                        ),
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
             }
         }
         

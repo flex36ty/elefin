@@ -4,6 +4,14 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+- **Play From Start Fix**
+  - Fixed "Play From Start" button resuming from last position instead of playing from the beginning
+  - The player now correctly respects the user's intent: Resume button seeks to saved position, Play From Start plays from 0
+
+- **Audio Track Selector Improvements**
+  - Audio track selector popup now matches subtitle selector styling (purple focus/selection colors)
+  - Audio button only appears when media has multiple audio tracks (no button for single-audio content)
+
 - **MPV Player - Embedded Subtitle Support**
   - MPV player now correctly detects and displays embedded subtitles (SRT, ASS, PGS, VOBSUB)
   - Bundled Roboto fonts for reliable text subtitle rendering via libass

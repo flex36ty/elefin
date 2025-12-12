@@ -1751,14 +1751,18 @@ fun JellyfinVideoPlayerScreen(
                                         }
                                     }
                                     // Seek to resume position only once, when player first becomes ready
-                                    // Use fresh PositionTicks from itemDetails if available (more accurate than Intent's resumePositionMs)
+                                    // IMPORTANT: Only seek if resumePositionMs > 0 (user clicked Resume)
+                                    // If resumePositionMs == 0, user clicked "Play From Start" so don't seek
                                     if (!hasSeekedToResume) {
-                                        val freshPositionMs = itemDetails?.UserData?.PositionTicks?.let { it / 10_000 } ?: 0L
-                                        val actualResumePosition = if (freshPositionMs > 0) freshPositionMs else resumePositionMs
-                                        if (actualResumePosition > 0) {
+                                        hasSeekedToResume = true // Mark as handled to prevent re-entry
+                                        if (resumePositionMs > 0) {
+                                            // User clicked Resume - use fresh position if available (more accurate), otherwise use intent position
+                                            val freshPositionMs = itemDetails?.UserData?.PositionTicks?.let { it / 10_000 } ?: 0L
+                                            val actualResumePosition = if (freshPositionMs > 0) freshPositionMs else resumePositionMs
                                             player.seekTo(actualResumePosition)
-                                            hasSeekedToResume = true
                                             Log.d("JellyfinPlayer", "Seeked to resume position: ${actualResumePosition}ms (fresh: ${freshPositionMs}ms, intent: ${resumePositionMs}ms)")
+                                        } else {
+                                            Log.d("JellyfinPlayer", "Playing from start (resumePositionMs=0, user clicked Play From Start)")
                                         }
                                     }
                                 }
