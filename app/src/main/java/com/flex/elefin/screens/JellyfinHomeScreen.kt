@@ -1219,8 +1219,14 @@ fun JellyfinHomeScreen(
                     // Filter shows with zero episodes if setting is enabled
                     if (hideShowsWithZeroEpisodes) {
                         sortedItems.filter { item ->
-                            // Keep non-Series items, or Series items with episodes (ChildCount > 0)
-                            item.Type != "Series" || (item.ChildCount != null && item.ChildCount!! > 0)
+                            // Keep non-Series items, or Series items with episodes
+                            // Use RecursiveItemCount (total episodes) if available, fall back to ChildCount (seasons)
+                            if (item.Type != "Series") {
+                                true
+                            } else {
+                                val episodeCount = item.RecursiveItemCount ?: item.ChildCount ?: 0
+                                episodeCount > 0
+                            }
                         }
                     } else {
                         sortedItems
@@ -1576,8 +1582,14 @@ fun JellyfinHomeScreen(
                     // Filter shows with zero episodes if setting is enabled
                     if (hideShowsWithZeroEpisodes) {
                         sortedItems.filter { item ->
-                            // Keep non-Series items, or Series items with episodes (ChildCount > 0)
-                            item.Type != "Series" || (item.ChildCount != null && item.ChildCount!! > 0)
+                            // Keep non-Series items, or Series items with episodes
+                            // Use RecursiveItemCount (total episodes) if available, fall back to ChildCount (seasons)
+                            if (item.Type != "Series") {
+                                true
+                            } else {
+                                val episodeCount = item.RecursiveItemCount ?: item.ChildCount ?: 0
+                                episodeCount > 0
+                            }
                         }
                     } else {
                         sortedItems
@@ -2131,7 +2143,12 @@ fun JellyfinHomeScreen(
                             val libraryShows = recentlyAddedShowsByLibrary[library.Id]?.let { shows ->
                                 if (hideShowsWithZeroEpisodes) {
                                     shows.filter { item ->
-                                        item.Type != "Series" || (item.ChildCount != null && item.ChildCount!! > 0)
+                                        if (item.Type != "Series") {
+                                            true
+                                        } else {
+                                            val episodeCount = item.RecursiveItemCount ?: item.ChildCount ?: 0
+                                            episodeCount > 0
+                                        }
                                     }
                                 } else {
                                     shows

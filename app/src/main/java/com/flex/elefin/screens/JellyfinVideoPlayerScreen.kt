@@ -172,12 +172,21 @@ fun JellyfinVideoPlayerScreen(
         Log.d("JellyfinPlayer", "🎬 Launching MPV player as fallback...")
         
         if (jellyfinConfig.isConfigured()) {
+            // Try to get cached subtitle if one was selected
+            val subtitlePath = subtitleStreamIndex?.let { streamIndex ->
+                com.flex.elefin.player.SubtitleDownloader.getCachedSubtitle(item.Id, streamIndex)
+            }
+            if (subtitlePath != null) {
+                Log.d("JellyfinPlayer", "🎬 Found cached subtitle for MPV: $subtitlePath")
+            }
+            
             val success = com.flex.elefin.player.mpv.MpvElefinLauncher.play(
                 context = context,
                 itemId = item.Id,
                 title = item.Name ?: "Video",
                 resumePositionMs = resumePositionMs,
-                config = jellyfinConfig
+                config = jellyfinConfig,
+                subtitleFilePath = subtitlePath
             )
             
             if (success) {

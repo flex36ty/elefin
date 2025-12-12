@@ -154,6 +154,16 @@ class JellyfinVideoPlayerActivity : ComponentActivity() {
                 
                 android.util.Log.d("VideoPlayer", "MPV URL: $url")
                 
+                // Try to get cached subtitle if one was selected
+                val subtitlePath = subtitleStreamIndex?.let { streamIndex ->
+                    com.flex.elefin.player.SubtitleDownloader.getCachedSubtitle(itemId, streamIndex)
+                }
+                if (subtitlePath != null) {
+                    android.util.Log.d("VideoPlayer", "Found cached subtitle for MPV: $subtitlePath")
+                } else {
+                    android.util.Log.d("VideoPlayer", "No cached subtitle for MPV (subtitleStreamIndex=$subtitleStreamIndex)")
+                }
+                
                 try {
                     // Launch exactly like mpv-android expects: ACTION_VIEW with URL as data
                     val mpvIntent = Intent(Intent.ACTION_VIEW).apply {
@@ -166,6 +176,8 @@ class JellyfinVideoPlayerActivity : ComponentActivity() {
                         }
                         putExtra("decode_mode", 2) // Hardware decoding
                         putExtra("subs_enable", true)
+                        // Pass external subtitle file if available
+                        subtitlePath?.let { putExtra("subtitle_file", it) }
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     startActivity(mpvIntent)

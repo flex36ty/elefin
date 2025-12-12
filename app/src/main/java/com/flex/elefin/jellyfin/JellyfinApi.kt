@@ -47,7 +47,8 @@ data class JellyfinItem(
     val People: List<Person>? = null, // Cast and crew members
     val IndexNumber: Int? = null, // Episode number for episodes
     val ParentIndexNumber: Int? = null, // Season number for episodes
-    val ChildCount: Int? = null, // Number of child items (e.g., episodes for Series)
+    val ChildCount: Int? = null, // Number of child items (e.g., seasons for Series)
+    val RecursiveItemCount: Int? = null, // Total recursive item count (e.g., total episodes for Series)
     val NextEpisodeId: String? = null // ID of the next episode for autoplay
 ) {
     // Helper to get the last played date from either UserData or calculate from position
@@ -555,7 +556,7 @@ class JellyfinApiService(
                 parameters.append("SortOrder", "Descending")
                 parameters.append("Limit", limit.toString())
                 parameters.append("Recursive", "true")
-                parameters.append("Fields", "ImageTags,ChildCount") // Request ImageTags and ChildCount
+                parameters.append("Fields", "ImageTags,ChildCount,RecursiveItemCount") // Request ImageTags, ChildCount and RecursiveItemCount
             }.buildString()
             
             val response: ItemsResponse = client.get(url) {
@@ -604,7 +605,7 @@ class JellyfinApiService(
                 parameters.append("SortOrder", "Descending")
                 parameters.append("Limit", limit.toString())
                 parameters.append("Recursive", "true")
-                parameters.append("Fields", "ImageTags,ChildCount")
+                parameters.append("Fields", "ImageTags,ChildCount,RecursiveItemCount")
             }.buildString()
             
             val response: ItemsResponse = client.get(url) {
@@ -1148,7 +1149,7 @@ class JellyfinApiService(
                 parameters.append("IncludeItemTypes", "Movie,Series,Episode")
                 parameters.append("Limit", limit.toString())
                 parameters.append("StartIndex", startIndex.toString())
-                parameters.append("Fields", "DateCreated,PremiereDate,Overview,UserData,ImageTags,ChildCount") // Include DateCreated and ChildCount
+                parameters.append("Fields", "DateCreated,PremiereDate,Overview,UserData,ImageTags,ChildCount,RecursiveItemCount") // Include DateCreated, ChildCount and RecursiveItemCount for filtering empty shows
             }.buildString()
             
             val response: ItemsResponse = client.get(url) {

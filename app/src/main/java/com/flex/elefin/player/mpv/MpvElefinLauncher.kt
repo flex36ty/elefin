@@ -85,6 +85,7 @@ object MpvElefinLauncher {
      * @param title Video title
      * @param resumePositionMs Resume position in milliseconds
      * @param config Jellyfin configuration
+     * @param subtitleFilePath Optional path to an external subtitle file
      * @return true if launched successfully, false otherwise
      */
     fun play(
@@ -92,7 +93,8 @@ object MpvElefinLauncher {
         itemId: String,
         title: String,
         resumePositionMs: Long = 0L,
-        config: JellyfinConfig
+        config: JellyfinConfig,
+        subtitleFilePath: String? = null
     ): Boolean {
         if (!isInstalled(context)) {
             Log.w(TAG, "mpv-elefin is not installed")
@@ -125,10 +127,15 @@ object MpvElefinLauncher {
         if (resumePositionMs > 0) {
             Log.d(TAG, "Resume position: ${resumePositionMs}ms")
         }
+        if (subtitleFilePath != null) {
+            Log.d(TAG, "External subtitle: $subtitleFilePath")
+        }
 
         return try {
             val intent = Intent().apply {
                 setClassName(MPV_ELEFIN_PACKAGE, MPV_ELEFIN_ACTIVITY)
+                // Set URL as data URI (mpv-android compatible)
+                data = Uri.parse(url)
                 putExtra("url", url)
                 putExtra("headers", headers)
                 putExtra("title", title)
@@ -137,6 +144,10 @@ object MpvElefinLauncher {
                 putExtra("server_url", serverUrl)
                 putExtra("access_token", accessToken)
                 putExtra("user_id", userId)
+                subtitleFilePath?.let { 
+                    putExtra("subtitle_file", it)
+                    Log.d(TAG, "Adding subtitle_file extra: $it")
+                }
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)

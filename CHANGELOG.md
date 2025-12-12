@@ -4,6 +4,19 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+- **MPV Player - Embedded Subtitle Support**
+  - MPV player now correctly detects and displays embedded subtitles (SRT, ASS, PGS, VOBSUB)
+  - Bundled Roboto fonts for reliable text subtitle rendering via libass
+  - Configured proper GPU-based subtitle blending for video output
+  - Auto-selects first subtitle track if none is selected
+  - Fixed font provider configuration to prevent "can't find font" errors
+
+- **Hide Empty TV Shows Setting**
+  - Added "Hide Empty Shows" setting to filter out TV shows with zero episodes
+  - Affects home screen, TV Shows library, and all recommendation rows
+  - Uses `RecursiveItemCount` from Jellyfin API for accurate episode counting
+  - Useful for hiding shows that are in the library but have no downloaded episodes yet
+
 - **Auto-Focus Next Episode on Series Open**
   - When opening a TV show from the library or home screen, automatically focuses on the next episode to watch
   - Uses Jellyfin's NextUp API to find the next episode based on watch history

@@ -297,9 +297,9 @@ fun TvShowsLibraryScreen(
         }
     }
     
-    // Sort library items
-    val sortedLibraryItems = remember(libraryItems, sortType) {
-        when (sortType) {
+    // Sort and filter library items
+    val sortedLibraryItems = remember(libraryItems, sortType, hideShowsWithZeroEpisodes) {
+        val sortedItems = when (sortType) {
             SortType.Alphabetically -> libraryItems.sortedBy { it.Name?.lowercase() }
             SortType.DateAdded -> {
                 libraryItems.sortedByDescending { 
@@ -334,7 +334,44 @@ fun TvShowsLibraryScreen(
                 }
             }
         }
+        
+        // Filter shows with zero episodes if setting is enabled
+        if (hideShowsWithZeroEpisodes) {
+            sortedItems.filter { item ->
+                // Keep items with episodes (RecursiveItemCount > 0)
+                val episodeCount = item.RecursiveItemCount ?: item.ChildCount ?: 0
+                episodeCount > 0
+            }
+        } else {
+            sortedItems
+        }
     }
+    
+    // Helper function to filter shows with zero episodes
+    fun List<JellyfinItem>.filterEmptyShows(): List<JellyfinItem> {
+        return if (hideShowsWithZeroEpisodes) {
+            this.filter { item ->
+                // Only filter Series items, keep episodes and other types
+                if (item.Type != "Series") {
+                    true
+                } else {
+                    val episodeCount = item.RecursiveItemCount ?: item.ChildCount ?: 0
+                    episodeCount > 0
+                }
+            }
+        } else {
+            this
+        }
+    }
+    
+    // Filtered recommendation lists
+    val filteredRecentlyAddedShows = remember(recentlyAddedShows, hideShowsWithZeroEpisodes) { recentlyAddedShows.filterEmptyShows() }
+    val filteredStartWatchingShows = remember(startWatchingShows, hideShowsWithZeroEpisodes) { startWatchingShows.filterEmptyShows() }
+    val filteredTopRatedShows = remember(topRatedShows, hideShowsWithZeroEpisodes) { topRatedShows.filterEmptyShows() }
+    val filteredGenreShows1 = remember(genreShows1, hideShowsWithZeroEpisodes) { genreShows1.filterEmptyShows() }
+    val filteredGenreShows2 = remember(genreShows2, hideShowsWithZeroEpisodes) { genreShows2.filterEmptyShows() }
+    val filteredGenreShows3 = remember(genreShows3, hideShowsWithZeroEpisodes) { genreShows3.filterEmptyShows() }
+    val filteredGenreShows4 = remember(genreShows4, hideShowsWithZeroEpisodes) { genreShows4.filterEmptyShows() }
     
     // Main content (same structure as home screen)
     // Wrap with TV-optimized bring-into-view behavior for better focus handling
@@ -997,7 +1034,7 @@ fun TvShowsLibraryScreen(
                             }
                             
                             // Recently Added in TV Shows row
-                            if (recentlyAddedShows.isNotEmpty()) {
+                            if (filteredRecentlyAddedShows.isNotEmpty()) {
                                 Text(
                                     text = "Recently Added in $libraryName",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -1016,7 +1053,7 @@ fun TvShowsLibraryScreen(
                                         Modifier
                                     }
                                 ) {
-                                    items(recentlyAddedShows) { item ->
+                                    items(filteredRecentlyAddedShows) { item ->
                                         JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
@@ -1040,7 +1077,7 @@ fun TvShowsLibraryScreen(
                             }
                             
                             // Start Watching row (random unwatched suggestions)
-                            if (startWatchingShows.isNotEmpty()) {
+                            if (filteredStartWatchingShows.isNotEmpty()) {
                                 Text(
                                     text = "Start Watching",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -1059,7 +1096,7 @@ fun TvShowsLibraryScreen(
                                         Modifier
                                     }
                                 ) {
-                                    items(startWatchingShows) { item ->
+                                    items(filteredStartWatchingShows) { item ->
                                         JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
@@ -1083,7 +1120,7 @@ fun TvShowsLibraryScreen(
                             }
                             
                             // Top Rated TV Shows row
-                            if (topRatedShows.isNotEmpty()) {
+                            if (filteredTopRatedShows.isNotEmpty()) {
                                 Text(
                                     text = "Top Rated TV Shows",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -1102,7 +1139,7 @@ fun TvShowsLibraryScreen(
                                         Modifier
                                     }
                                 ) {
-                                    items(topRatedShows) { item ->
+                                    items(filteredTopRatedShows) { item ->
                                         JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
@@ -1126,7 +1163,7 @@ fun TvShowsLibraryScreen(
                             }
                             
                             // More in <Genre> row 1 (randomly selected genre)
-                            if (genreShows1.isNotEmpty() && selectedGenre1.isNotEmpty()) {
+                            if (filteredGenreShows1.isNotEmpty() && selectedGenre1.isNotEmpty()) {
                                 Text(
                                     text = "More in $selectedGenre1",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -1145,7 +1182,7 @@ fun TvShowsLibraryScreen(
                                         Modifier
                                     }
                                 ) {
-                                    items(genreShows1) { item ->
+                                    items(filteredGenreShows1) { item ->
                                         JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
@@ -1169,7 +1206,7 @@ fun TvShowsLibraryScreen(
                             }
                             
                             // More in <Genre> row 2 (randomly selected genre)
-                            if (genreShows2.isNotEmpty() && selectedGenre2.isNotEmpty()) {
+                            if (filteredGenreShows2.isNotEmpty() && selectedGenre2.isNotEmpty()) {
                                 Text(
                                     text = "More in $selectedGenre2",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -1188,7 +1225,7 @@ fun TvShowsLibraryScreen(
                                         Modifier
                                     }
                                 ) {
-                                    items(genreShows2) { item ->
+                                    items(filteredGenreShows2) { item ->
                                         JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
@@ -1212,7 +1249,7 @@ fun TvShowsLibraryScreen(
                             }
                             
                             // More in <Genre> row 3 (randomly selected genre)
-                            if (genreShows3.isNotEmpty() && selectedGenre3.isNotEmpty()) {
+                            if (filteredGenreShows3.isNotEmpty() && selectedGenre3.isNotEmpty()) {
                                 Text(
                                     text = "More in $selectedGenre3",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -1231,7 +1268,7 @@ fun TvShowsLibraryScreen(
                                         Modifier
                                     }
                                 ) {
-                                    items(genreShows3) { item ->
+                                    items(filteredGenreShows3) { item ->
                                         JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
@@ -1255,7 +1292,7 @@ fun TvShowsLibraryScreen(
                             }
                             
                             // More in <Genre> row 4 (randomly selected genre)
-                            if (genreShows4.isNotEmpty() && selectedGenre4.isNotEmpty()) {
+                            if (filteredGenreShows4.isNotEmpty() && selectedGenre4.isNotEmpty()) {
                                 Text(
                                     text = "More in $selectedGenre4",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -1274,7 +1311,7 @@ fun TvShowsLibraryScreen(
                                         Modifier
                                     }
                                 ) {
-                                    items(genreShows4) { item ->
+                                    items(filteredGenreShows4) { item ->
                                         JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
