@@ -83,6 +83,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import com.flex.elefin.jellyfin.JellyfinConfig
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import android.content.Intent
@@ -326,121 +327,122 @@ fun SettingsScreen(
                                 }
                             )
                             
-                            // Download MPV Button
-                            if (!isMpvInstalled) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                
-                                if (isMpvDownloading) {
-                                    // Show download progress
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            // Download/Update MPV Button
+                            Spacer(modifier = Modifier.height(4.dp))
+                            
+                            if (isMpvDownloading) {
+                                // Show download progress
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(20.dp),
-                                                strokeWidth = 2.dp,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                            Text(
-                                                text = "Downloading mpv-elefin... ${(mpvDownloadProgress * 100).toInt()}%",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        LinearProgressIndicator(
-                                            progress = { mpvDownloadProgress },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            color = MaterialTheme.colorScheme.primary,
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(20.dp),
+                                            strokeWidth = 2.dp,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = if (isMpvInstalled) "Updating mpv-elefin... ${(mpvDownloadProgress * 100).toInt()}%" 
+                                                   else "Downloading mpv-elefin... ${(mpvDownloadProgress * 100).toInt()}%",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface
                                         )
                                     }
-                                } else {
-                                    // Download button
-                                    Button(
-                                        onClick = {
-                                            scope.launch {
-                                                isMpvDownloading = true
-                                                mpvDownloadProgress = 0f
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    LinearProgressIndicator(
+                                        progress = { mpvDownloadProgress },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            } else {
+                                // Download/Update button
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            isMpvDownloading = true
+                                            mpvDownloadProgress = 0f
+                                            
+                                            try {
+                                                val mpvApkUrl = "https://github.com/flex36ty/elefin/releases/download/1.1.11/mpv-universal-release.apk"
+                                                val apkFile = File(context.cacheDir, "mpv-elefin.apk")
                                                 
-                                                try {
-                                                    val mpvApkUrl = "https://github.com/flex36ty/elefin/releases/download/1.1.11/mpv-universal-release.apk"
-                                                    val apkFile = File(context.cacheDir, "mpv-elefin.apk")
+                                                // Download the APK
+                                                withContext(Dispatchers.IO) {
+                                                    val url = java.net.URL(mpvApkUrl)
+                                                    val connection = url.openConnection() as java.net.HttpURLConnection
+                                                    connection.instanceFollowRedirects = true
+                                                    connection.connect()
                                                     
-                                                    // Download the APK
-                                                    withContext(Dispatchers.IO) {
-                                                        val url = java.net.URL(mpvApkUrl)
-                                                        val connection = url.openConnection() as java.net.HttpURLConnection
-                                                        connection.instanceFollowRedirects = true
-                                                        connection.connect()
-                                                        
-                                                        val fileLength = connection.contentLength.toLong()
-                                                        
-                                                        connection.inputStream.use { input ->
-                                                            apkFile.outputStream().use { output ->
-                                                                val buffer = ByteArray(8192)
-                                                                var bytesRead: Int
-                                                                var totalBytesRead = 0L
-                                                                
-                                                                while (input.read(buffer).also { bytesRead = it } != -1) {
-                                                                    output.write(buffer, 0, bytesRead)
-                                                                    totalBytesRead += bytesRead
-                                                                    if (fileLength > 0) {
-                                                                        mpvDownloadProgress = totalBytesRead.toFloat() / fileLength
-                                                                    }
+                                                    val fileLength = connection.contentLength.toLong()
+                                                    
+                                                    connection.inputStream.use { input ->
+                                                        apkFile.outputStream().use { output ->
+                                                            val buffer = ByteArray(8192)
+                                                            var bytesRead: Int
+                                                            var totalBytesRead = 0L
+                                                            
+                                                            while (input.read(buffer).also { bytesRead = it } != -1) {
+                                                                output.write(buffer, 0, bytesRead)
+                                                                totalBytesRead += bytesRead
+                                                                if (fileLength > 0) {
+                                                                    mpvDownloadProgress = totalBytesRead.toFloat() / fileLength
                                                                 }
                                                             }
                                                         }
                                                     }
-                                                    
-                                                    // Install the APK
-                                                    val apkUri = FileProvider.getUriForFile(
-                                                        context,
-                                                        "${context.packageName}.fileprovider",
-                                                        apkFile
-                                                    )
-                                                    
-                                                    val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                                                        setDataAndType(apkUri, "application/vnd.android.package-archive")
-                                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                                    }
-                                                    context.startActivity(installIntent)
-                                                    
-                                                    Toast.makeText(context, "Installing mpv-elefin...", Toast.LENGTH_SHORT).show()
-                                                    
-                                                    // Trigger re-check of MPV installation status
-                                                    mpvInstallCheckTrigger++
-                                                    
-                                                } catch (e: Exception) {
-                                                    android.util.Log.e("Settings", "Failed to download mpv-elefin", e)
-                                                    Toast.makeText(context, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
-                                                } finally {
-                                                    isMpvDownloading = false
-                                                    mpvDownloadProgress = 0f
                                                 }
+                                                
+                                                // Install the APK
+                                                val apkUri = FileProvider.getUriForFile(
+                                                    context,
+                                                    "${context.packageName}.fileprovider",
+                                                    apkFile
+                                                )
+                                                
+                                                val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                                                    setDataAndType(apkUri, "application/vnd.android.package-archive")
+                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                context.startActivity(installIntent)
+                                                
+                                                Toast.makeText(context, if (isMpvInstalled) "Updating mpv-elefin..." else "Installing mpv-elefin...", Toast.LENGTH_SHORT).show()
+                                                
+                                                // Trigger re-check of MPV installation status
+                                                mpvInstallCheckTrigger++
+                                                
+                                            } catch (e: Exception) {
+                                                android.util.Log.e("Settings", "Failed to download mpv-elefin", e)
+                                                Toast.makeText(context, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
+                                            } finally {
+                                                isMpvDownloading = false
+                                                mpvDownloadProgress = 0f
                                             }
-                                        },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 16.dp),
-                                        colors = ButtonDefaults.colors(
-                                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Download,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Download & Install mpv-elefin")
-                                    }
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp),
+                                    colors = ButtonDefaults.colors(
+                                        containerColor = if (isMpvInstalled) MaterialTheme.colorScheme.secondaryContainer 
+                                                        else MaterialTheme.colorScheme.primaryContainer,
+                                        contentColor = if (isMpvInstalled) MaterialTheme.colorScheme.onSecondaryContainer 
+                                                      else MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = if (isMpvInstalled) Icons.Default.Refresh else Icons.Default.Download,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(if (isMpvInstalled) "Update mpv-elefin from GitHub" else "Download & Install mpv-elefin")
                                 }
                             }
                             
