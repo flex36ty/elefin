@@ -4,6 +4,12 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+- **Home Screen Vertical Scrolling Improvements**
+  - Significantly smoother vertical scrolling when navigating between rows on the home screen
+  - Refactored row layout to use single-item pattern (matching library screens)
+  - Previously each row was a separate LazyColumn item causing choppy scroll animations
+  - Now all rows are consolidated into a single Column for fluid navigation
+
 - **Play From Start Fix**
   - Fixed "Play From Start" button resuming from last position instead of playing from the beginning
   - The player now correctly respects the user's intent: Resume button seeks to saved position, Play From Start plays from 0

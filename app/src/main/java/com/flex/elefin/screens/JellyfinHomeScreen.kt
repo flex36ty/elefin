@@ -1885,13 +1885,15 @@ fun JellyfinHomeScreen(
                                 }
                             )
                     ) {
-                        // Continue Watching row - each row is its own item for proper scrolling
-                        item(key = "continue_watching_row") {
+                        // All rows in a single item for smoother vertical scrolling
+                        // (same pattern as library screens)
+                        item {
                             Column(
                                 modifier = Modifier
                                     .padding(top = 12.dp)
                                     .focusRequester(focusRequester)
                             ) {
+                                // Continue Watching row
                                 Text(
                                     text = "Continue Watching",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -1915,8 +1917,6 @@ fun JellyfinHomeScreen(
                                         key = { it.Id },
                                         contentType = { "horizontal_card_progress" }
                                     ) { item ->
-                                        val itemForHighlight = if (item.Type == "Episode" && item.SeriesId != null) item else item
-                                        
                                         JellyfinHorizontalCardWithProgress(
                                             item = item,
                                             apiService = apiService,
@@ -1950,95 +1950,70 @@ fun JellyfinHomeScreen(
                                         )
                                     }
                                 }
-                            }
-                        }
-                        
-                        // Next Up row - separate item
-                        item(key = "next_up_row") {
-                            Column {
+                                
+                                // Next Up row
                                 Text(
                                     text = "Next Up",
-                                style = MaterialTheme.typography.headlineMedium.copy(
-                                    fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
-                                ),
-                                modifier = Modifier.padding(bottom = 12.dp, top = 30.3186.dp) // Increased by 15%: 26.364 * 1.15 = 30.3186.dp
-                            )
-                            
-                            LazyRow(
-                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)),
-                                horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
-                                modifier = if (debugOutlinesEnabled) {
-                                    Modifier.border(2.dp, Color.Magenta)
-                                } else {
-                                    Modifier
-                                }
-                            ) {
-                                items(
-                                    items = nextUpItems,
-                                    key = { it.Id },
-                                    contentType = { "horizontal_card_progress" }
-                                ) { item ->
-                                    // For episodes, use series info for highlighting; for movies, use item itself
-                                    val itemForHighlight = if (item.Type == "Episode" && item.SeriesId != null) {
-                                        // For episodes, we'll fetch series details when focused
-                                        item
+                                    style = MaterialTheme.typography.headlineMedium.copy(
+                                        fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+                                    ),
+                                    modifier = Modifier.padding(bottom = 12.dp, top = 30.3186.dp)
+                                )
+                                
+                                LazyRow(
+                                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)),
+                                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                    flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
+                                    modifier = if (debugOutlinesEnabled) {
+                                        Modifier.border(2.dp, Color.Magenta)
                                     } else {
-                                        item
+                                        Modifier
                                     }
-                                    
-                                    JellyfinHorizontalCardWithProgress(
-                                        item = item,
-                                        apiService = apiService,
-                                        onClick = {
-                                            // Next Up items are unplayed, so start from beginning (position 0)
-                                            onItemClick(item, 0L)
-                                        },
-                                        onFocusChanged = { isFocused ->
-                                            if (isFocused) {
-                                                // Update metadata text immediately
-                                                // Update metadata text immediately - keep episode data for Next Up
-                                                instantHighlightedItem = item
-                                                originalEpisodeItem = if (item.Type == "Episode") item else null
-                                                
-                                                // Cancel any pending background change
-                                                backgroundChangeJob?.cancel()
-                                                
-                                                // Debounce: wait 1 second before changing background only
-                                                backgroundChangeJob = scope.launch {
-                                                    delay(1000)
-                                                    
-                                                    // For episodes, use series backdrop for background image
-                                                    if (item.Type == "Episode" && item.SeriesId != null) {
-                                                        val seriesDetails = apiService?.getItemDetails(item.SeriesId)
-                                                        if (seriesDetails != null) {
-                                                            highlightedItem = seriesDetails
-                                                            // Don't update instantHighlightedItem - keep showing episode data
+                                ) {
+                                    items(
+                                        items = nextUpItems,
+                                        key = { it.Id },
+                                        contentType = { "horizontal_card_progress" }
+                                    ) { item ->
+                                        JellyfinHorizontalCardWithProgress(
+                                            item = item,
+                                            apiService = apiService,
+                                            onClick = {
+                                                onItemClick(item, 0L)
+                                            },
+                                            onFocusChanged = { isFocused ->
+                                                if (isFocused) {
+                                                    instantHighlightedItem = item
+                                                    originalEpisodeItem = if (item.Type == "Episode") item else null
+                                                    backgroundChangeJob?.cancel()
+                                                    backgroundChangeJob = scope.launch {
+                                                        delay(1000)
+                                                        if (item.Type == "Episode" && item.SeriesId != null) {
+                                                            val seriesDetails = apiService?.getItemDetails(item.SeriesId)
+                                                            if (seriesDetails != null) {
+                                                                highlightedItem = seriesDetails
+                                                            } else {
+                                                                highlightedItem = item
+                                                            }
                                                         } else {
                                                             highlightedItem = item
                                                         }
-                                                    } else {
-                                                        highlightedItem = item
                                                     }
                                                 }
-                                            }
-                                        },
-                                        useSimpleCards = useSimpleCards.value,
-                                        useGoogleTvCards = useGoogleTvCards.value,
-                                        lowPowerMode = lowPowerMode.value
-                                    )
+                                            },
+                                            useSimpleCards = useSimpleCards.value,
+                                            useGoogleTvCards = useGoogleTvCards.value,
+                                            lowPowerMode = lowPowerMode.value
+                                        )
+                                    }
                                 }
-                            }
-                            }
-                        }
-                        
-                        // Recently Added Movies rows - one per movie library (each as separate item)
-                        movieLibraries.forEachIndexed { index, library ->
-                            val libraryMovies = recentlyAddedMoviesByLibrary[library.Id] ?: emptyList()
-                            if (libraryMovies.isNotEmpty()) {
-                                val rowTitle = if (index == 0) "Recently Added Movies" else "Recently Added ${library.Name}"
-                                item(key = "movies_${library.Id}") {
-                                    Column {
+                                
+                                // Recently Added Movies rows - one per movie library
+                                movieLibraries.forEachIndexed { index, library ->
+                                    val libraryMovies = recentlyAddedMoviesByLibrary[library.Id] ?: emptyList()
+                                    if (libraryMovies.isNotEmpty()) {
+                                        val rowTitle = if (index == 0) "Recently Added Movies" else "Recently Added ${library.Name}"
+                                        
                                         Text(
                                             text = rowTitle,
                                             style = MaterialTheme.typography.headlineMedium.copy(
@@ -2063,37 +2038,28 @@ fun JellyfinHomeScreen(
                                                     apiService = apiService,
                                                     onClick = { onItemClick(item, 0L) },
                                                     onFocusChanged = { isFocused ->
-                                                    if (isFocused) {
-                                                        // Update metadata text immediately
-                                                        instantHighlightedItem = item
-                                                        originalEpisodeItem = null
-                                                        
-                                                        // Cancel any pending background change
-                                                        backgroundChangeJob?.cancel()
-                                                        
-                                                        // Debounce: wait 1 second before changing background
-                                                        backgroundChangeJob = scope.launch {
-                                                            delay(1000)
-                                                            highlightedItem = item
+                                                        if (isFocused) {
+                                                            instantHighlightedItem = item
+                                                            originalEpisodeItem = null
+                                                            backgroundChangeJob?.cancel()
+                                                            backgroundChangeJob = scope.launch {
+                                                                delay(1000)
+                                                                highlightedItem = item
+                                                            }
                                                         }
-                                                    }
-                                                },
-                                                enableCaching = cacheLibraryImages,
-                                                reducePosterResolution = reducePosterResolution,
-                                                useSimpleCards = useSimpleCards.value,
-                                                useGoogleTvCards = useGoogleTvCards.value,
-                                                lowPowerMode = lowPowerMode.value
-                                            )
+                                                    },
+                                                    enableCaching = cacheLibraryImages,
+                                                    reducePosterResolution = reducePosterResolution,
+                                                    useSimpleCards = useSimpleCards.value,
+                                                    useGoogleTvCards = useGoogleTvCards.value,
+                                                    lowPowerMode = lowPowerMode.value
+                                                )
+                                            }
                                         }
                                     }
-                                    }
                                 }
-                            }
-                        }
-                        
-                        // Recently Released Movies row - separate item
-                        item(key = "recently_released_movies_row") {
-                            Column {
+                                
+                                // Recently Released Movies row
                                 Text(
                                     text = "Recently Released Movies",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -2135,30 +2101,27 @@ fun JellyfinHomeScreen(
                                         )
                                     }
                                 }
-                            }
-                        }
-                        
-                        // Recently Added Shows rows - one per TV show library (each as separate item)
-                        tvShowLibraries.forEachIndexed { libraryIndex, library ->
-                            val libraryShows = recentlyAddedShowsByLibrary[library.Id]?.let { shows ->
-                                if (hideShowsWithZeroEpisodes) {
-                                    shows.filter { item ->
-                                        if (item.Type != "Series") {
-                                            true
+                                
+                                // Recently Added Shows rows - one per TV show library
+                                tvShowLibraries.forEachIndexed { libraryIndex, library ->
+                                    val libraryShows = recentlyAddedShowsByLibrary[library.Id]?.let { shows ->
+                                        if (hideShowsWithZeroEpisodes) {
+                                            shows.filter { item ->
+                                                if (item.Type != "Series") {
+                                                    true
+                                                } else {
+                                                    val episodeCount = item.RecursiveItemCount ?: item.ChildCount ?: 0
+                                                    episodeCount > 0
+                                                }
+                                            }
                                         } else {
-                                            val episodeCount = item.RecursiveItemCount ?: item.ChildCount ?: 0
-                                            episodeCount > 0
+                                            shows
                                         }
-                                    }
-                                } else {
-                                    shows
-                                }
-                            } ?: emptyList()
-                            
-                            if (libraryShows.isNotEmpty()) {
-                                val rowTitle = if (libraryIndex == 0) "Recently Added Shows" else "Recently Added Shows in ${library.Name}"
-                                item(key = "shows_${library.Id}") {
-                                    Column {
+                                    } ?: emptyList()
+                                    
+                                    if (libraryShows.isNotEmpty()) {
+                                        val rowTitle = if (libraryIndex == 0) "Recently Added Shows" else "Recently Added Shows in ${library.Name}"
+                                        
                                         Text(
                                             text = rowTitle,
                                             style = MaterialTheme.typography.headlineMedium.copy(
@@ -2204,17 +2167,14 @@ fun JellyfinHomeScreen(
                                         }
                                     }
                                 }
-                            }
-                        }
-                        
-                        // Recently Added Episodes rows - one per TV show library (each as separate item)
-                        tvShowLibraries.forEachIndexed { libraryIndex, library ->
-                            val libraryEpisodes = recentlyAddedEpisodesByLibrary[library.Id] ?: emptyList()
-                            
-                            if (libraryEpisodes.isNotEmpty()) {
-                                val rowTitle = if (libraryIndex == 0) "Recently Added Episodes" else "Recently Added Episodes in ${library.Name}"
-                                item(key = "episodes_${library.Id}") {
-                                    Column {
+                                
+                                // Recently Added Episodes rows - one per TV show library
+                                tvShowLibraries.forEachIndexed { libraryIndex, library ->
+                                    val libraryEpisodes = recentlyAddedEpisodesByLibrary[library.Id] ?: emptyList()
+                                    
+                                    if (libraryEpisodes.isNotEmpty()) {
+                                        val rowTitle = if (libraryIndex == 0) "Recently Added Episodes" else "Recently Added Episodes in ${library.Name}"
+                                        
                                         Text(
                                             text = rowTitle,
                                             style = MaterialTheme.typography.headlineMedium.copy(
