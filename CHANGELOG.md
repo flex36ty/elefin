@@ -4,6 +4,15 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+- **Collections Layout Overhaul**
+  - Collections now display as horizontal rows instead of a grid view
+  - Each collection has its own row with the collection name as the title
+  - Layout matches the Movies/Series library screens for a consistent experience
+  - Background images now display when browsing collections (same as library screens)
+  - Synopsis and metadata panel now shows for focused items in collections
+  - TV shows and episodes in collections now use poster images instead of thumbnails
+  - Improved navigation flow when browsing collections
+
 - **Home Screen Vertical Scrolling Improvements**
   - Significantly smoother vertical scrolling when navigating between rows on the home screen
   - Refactored row layout to use single-item pattern (matching library screens)
