@@ -4,6 +4,11 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+- **TV Shows Library Genre Rows Fix**
+  - Fixed "More in <Genre>" rows not appearing in TV Shows library screen
+  - Added missing ChildCount and RecursiveItemCount fields to genre-based show API requests
+  - Ensures shows are properly counted when "Hide Empty Shows" setting is enabled
+
 - **Collections Layout Overhaul**
   - Collections now display as horizontal rows instead of a grid view
   - Each collection has its own row with the collection name as the title

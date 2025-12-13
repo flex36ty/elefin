@@ -1822,7 +1822,7 @@ class JellyfinApiService(
                 parameters.append("SortBy", "Random")
                 parameters.append("SortOrder", "Ascending")
                 parameters.append("Limit", limit.toString())
-                parameters.append("Fields", "ImageTags,Genres,CommunityRating,UserData")
+                parameters.append("Fields", "ImageTags,Genres,CommunityRating,UserData,ChildCount,RecursiveItemCount")
             }.buildString()
             
             val response: ItemsResponse = client.get(url) {
