@@ -59,7 +59,7 @@ class AppSettings(context: Context) {
         private const val KEY_VIDEO_BRIGHTNESS = "video_brightness"
         private const val KEY_VIDEO_CONTRAST = "video_contrast"
         private const val KEY_VIDEO_SATURATION = "video_saturation"
-        private const val KEY_VIDEO_COLOR_TEMP = "video_color_temperature"
+        private const val KEY_VIDEO_COLOR_TEMPERATURE = "video_color_temperature"
         
         // UI performance settings
         private const val KEY_DISABLE_UI_ANIMATIONS = "disable_ui_animations"
@@ -71,6 +71,18 @@ class AppSettings(context: Context) {
         private const val KEY_OPENSUBTITLES_API_KEY = "opensubtitles_api_key"
         private const val KEY_OPENSUBTITLES_USERNAME = "opensubtitles_username"
         private const val KEY_OPENSUBTITLES_PASSWORD = "opensubtitles_password"
+        
+        // TMDB settings (deprecated - use Jellyseerr instead)
+        private const val KEY_TMDB_API_KEY = "tmdb_api_key"
+        private const val KEY_TMDB_TRENDING_ENABLED = "tmdb_trending_enabled"
+        
+        // Jellyseerr settings
+        private const val KEY_JELLYSEERR_URL = "jellyseerr_url"
+        private const val KEY_JELLYSEERR_API_KEY = "jellyseerr_api_key"
+        private const val KEY_JELLYSEERR_ENABLED = "jellyseerr_enabled"
+        private const val KEY_JELLYSEERR_AUTH_TYPE = "jellyseerr_auth_type" // "api_key" or "credentials"
+        private const val KEY_JELLYSEERR_USERNAME = "jellyseerr_username"
+        private const val KEY_JELLYSEERR_SESSION_COOKIE = "jellyseerr_session_cookie"
         
         // Server-side transcoding settings
         private const val KEY_SERVER_TRANSCODING_ENABLED = "server_transcoding_enabled"
@@ -294,7 +306,7 @@ class AppSettings(context: Context) {
         get() = prefs.getFloat(KEY_FRAME_BLEND_STRENGTH, 0.5f).coerceIn(0.0f, 1.0f)
         set(value) = prefs.edit().putFloat(KEY_FRAME_BLEND_STRENGTH, value.coerceIn(0.0f, 1.0f)).apply()
     
-    // Denoise - removes compression noise and mosquito artifacts
+    // Denoise filter (reduces noise/grain in video)
     var enableDenoise: Boolean
         get() = prefs.getBoolean(KEY_ENABLE_DENOISE, false)
         set(value) = prefs.edit().putBoolean(KEY_ENABLE_DENOISE, value).apply()
@@ -304,7 +316,7 @@ class AppSettings(context: Context) {
         get() = prefs.getFloat(KEY_DENOISE_STRENGTH, 0.5f).coerceIn(0.0f, 1.0f)
         set(value) = prefs.edit().putFloat(KEY_DENOISE_STRENGTH, value.coerceIn(0.0f, 1.0f)).apply()
     
-    // Deband - removes color banding and film grain
+    // Debanding filter (reduces color banding artifacts)
     var enableDeband: Boolean
         get() = prefs.getBoolean(KEY_ENABLE_DEBAND, false)
         set(value) = prefs.edit().putBoolean(KEY_ENABLE_DEBAND, value).apply()
@@ -314,30 +326,31 @@ class AppSettings(context: Context) {
         get() = prefs.getFloat(KEY_DEBAND_STRENGTH, 0.5f).coerceIn(0.0f, 1.0f)
         set(value) = prefs.edit().putFloat(KEY_DEBAND_STRENGTH, value.coerceIn(0.0f, 1.0f)).apply()
     
-    // FXAA anti-aliasing - reduces jagged edges
+    // FXAA anti-aliasing
     var enableFXAA: Boolean
         get() = prefs.getBoolean(KEY_ENABLE_FXAA, false)
         set(value) = prefs.edit().putBoolean(KEY_ENABLE_FXAA, value).apply()
     
-    // Color grading: Brightness (-0.5 to 0.5, default: 0.0)
+    // Video brightness adjustment (-1.0 to 1.0, default: 0.0)
     var videoBrightness: Float
-        get() = prefs.getFloat(KEY_VIDEO_BRIGHTNESS, 0.0f).coerceIn(-0.5f, 0.5f)
-        set(value) = prefs.edit().putFloat(KEY_VIDEO_BRIGHTNESS, value.coerceIn(-0.5f, 0.5f)).apply()
+        get() = prefs.getFloat(KEY_VIDEO_BRIGHTNESS, 0.0f).coerceIn(-1.0f, 1.0f)
+        set(value) = prefs.edit().putFloat(KEY_VIDEO_BRIGHTNESS, value.coerceIn(-1.0f, 1.0f)).apply()
     
-    // Color grading: Contrast (0.5 to 2.0, default: 1.0)
+    // Video contrast adjustment (0.0 to 2.0, default: 1.0)
     var videoContrast: Float
-        get() = prefs.getFloat(KEY_VIDEO_CONTRAST, 1.0f).coerceIn(0.5f, 2.0f)
-        set(value) = prefs.edit().putFloat(KEY_VIDEO_CONTRAST, value.coerceIn(0.5f, 2.0f)).apply()
+        get() = prefs.getFloat(KEY_VIDEO_CONTRAST, 1.0f).coerceIn(0.0f, 2.0f)
+        set(value) = prefs.edit().putFloat(KEY_VIDEO_CONTRAST, value.coerceIn(0.0f, 2.0f)).apply()
     
-    // Color grading: Saturation (0.0 to 2.0, default: 1.0)
+    // Video saturation adjustment (0.0 to 2.0, default: 1.0)
     var videoSaturation: Float
         get() = prefs.getFloat(KEY_VIDEO_SATURATION, 1.0f).coerceIn(0.0f, 2.0f)
         set(value) = prefs.edit().putFloat(KEY_VIDEO_SATURATION, value.coerceIn(0.0f, 2.0f)).apply()
     
-    // Color grading: Color temperature (-1.0 = cool/blue, 1.0 = warm/orange, default: 0.0)
+    // Video color temperature adjustment (-1.0 to 1.0, default: 0.0)
+    // -1.0 = cool/blue, 0.0 = neutral, 1.0 = warm/orange
     var videoColorTemperature: Float
-        get() = prefs.getFloat(KEY_VIDEO_COLOR_TEMP, 0.0f).coerceIn(-1.0f, 1.0f)
-        set(value) = prefs.edit().putFloat(KEY_VIDEO_COLOR_TEMP, value.coerceIn(-1.0f, 1.0f)).apply()
+        get() = prefs.getFloat(KEY_VIDEO_COLOR_TEMPERATURE, 0.0f).coerceIn(-1.0f, 1.0f)
+        set(value) = prefs.edit().putFloat(KEY_VIDEO_COLOR_TEMPERATURE, value.coerceIn(-1.0f, 1.0f)).apply()
     
     // UI performance settings
     var disableUIAnimations: Boolean
@@ -373,6 +386,65 @@ class AppSettings(context: Context) {
     var openSubtitlesPassword: String
         get() = prefs.getString(KEY_OPENSUBTITLES_PASSWORD, "") ?: ""
         set(value) = prefs.edit().putString(KEY_OPENSUBTITLES_PASSWORD, value).apply()
+    
+    // TMDB API key - for trending content discovery (deprecated - use Jellyseerr instead)
+    var tmdbApiKey: String
+        get() = prefs.getString(KEY_TMDB_API_KEY, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_TMDB_API_KEY, value).apply()
+    
+    // TMDB Trending tab enabled - shows trending content from TMDB in library screens (deprecated)
+    var tmdbTrendingEnabled: Boolean
+        get() = prefs.getBoolean(KEY_TMDB_TRENDING_ENABLED, false) // Disabled by default (use Jellyseerr instead)
+        set(value) = prefs.edit().putBoolean(KEY_TMDB_TRENDING_ENABLED, value).apply()
+    
+    // Jellyseerr URL - base URL for Jellyseerr/Overseerr instance
+    var jellyseerrUrl: String
+        get() = prefs.getString(KEY_JELLYSEERR_URL, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_JELLYSEERR_URL, value).apply()
+    
+    // Jellyseerr authentication type: "api_key" or "credentials"
+    var jellyseerrAuthType: String
+        get() = prefs.getString(KEY_JELLYSEERR_AUTH_TYPE, "api_key") ?: "api_key"
+        set(value) = prefs.edit().putString(KEY_JELLYSEERR_AUTH_TYPE, value).apply()
+    
+    // Jellyseerr API key - for API key authentication
+    var jellyseerrApiKey: String
+        get() = prefs.getString(KEY_JELLYSEERR_API_KEY, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_JELLYSEERR_API_KEY, value).apply()
+    
+    // Jellyseerr username - for display purposes when using credentials auth
+    var jellyseerrUsername: String
+        get() = prefs.getString(KEY_JELLYSEERR_USERNAME, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_JELLYSEERR_USERNAME, value).apply()
+    
+    // Jellyseerr session cookie - from username/password login
+    var jellyseerrSessionCookie: String
+        get() = prefs.getString(KEY_JELLYSEERR_SESSION_COOKIE, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_JELLYSEERR_SESSION_COOKIE, value).apply()
+    
+    // Jellyseerr enabled - shows Discover tab with trending/popular/upcoming content
+    var jellyseerrEnabled: Boolean
+        get() = prefs.getBoolean(KEY_JELLYSEERR_ENABLED, true) // Enabled by default when configured
+        set(value) = prefs.edit().putBoolean(KEY_JELLYSEERR_ENABLED, value).apply()
+    
+    // Check if Jellyseerr is properly configured
+    val isJellyseerrConfigured: Boolean
+        get() {
+            if (!jellyseerrEnabled || jellyseerrUrl.isBlank()) return false
+            return when (jellyseerrAuthType) {
+                "api_key" -> jellyseerrApiKey.isNotBlank()
+                "credentials" -> jellyseerrSessionCookie.isNotBlank()
+                else -> false
+            }
+        }
+    
+    // Clear Jellyseerr credentials (for logout)
+    fun clearJellyseerrCredentials() {
+        jellyseerrApiKey = ""
+        jellyseerrUsername = ""
+        jellyseerrSessionCookie = ""
+        jellyseerrAuthType = "api_key"
+    }
     
     // Server-side transcoding settings
     // Master switch for server-side transcoding

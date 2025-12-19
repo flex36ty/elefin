@@ -65,6 +65,7 @@ dependencies {
     // AndroidX Core + Leanback
     // -------------------------------------------------------------
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.palette)
     implementation(libs.androidx.leanback)
 
     // -------------------------------------------------------------

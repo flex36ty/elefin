@@ -1,0 +1,69 @@
+﻿> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :decoder_av1:preBuild UP-TO-DATE
+> Task :decoder_av1:preDebugBuild UP-TO-DATE
+> Task :decoder_av1:writeDebugAarMetadata UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :decoder_av1:processDebugNavigationResources UP-TO-DATE
+> Task :app:processDebugNavigationResources UP-TO-DATE
+> Task :app:compileDebugNavigationResources UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :decoder_av1:generateDebugResValues UP-TO-DATE
+> Task :decoder_av1:generateDebugResources UP-TO-DATE
+> Task :decoder_av1:packageDebugResources UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :decoder_av1:extractDeepLinksDebug UP-TO-DATE
+> Task :decoder_av1:processDebugManifest UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :decoder_av1:compileDebugLibraryResources UP-TO-DATE
+> Task :decoder_av1:parseDebugLocalResources UP-TO-DATE
+> Task :decoder_av1:generateDebugRFile UP-TO-DATE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :decoder_av1:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :decoder_av1:compileDebugKotlin NO-SOURCE
+> Task :decoder_av1:javaPreCompileDebug UP-TO-DATE
+> Task :decoder_av1:compileDebugJavaWithJavac UP-TO-DATE
+> Task :decoder_av1:bundleLibCompileToJarDebug UP-TO-DATE
+
+> Task :app:kaptGenerateStubsDebugKotlin
+w: Kapt currently doesn't support language version 2.0+. Falling back to 1.9.
+
+> Task :app:kaptDebugKotlin
+Note: [1] Wrote GeneratedAppGlideModule with: []
+
+> Task :app:compileDebugKotlin
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/MainFragment.kt:35:8 'class SimpleTarget<Z : Any!> : BaseTarget<Z!>' is deprecated. Deprecated in Java.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/VideoDetailsFragment.kt:31:8 'class SimpleTarget<Z : Any!> : BaseTarget<Z!>' is deprecated. Deprecated in Java.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/music/ui/AlbumScreen.kt:176:45 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/music/ui/ArtistScreen.kt:251:49 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/music/ui/MusicHomeScreen.kt:197:49 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/music/ui/NowPlayingScreen.kt:131:45 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/music/ui/NowPlayingScreen.kt:218:53 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/music/ui/NowPlayingScreen.kt:229:53 'val Icons.Filled.QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/music/ui/NowPlayingScreen.kt:509:49 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinHomeScreen.kt:705:68 This declaration needs opt-in. Its usage should be marked with '@coil.annotation.ExperimentalCoilApi' or '@OptIn(coil.annotation.ExperimentalCoilApi::class)'
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinHomeScreen.kt:890:60 Condition is always 'true'.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinHomeScreen.kt:897:61 Condition is always 'true'.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:260:22 'fun setDisabledTextTrackSelectionFlags(p0: Int): DefaultTrackSelector.Parameters.Builder' is deprecated. Deprecated in Java.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:273:27 'static field CONTENT_TYPE_MOVIE: Int' is deprecated. Deprecated in Java.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:399:28 This is a delicate API and its use requires care. Make sure you fully read and understand documentation of the declaration that is marked as a delicate API.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:2195:32 This is a delicate API and its use requires care. Make sure you fully read and understand documentation of the declaration that is marked as a delicate API.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:2898:50 Check for instance is always 'true'.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:3724:85 'val Icons.Filled.VolumeUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.VolumeUp.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/MovieDetailsScreen.kt:1789:45 'val Icons.Filled.VolumeUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.VolumeUp.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/MoviesLibraryScreen.kt:589:72 This declaration needs opt-in. Its usage should be marked with '@coil.annotation.ExperimentalCoilApi' or '@OptIn(coil.annotation.ExperimentalCoilApi::class)'
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/SeriesDetailsScreen.kt:2072:49 'val Icons.Filled.VolumeUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.VolumeUp.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/TvShowsLibraryScreen.kt:648:72 This declaration needs opt-in. Its usage should be marked with '@coil.annotation.ExperimentalCoilApi' or '@OptIn(coil.annotation.ExperimentalCoilApi::class)'
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/updater/UpdateService.kt:250:62 'static field ACTION_INSTALL_PACKAGE: String' is deprecated. Deprecated in Java.
+
+BUILD SUCCESSFUL in 32s
+31 actionable tasks: 3 executed, 28 up-to-date

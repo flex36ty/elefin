@@ -419,6 +419,12 @@ fun SeriesDetailsScreen(
         }
         
         // Content on top of backdrop
+        // Check if logo is being used (takes more vertical space than text)
+        val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
+        val useLogo = settings.useLogoForTitle
+        // Increase container height when logo is used to prevent synopsis cropping
+        val topContainerHeight = if (useLogo) 0.30f else 0.2581875f
+        
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
@@ -426,7 +432,7 @@ fun SeriesDetailsScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.2581875f) // Fixed at 25.82% of screen height (decreased by 10%)
+                    .fillMaxHeight(topContainerHeight)
                     .then(
                         if (showDebugOutlines) {
                             Modifier.border(4.dp, Color.Red)
@@ -515,7 +521,7 @@ fun SeriesDetailsScreen(
                             )
                             LazyRow(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                contentPadding = PaddingValues(horizontal = 0.dp)
+                                contentPadding = PaddingValues(horizontal = 8.dp) // Add padding for focus scale
                             ) {
                                 items(castMembers) { person ->
                                     CastMemberCard(
@@ -799,11 +805,14 @@ fun SeriesTopContainer(
                                 color = Color.White.copy(alpha = 0.9f),
                                 maxLines = Int.MAX_VALUE,
                                 modifier = Modifier
-                                    .padding(bottom = 8.dp)
+                                    .padding(bottom = 24.dp) // Extra padding to prevent last line from being cropped
                             )
                         }
                     }
                 }
+                
+                // Extra spacer at the bottom to ensure last line of synopsis is not cropped
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
@@ -853,7 +862,7 @@ fun SeriesSeasonSelectorContainer(
                 LazyRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    contentPadding = PaddingValues(horizontal = 0.dp) // Left aligned, no padding
+                    contentPadding = PaddingValues(horizontal = 8.dp) // Add padding for focus scale
                 ) {
                     items(seasons.size) { index ->
                         val season = seasons[index]
@@ -1100,7 +1109,7 @@ fun SeriesBottomContainer(
                             state = seasonRowState,
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            contentPadding = PaddingValues(horizontal = 0.dp) // Left aligned, no padding
+                            contentPadding = PaddingValues(horizontal = 8.dp) // Add padding for focus scale
                         ) {
                             items(seasons.size) { index ->
                                 val season = seasons[index]
@@ -1240,7 +1249,7 @@ fun SeriesBottomContainer(
                                     }
                                 ),
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            contentPadding = PaddingValues(horizontal = 0.dp) // Removed padding - parent already has horizontal padding
+                            contentPadding = PaddingValues(horizontal = 12.dp) // Add padding for focus scale on edge cards
                         ) {
                         items(
                             items = episodes,
@@ -2029,50 +2038,50 @@ fun EpisodeActionButtonsRow(
             
             // Audio track button (only show if media has multiple audio tracks)
             if (hasMultiAudio) {
-                var audioFocused by remember { mutableStateOf(false) }
-                
-                Button(
-                    onClick = {
-                        showAudioDialog = true
-                    },
-                    modifier = Modifier
-                        .then(
-                            if (audioFocused) {
-                                Modifier
-                                    .wrapContentWidth()
-                                    .height(28.dp)
-                            } else {
-                                Modifier.size(28.dp)
-                            }
-                        )
-                        .animateContentSize(
-                            animationSpec = tween(
-                                durationMillis = 300,
-                                easing = FastOutSlowInEasing
-                            )
-                        )
-                        .onFocusChanged { audioFocused = it.isFocused }
-                        .clip(CircleShape),
-                    colors = ButtonDefaults.colors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = MaterialTheme.colorScheme.onSurface
-                    ),
-                    contentPadding = PaddingValues(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.VolumeUp,
-                        contentDescription = "Audio Track",
-                        modifier = Modifier.size(14.3.dp)
+            var audioFocused by remember { mutableStateOf(false) }
+            
+            Button(
+                onClick = {
+                    showAudioDialog = true
+                },
+                modifier = Modifier
+                    .then(
+                        if (audioFocused) {
+                            Modifier
+                                .wrapContentWidth()
+                                .height(28.dp)
+                        } else {
+                            Modifier.size(28.dp)
+                        }
                     )
-                    if (audioFocused) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Audio",
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                            ),
-                            modifier = Modifier.padding(horizontal = 12.dp)
+                    .animateContentSize(
+                        animationSpec = tween(
+                            durationMillis = 300,
+                            easing = FastOutSlowInEasing
                         )
+                    )
+                    .onFocusChanged { audioFocused = it.isFocused }
+                    .clip(CircleShape),
+                colors = ButtonDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ),
+                contentPadding = PaddingValues(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.VolumeUp,
+                    contentDescription = "Audio Track",
+                    modifier = Modifier.size(14.3.dp)
+                )
+                if (audioFocused) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Audio",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
+                        ),
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
                     }
                 }
             }
@@ -2669,13 +2678,26 @@ fun EpisodeSubtitleSelectionDialog(
     }
     
     // Fetch full item details to get MediaSources with subtitle streams
+    // First refresh the item on the server to detect any newly added external subtitles
     LaunchedEffect(item.Id, apiService) {
         if (apiService != null) {
             withContext(Dispatchers.IO) {
                 try {
+                    // Refresh item metadata on server to detect new external subtitle files
+                    Log.d("EpisodeSubtitleDialog", "Refreshing item metadata to detect new subtitles...")
+                    apiService.refreshItemMetadata(item.Id)
+                    
+                    // Small delay to allow server to process the refresh
+                    kotlinx.coroutines.delay(500)
+                    
+                    // Now fetch the updated item details
                     val details = apiService.getItemDetails(item.Id)
                     itemDetails = details
                     isLoadingSubtitles = false
+                    
+                    val subtitleCount = details?.MediaSources?.firstOrNull()?.MediaStreams
+                        ?.count { it.Type == "Subtitle" } ?: 0
+                    Log.d("EpisodeSubtitleDialog", "Loaded $subtitleCount subtitle streams after refresh")
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     // Normal cancellation when composable leaves composition - don't log as error
                     throw e // Re-throw to respect cancellation

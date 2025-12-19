@@ -12,7 +12,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,9 +47,27 @@ fun TitleOrLogo(
     val context = LocalContext.current
     val settings = remember { AppSettings(context) }
     val useLogo = settings.useLogoForTitle
-    val logoTag = item.ImageTags?.get("Logo")
     
-    if (useLogo && logoTag != null && apiService != null) {
+    // Check for item's own logo first
+    val itemLogoTag = item.ImageTags?.get("Logo")
+    
+    // For episodes, use the SeriesId to fetch the series logo if the episode doesn't have one
+    val isEpisode = item.Type == "Episode"
+    val seriesId = item.SeriesId
+    
+    // Determine which ID and tag to use for the logo
+    val (logoItemId, logoTag, hasLogo) = when {
+        // Item has its own logo
+        itemLogoTag != null -> Triple(item.Id, itemLogoTag, true)
+        // Episode with a SeriesId - use series logo (pass null tag, Jellyfin will find it)
+        isEpisode && seriesId != null -> Triple(seriesId, null, true)
+        else -> Triple(item.Id, null, false)
+    }
+    
+    // Track if logo failed to load
+    var logoLoadFailed by remember { mutableStateOf(false) }
+    
+    if (useLogo && hasLogo && apiService != null && !logoLoadFailed) {
         // Show logo image - size can be customized per screen
         // Default is 45dp, but can be reduced for specific screens (e.g., SeriesDetailsScreen uses 31.5dp)
         val logoHeight = logoHeightDp.dp
@@ -57,14 +78,18 @@ fun TitleOrLogo(
         ) {
             AsyncImage(
                 model = ImageRequest.Builder(context)
-                    .data(apiService.getImageUrl(item.Id, "Logo", logoTag))
+                    .data(apiService.getImageUrl(logoItemId, "Logo", logoTag))
                     .headers(apiService.getImageRequestHeaders())
                     .build(),
                 contentDescription = item.Name,
                 modifier = Modifier
                     .height(logoHeight) // Fixed height for consistent layout
                     .wrapContentWidth(),
-                contentScale = ContentScale.Fit
+                contentScale = ContentScale.Fit,
+                onError = { 
+                    // Logo failed to load, fallback to title text
+                    logoLoadFailed = true
+                }
             )
         }
     } else {

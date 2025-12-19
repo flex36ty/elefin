@@ -4,6 +4,149 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2025-12-19
+
+### Added
+
+- **Movie Request Screen - Cast Display**
+  - Added Cast Members row to Movie Request screen.
+- Implemented robust focus isolation for Movie Request screen using a `Dialog` overlay and explicit 4-directional focus locking.
+- Implemented 1-second debounced focus for Discover page background and title updates in both Movies and TV Shows libraries to prevent flickering.
+  - Integrated with Jellyseerr API to fetch full movie credits for discovered items
+  - Reused `StandardCardContainer` for high-quality TV-centric card styling
+- **Plex-style Dynamic Backgrounds**: Added to Home, TV Shows, and Movies screens. Implemented cinematic background gradients where colors are dynamically extracted from the focused item's backdrop (muted/darkened) to match the artwork, using `androidx.palette`.
+
+### Changed
+
+- **Movie Request Screen Layout Overhaul**
+  - Completely refactored the layout to match the premium full-screen design of `MovieDetailsScreen`
+  - Replaced basic information layout with a 50/50 vertical split
+  - Top section: Large title, metadata row (year, genres, rating), and synopsis
+  - Repositioned the Request button to the standard action button row below the synopsis
+  - Added full-screen backdrop with dynamic overlay
+
+- **Vibrant Backgrounds**
+  - Reduced background scrim opacity from 20% to 10% for a brighter, more vibrant look
+  - Disabled generic gradient overlay when dynamic Plex-style color background is active to prevent "double-scrimming"
+  - Significantly improved visual quality of background art on Home and Library screens
+
+- **Discover Screen Focus Optimization**
+  - Metadata (Title/Synopsis) now updates **instantly** when a card is focused (zero lag)
+  - Background image updates are debounced (500ms) to prevent flickering during fast scrolling
+  - Implemented correct focus observation order to fix issue where background wouldn't update
+
+### Fixed
+
+- **Jellyseerr API Request Serialization**
+  - Fixed "400 Bad Request" by ensuring default values (like `mediaType`) are explicitly serialized
+  - Fixed JSON serialization error in `requestMovie` by using dedicated `MovieRequestBody` data class
+  - Improved error logging for Jellyseerr API interactions
+
+---
+
+
+## 2025-12-18
+
+### Added
+
+- **Jellyseerr Integration - Discover Tab**
+  - Replaced TMDB trending feature with Jellyseerr integration for richer discovery
+  - New "Discover" tab in Movies and TV Shows libraries (replaces "Trending")
+  - Displays three category rows: 🔥 Trending, Popular, and Upcoming
+  - Each category displayed in its own row with titles matching the library screen layout
+  - Cards show availability badge (✓) if content exists in your Jellyfin library
+  - Clicking a card navigates to the movie/series info page if it exists in Jellyfin
+  - Shows toast notification if content is not in your library
+  - Metadata display with synopsis, rating, year, and genres when focusing on cards
+
+- **Jellyseerr Authentication Options**
+  - Two authentication methods: API Key or Username/Password login
+  - API Key: Paste your API key from Jellyseerr Settings > General
+  - Username/Password: Sign in with your Jellyfin credentials OR local Jellyseerr account
+  - Authentication method toggle in Settings to switch between options
+  - Login dialog with Jellyfin/Local account selector
+  - Session persists across app restarts
+  - Sign Out option to clear stored credentials
+
+- **Movie Request Screen**
+  - When selecting a movie not in your Jellyfin library, a request screen is now shown
+  - Request screen displays movie details: poster, title, rating, year, genres, and synopsis
+  - Large "Request" button to submit a request to your Jellyseerr server
+  - Shows request status: pending, available, or already requested
+  - Seamless integration with Jellyseerr API for request submission
+
+### Changed
+
+- **Settings Reorganized**
+  - Removed TMDB API Key setting (deprecated)
+  - Added Jellyseerr URL setting for your Jellyseerr/Overseerr server address
+  - Added Authentication Method toggle (API Key or Login)
+  - Added Jellyseerr API Key setting (for API Key auth)
+  - Added Jellyseerr Login button (for Username/Password auth)
+  - Added Enable Discover Tab toggle to show/hide the Discover tab
+
+---
+
+## 2025-12-17
+
+### Added
+
+- **Trending Tab Navigation to Library Items**
+  - Clicking on a trending movie/TV show now navigates to its info page if it exists in your Jellyfin library
+  - Search first attempts to match by TMDB ID (most accurate), then falls back to title + year matching
+  - Shows a toast notification if the item is not found in your library
+
+- **TMDB Trending Tab Enable/Disable Setting**
+  - New toggle in Settings to enable or disable the Trending tab in Movies and TV Shows libraries
+  - Allows users to hide the Trending tab even if TMDB API key is configured
+
+- **Trending Screen Metadata Display**
+  - Trending screens now show synopsis, rating, year, and genres when focusing on a card (just like the home screen)
+  - Smooth Crossfade animation when switching between focused items
+  - Genres displayed using TMDB genre mappings
+
+### Fixed
+
+- **External Subtitle Detection on Info Screen**
+  - Subtitle selector now triggers an item metadata refresh on the Jellyfin server when opened
+  - Newly added external subtitle files (`.srt`, `.ass`, `.vtt`) are detected immediately
+  - No longer need to wait for Jellyfin's scheduled library scan to see new subtitles
+  - Applies to Movie Details, Series Details, and Video Player subtitle selectors
+
+---
+
+## 2025-12-16
+
+### Added
+
+- **Chapters Row on Movie Details Screen**
+  - New "Chapters" row displays all chapter markers below the Cast row
+  - Each chapter shows a thumbnail image (if available), timestamp badge, and chapter name
+  - Click on a chapter to start playback from that exact position
+  - Chapter thumbnails fetched from Jellyfin's `/Items/{itemId}/Images/Chapter/{index}` endpoint
+  - Chapters are fetched via Jellyfin API when available in media metadata
+
+### Fixed
+
+- **Autoplay Next Episode - Complete Rewrite**
+  - Completely rebuilt autoplay system based on Jellyfin Android TV's proven approach
+  - Fixed issue where next episode wouldn't start after countdown finished
+  - Player now properly stops and releases before starting next episode
+  - Uses `applicationContext` with `FLAG_ACTIVITY_NEW_TASK` for reliable activity transitions
+  - Eliminated race conditions between old and new player activities
+  - Countdown now reliably triggers episode transition
+
+- **TV Show Logos in Continue Watching & Next Up**
+  - Fixed logos not appearing for TV show episodes in "Continue Watching" and "Next Up" rows
+  - Now fetches series logo using `SeriesId` when episode doesn't have its own logo
+  - Graceful fallback to text title if no logo is available
+
+- **Chapter Playback Position**
+  - Fixed clicking on a chapter starting from resume position instead of chapter position
+  - Player now uses the exact position passed in (chapter timestamp) instead of overriding with fresh UserData position
+
+---
+
 - **TV Shows Library Genre Rows Fix**
   - Fixed "More in <Genre>" rows not appearing in TV Shows library screen
   - Added missing ChildCount and RecursiveItemCount fields to genre-based show API requests
@@ -343,13 +486,12 @@ All notable changes to Elefin will be documented in this file.
   - Cinema: Movie theater style 2.39:1 cinemascope with wide black bars (like a real cinema!)
   - Stretch: Stretches the video to fill the screen
 
-- **Focusable Seek Bar** \
+- **Focusable Seek Bar** 
   - Navigate to the progress bar and use Left/Right arrows to seek quickly through the video
 
 ### Improved
 
-- **Home Screen Performance** 
-  - Debounced synopsis loading to prevent lag during fast scrolling
+- **TV Library Navigation**: Implemented row focus retention. Rows now remember the last focused card when navigating vertically.
 - **Smoother Scrolling** 
   - Reduced API calls and recompositions when navigating between items
 - **Player Focus Handling** 

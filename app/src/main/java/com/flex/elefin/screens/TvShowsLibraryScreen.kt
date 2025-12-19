@@ -38,6 +38,8 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -59,6 +61,7 @@ import androidx.tv.material3.TabRowDefaults
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import coil.imageLoader
+import coil.annotation.ExperimentalCoilApi
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.flex.elefin.jellyfin.AppSettings
@@ -66,6 +69,16 @@ import com.flex.elefin.jellyfin.JellyfinApiService
 import com.flex.elefin.jellyfin.JellyfinConfig
 import com.flex.elefin.jellyfin.JellyfinItem
 import com.flex.elefin.jellyfin.JellyfinRepository
+import com.flex.elefin.jellyseerr.JellyseerrApiService
+import com.flex.elefin.jellyseerr.JellyseerrTvShow
+import com.flex.elefin.jellyseerr.JellyseerrImageUrl
+import com.flex.elefin.jellyseerr.JellyseerrGenres
+import com.flex.elefin.ui.ArtworkPalette
+import com.flex.elefin.ui.PlexPaletteExtractor
+import com.flex.elefin.ui.PlexBackdropGradient
+import android.graphics.BitmapFactory
+import android.graphics.drawable.BitmapDrawable
+import coil.request.SuccessResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -80,6 +93,7 @@ import java.util.Locale
  * TV Shows Library Screen - A dedicated screen for the TV Shows library
  * that is a 1:1 copy of the home screen layout but focused only on TV show content.
  */
+@OptIn(ExperimentalCoilApi::class)
 @Composable
 fun TvShowsLibraryScreen(
     libraryId: String,
@@ -128,8 +142,38 @@ fun TvShowsLibraryScreen(
     var useSimpleCardsWhenSettingsOpened by remember { mutableStateOf(false) }
     var useGoogleTvCardsWhenSettingsOpened by remember { mutableStateOf(false) }
     
-    // Tab state: "recommendations" or "library"
+    // Tab state: "recommendations", "library", or "discover"
     var selectedTab by remember { mutableStateOf("recommendations") }
+    
+    // Jellyseerr API Service for discover content
+    val jellyseerrApiService = remember(
+        settings.jellyseerrUrl, 
+        settings.jellyseerrAuthType, 
+        settings.jellyseerrApiKey, 
+        settings.jellyseerrSessionCookie
+    ) {
+        if (settings.jellyseerrUrl.isBlank()) return@remember null
+        
+        when (settings.jellyseerrAuthType) {
+            "api_key" -> {
+                if (settings.jellyseerrApiKey.isNotBlank()) {
+                    JellyseerrApiService.withApiKey(settings.jellyseerrUrl, settings.jellyseerrApiKey)
+                } else null
+            }
+            "credentials" -> {
+                if (settings.jellyseerrSessionCookie.isNotBlank()) {
+                    JellyseerrApiService.withCookie(settings.jellyseerrUrl, settings.jellyseerrSessionCookie)
+                } else null
+            }
+            else -> null
+        }
+    }
+    
+    // Jellyseerr Discover data states (each category in its own row)
+    var discoverTvShowsByCategory by remember { mutableStateOf<Map<String, List<JellyseerrTvShow>>>(emptyMap()) }
+    var isDiscoverLoading by remember { mutableStateOf(false) }
+    var discoverHighlightedShow by remember { mutableStateOf<JellyseerrTvShow?>(null) }
+    var instantDiscoverHighlightedShow by remember { mutableStateOf<JellyseerrTvShow?>(null) }
     
     // Refresh state
     var isRefreshing by remember { mutableStateOf(false) }
@@ -164,6 +208,9 @@ fun TvShowsLibraryScreen(
     var instantHighlightedItem by remember { mutableStateOf<JellyfinItem?>(null) }
     var instantHighlightedItemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     var backgroundChangeJob by remember { mutableStateOf<Job?>(null) }
+    
+    // Dynamic background palette
+    var currentArtworkPalette by remember { mutableStateOf<ArtworkPalette?>(null) }
     
     // Focus requester for initial focus
     val focusRequester = remember { FocusRequester() }
@@ -285,6 +332,33 @@ fun TvShowsLibraryScreen(
         }
     }
     
+    // Fetch Jellyseerr discover TV shows when tab is selected
+    LaunchedEffect(selectedTab, jellyseerrApiService) {
+        if (selectedTab == "discover" && jellyseerrApiService != null && discoverTvShowsByCategory.isEmpty()) {
+            isDiscoverLoading = true
+            withContext(Dispatchers.IO) {
+                try {
+                    Log.d("TvShowsLibraryScreen", "Fetching Jellyseerr discover TV shows...")
+                    val discoverData = jellyseerrApiService.getAllTvCategories()
+                    discoverTvShowsByCategory = discoverData
+                    
+                    // Set initial highlighted discover show
+                    val firstShow = discoverData["🔥 Trending"]?.firstOrNull()
+                        ?: discoverData["Popular"]?.firstOrNull()
+                    if (firstShow != null) {
+                        discoverHighlightedShow = firstShow
+                        instantDiscoverHighlightedShow = firstShow
+                    }
+                    
+                    Log.d("TvShowsLibraryScreen", "Loaded ${discoverData.size} discover TV show categories")
+                } catch (e: Exception) {
+                    Log.e("TvShowsLibraryScreen", "Error loading Jellyseerr discover TV shows", e)
+                }
+            }
+            isDiscoverLoading = false
+        }
+    }
+    
     // Request initial focus
     LaunchedEffect(isLoading) {
         if (!isLoading) {
@@ -382,37 +456,77 @@ fun TvShowsLibraryScreen(
             modifier = Modifier.fillMaxSize()
         ) {
             // Get image URL for current highlighted item - use backdrop photo
-            val imageUrl = highlightedItem?.let { item ->
-                // Low power mode uses 720p, normal mode uses 1080p
-                val bgMaxWidth = if (lowPowerMode.value) 1280 else 1920
-                val bgMaxHeight = if (lowPowerMode.value) 720 else 1080
-                val bgQuality = if (lowPowerMode.value) 75 else 90
-                
-                // For episodes, try to get the series backdrop
-                val itemIdForBackdrop = if (item.Type == "Episode" && item.SeriesId != null) {
-                    item.SeriesId
+            // For trending tab, use TMDB backdrop; for recommendations, use Jellyfin backdrop
+            val imageUrl = if (selectedTab == "discover") {
+                discoverHighlightedShow?.backdropPath?.let { JellyseerrImageUrl.backdrop(it) } ?: ""
+            } else {
+                highlightedItem?.let { item ->
+                    // Low power mode uses 720p, normal mode uses 1080p
+                    val bgMaxWidth = if (lowPowerMode.value) 1280 else 1920
+                    val bgMaxHeight = if (lowPowerMode.value) 720 else 1080
+                    val bgQuality = if (lowPowerMode.value) 75 else 90
+                    
+                    // For episodes, try to get the series backdrop
+                    val itemIdForBackdrop = if (item.Type == "Episode" && item.SeriesId != null) {
+                        item.SeriesId
+                    } else {
+                        item.Id
+                    }
+                    
+                    val backdropUrl = apiService?.getImageUrl(itemIdForBackdrop, "Backdrop", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
+                    if (backdropUrl.isNotEmpty()) {
+                        backdropUrl
+                    } else {
+                        // Fall back to primary image if no backdrop
+                        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
+                    }
+                } ?: ""
+            }
+            
+            // Extract palette from the current image URL
+            LaunchedEffect(imageUrl) {
+                if (imageUrl.isNotEmpty()) {
+                    withContext(Dispatchers.IO) {
+                        try {
+                            val loader = coil.ImageLoader(context)
+                            val request = ImageRequest.Builder(context)
+                                .data(imageUrl)
+                                .allowHardware(false) // Required for Palette
+                                .build()
+                            
+                            val result = loader.execute(request)
+                            if (result is SuccessResult) {
+                                val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
+                                if (bitmap != null) {
+                                    val palette = PlexPaletteExtractor.extract(context, bitmap)
+                                    withContext(Dispatchers.Main) {
+                                        currentArtworkPalette = palette
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e("TvShowsLibraryScreen", "Error extracting palette", e)
+                        }
+                    }
                 } else {
-                    item.Id
+                    currentArtworkPalette = null
                 }
-                
-                val backdropUrl = apiService?.getImageUrl(itemIdForBackdrop, "Backdrop", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
-                if (backdropUrl.isNotEmpty()) {
-                    backdropUrl
-                } else {
-                    // Fall back to primary image if no backdrop
-                    apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
-                }
-            } ?: ""
+            }
             
             // Use Crossfade for smooth fade in/out animation (same as home screen)
-            if (!darkModeEnabled && selectedTab == "recommendations") {
+            if (!darkModeEnabled && (selectedTab == "recommendations" || selectedTab == "discover")) {
                 Crossfade(
                     targetState = imageUrl,
                     animationSpec = tween(durationMillis = 500),
                     label = "background_fade"
                 ) { currentUrl ->
-                    if (currentUrl.isNotEmpty() && apiService != null) {
-                        val headerMap = apiService.getImageRequestHeaders()
+                    if (currentUrl.isNotEmpty()) {
+                        // For recommendations, use Jellyfin headers; for trending, no headers needed
+                        val headerMap = if (selectedTab == "recommendations" && apiService != null) {
+                            apiService.getImageRequestHeaders()
+                        } else {
+                            okhttp3.Headers.Builder().build()
+                        }
                         AsyncImage(
                             model = ImageRequest.Builder(LocalContext.current)
                                 .data(currentUrl)
@@ -422,7 +536,7 @@ fun TvShowsLibraryScreen(
                                 .crossfade(300)
                                 .allowHardware(true)
                                 .build(),
-                            contentDescription = highlightedItem?.Name ?: "",
+                            contentDescription = if (selectedTab == "discover") discoverHighlightedShow?.name ?: "" else highlightedItem?.Name ?: "",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.FillBounds,
                             alignment = Alignment.Center
@@ -445,26 +559,37 @@ fun TvShowsLibraryScreen(
             }
             
             // Dark overlay and scrim (same as home screen)
-            if (!darkModeEnabled && selectedTab == "recommendations") {
-                // Default view: 20% darkness + gradient scrim
+            if (!darkModeEnabled && (selectedTab == "recommendations" || selectedTab == "discover")) {
+                // Default view: 10% darkness (reduced from 20% for vibrancy)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.2f))
+                        .background(Color.Black.copy(alpha = 0.1f))
                 )
                 
-                // Scrim gradient overlay (same as home screen)
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .carouselGradient()
-                )
+                // Scrim gradient overlay - only show if NOT using dynamic Plex background
+                if (currentArtworkPalette == null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .carouselGradient()
+                    )
+                }
             } else {
                 // Library view: 50% darkness (no gradient scrim)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Color.Black.copy(alpha = 0.5f))
+                )
+            }
+            
+            // Apply Plex-style dynamic gradient overlay
+            if (currentArtworkPalette != null && !darkModeEnabled && (selectedTab == "recommendations" || selectedTab == "discover")) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(PlexBackdropGradient(currentArtworkPalette!!))
                 )
             }
         }
@@ -697,8 +822,15 @@ fun TvShowsLibraryScreen(
                         }
                     }
                     
-                    // Recommendations and Library tabs
-                    val tabs = listOf("Recommendations" to "recommendations", "$libraryName Library" to "library")
+                    // Recommendations, Library, and Trending tabs
+                    val hasJellyseerr = settings.isJellyseerrConfigured
+                    val tabs = buildList {
+                        add("Recommendations" to "recommendations")
+                        add("$libraryName Library" to "library")
+                        if (hasJellyseerr) {
+                            add("Discover" to "discover")
+                        }
+                    }
                     val selectedTabIndex = tabs.indexOfFirst { it.second == selectedTab }.takeIf { it >= 0 } ?: 0
                     
                     TabRow(
@@ -1337,7 +1469,7 @@ fun TvShowsLibraryScreen(
                     }
                 }
             }
-        } else {
+        } else if (selectedTab == "library") {
             // Library grid view (same as home screen library view)
             val columns = 6
             val lazyListState = rememberLazyListState()
@@ -1497,6 +1629,253 @@ fun TvShowsLibraryScreen(
                             letter = selectedLetter,
                             visible = showLetterOverlay
                         )
+                    }
+                }
+            }
+        } else if (selectedTab == "discover") {
+            // Discover tab content - Jellyseerr trending/popular/upcoming TV shows
+            if (jellyseerrApiService == null) {
+                // No Jellyseerr configured
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "Jellyseerr Not Configured",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Add your Jellyseerr URL and API key in Settings to discover TV shows",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+            } else if (isDiscoverLoading) {
+                // Loading state
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Loading discover TV shows...",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Color.White
+                    )
+                }
+            } else {
+                // Discover content with rows (same layout as recommendations)
+                // Background is already handled at the top level
+                
+                // Discover TV show details section with Crossfade animation (like recommendations)
+                val discoverMetadataKey = instantDiscoverHighlightedShow?.id?.toString() ?: ""
+                
+                Crossfade(
+                    targetState = discoverMetadataKey,
+                    animationSpec = tween(durationMillis = 200),
+                    label = "discover_metadata_fade"
+                ) { currentKey ->
+                    val discoverShow = instantDiscoverHighlightedShow
+                    if (discoverShow != null && currentKey == discoverShow.id.toString()) {
+                        Column(
+                            modifier = Modifier
+                                .padding(start = 54.dp, top = 77.dp, end = 38.dp)
+                                .fillMaxWidth(0.75f)
+                        ) {
+                            // Title
+                            Text(
+                                text = discoverShow.name ?: "Unknown",
+                                style = MaterialTheme.typography.headlineMedium.copy(
+                                    fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+                                ),
+                                color = Color.White,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            
+                            // Metadata row
+                            Row(
+                                modifier = Modifier.padding(bottom = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Rating
+                                discoverShow.voteAverage?.let { rating ->
+                                    Text(
+                                        text = "★ ${String.format("%.1f", rating)}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color(0xFFFFD700)
+                                    )
+                                }
+                                
+                                // First air year
+                                discoverShow.firstAirDate?.take(4)?.let { year ->
+                                    Text(
+                                        text = year,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.White.copy(alpha = 0.8f)
+                                    )
+                                }
+                                
+                                // Genre (from genre IDs)
+                                val genreNames = discoverShow.genreIds.take(2).mapNotNull { 
+                                    JellyseerrGenres.TV_GENRES[it] 
+                                }
+                                if (genreNames.isNotEmpty()) {
+                                    Text(
+                                        text = genreNames.joinToString(", "),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.White.copy(alpha = 0.8f)
+                                    )
+                                }
+                                
+                                // Availability badge
+                                if (discoverShow.mediaInfo?.isAvailable == true) {
+                                    Text(
+                                        text = "In Library",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White,
+                                        modifier = Modifier
+                                            .background(Color(0xFF4CAF50), RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            
+                            // Overview/Synopsis
+                            discoverShow.overview?.let { overview ->
+                                if (overview.isNotEmpty()) {
+                                    Text(
+                                        text = overview,
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f,
+                                            lineHeight = MaterialTheme.typography.bodyLarge.fontSize * 0.8f * 1.1f
+                                        ),
+                                        color = Color.White.copy(alpha = 0.9f),
+                                        maxLines = 3,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Bottom container with discover rows
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(
+                            if (debugOutlinesEnabled) {
+                                Modifier.border(4.dp, Color.Blue)
+                            } else {
+                                Modifier
+                            }
+                        )
+                ) {
+                    // Spacer to push content down (40% for details)
+                    Spacer(modifier = Modifier.weight(0.4f))
+                    
+                    // Content rows (60% for rows)
+                    LazyColumn(
+                        contentPadding = PaddingValues(bottom = 20.dp * 1.15f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(0.6f)
+                            .padding(start = 54.dp, top = 0.dp, end = 38.dp, bottom = 0.dp)
+                            .then(
+                                if (debugOutlinesEnabled) {
+                                    Modifier.border(3.dp, Color.Yellow)
+                                } else {
+                                    Modifier
+                                }
+                            )
+                    ) {
+                        item {
+                            Column(
+                                modifier = Modifier
+                                    .padding(top = 24.dp)
+                                    .focusRequester(focusRequester)
+                            ) {
+                                // Sort categories: "🔥 Trending" first, then "Popular", then "Upcoming"
+                                val sortedCategories = discoverTvShowsByCategory.keys.sortedWith(
+                                    compareBy<String> { 
+                                        when {
+                                            it.startsWith("🔥") -> 0
+                                            it == "Popular" -> 1
+                                            it == "Upcoming" -> 2
+                                            else -> 3
+                                        }
+                                    }
+                                )
+                                
+                                sortedCategories.forEachIndexed { index, categoryName ->
+                                    val shows = discoverTvShowsByCategory[categoryName] ?: return@forEachIndexed
+                                    if (shows.isEmpty()) return@forEachIndexed
+                                    
+                                    CategoryRow(
+                                        categoryName = categoryName,
+                                        shows = shows,
+                                        titleTopPadding = if (index == 0) 12.dp else 30.36.dp,
+                                        onShowClick = { show ->
+                                            // Search for this TV show in Jellyfin library and navigate to details
+                                            scope.launch {
+                                                Log.d("TvShowsLibraryScreen", "Searching for TV show: ${show.name} (ID: ${show.id})")
+                                                
+                                                // Check if Jellyseerr knows it's in the library
+                                                val jellyfinId = show.mediaInfo?.jellyfinId
+                                                if (jellyfinId != null) {
+                                                    // Directly fetch from Jellyfin using the known ID
+                                                    val jellyfinItem = apiService?.getItemDetails(jellyfinId)
+                                                    if (jellyfinItem != null) {
+                                                        Log.d("TvShowsLibraryScreen", "Found TV show in library via Jellyseerr: ${jellyfinItem.Name}")
+                                                        onItemClick(jellyfinItem, 0L)
+                                                        return@launch
+                                                    }
+                                                }
+                                                
+                                                // Try to find by TMDB ID
+                                                var jellyfinItem = apiService?.findItemByTmdbId(show.id, "Series")
+                                                
+                                                // Fall back to title search if TMDB ID not found
+                                                if (jellyfinItem == null) {
+                                                    val year = show.firstAirDate?.take(4)
+                                                    jellyfinItem = apiService?.findItemByTitle(show.name ?: "", year, "Series")
+                                                }
+                                                
+                                                if (jellyfinItem != null) {
+                                                    Log.d("TvShowsLibraryScreen", "Found TV show in library: ${jellyfinItem.Name} (ID: ${jellyfinItem.Id})")
+                                                    onItemClick(jellyfinItem, 0L)
+                                                } else {
+                                                    Log.d("TvShowsLibraryScreen", "TV show not found in library: ${show.name}")
+                                                    android.widget.Toast.makeText(
+                                                        context,
+                                                        "${show.name} is not in your library",
+                                                        android.widget.Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            }
+                                        },
+                                        onShowFocused = { show ->
+                                            instantDiscoverHighlightedShow = show
+                                            backgroundChangeJob?.cancel()
+                                            backgroundChangeJob = scope.launch {
+                                                delay(500)
+                                                discoverHighlightedShow = show
+                                            }
+                                        },
+                                        disableUIAnimations = disableUIAnimations.value,
+                                        debugOutlinesEnabled = debugOutlinesEnabled
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1811,3 +2190,202 @@ private fun TvShowLetterOverlay(
     }
 }
 
+/**
+ * Jellyseerr TV Show Card - displays a TV show from Jellyseerr discover data
+ * Styled to match JellyfinHorizontalCard for visual consistency
+ */
+@Composable
+fun JellyseerrTvShowCard(
+    show: JellyseerrTvShow,
+    onClick: () -> Unit,
+    onFocusChanged: (Boolean) -> Unit,
+    useSimpleCards: Boolean = false,
+    useGoogleTvCards: Boolean = false,
+    lowPowerMode: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+    
+    // Scale animation for focus
+    val scale by animateFloatAsState(
+        targetValue = if (isFocused) 1.1f else 1f,
+        animationSpec = tween(durationMillis = if (lowPowerMode) 0 else 150),
+        label = "jellyseerr_tv_card_scale"
+    )
+    
+    // Card dimensions matching JellyfinHorizontalCard
+    val cardWidth = 105.dp
+    val cardHeight = 157.5.dp // 2:3 aspect ratio for posters
+    
+    val posterUrl = JellyseerrImageUrl.poster(show.posterPath, "w342")
+    
+    Box(
+        modifier = modifier
+            .width(cardWidth)
+            .height(cardHeight)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.DarkGray.copy(alpha = 0.3f))
+            .onFocusChanged { focusState ->
+                onFocusChanged(focusState.isFocused)
+            }
+            .focusable(interactionSource = interactionSource)
+            .clickable { onClick() }
+    ) {
+        // Poster image
+        if (posterUrl != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(posterUrl)
+                    .crossfade(true)
+                    .memoryCachePolicy(CachePolicy.ENABLED)
+                    .diskCachePolicy(CachePolicy.ENABLED)
+                    .build(),
+                contentDescription = show.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            // Placeholder when no poster
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.DarkGray),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = (show.name ?: "?").take(1),
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = Color.White.copy(alpha = 0.5f)
+                )
+            }
+        }
+        
+        // Focus border
+        if (isFocused) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .border(3.dp, Color.White, RoundedCornerShape(8.dp))
+            )
+        }
+        
+        // Rating badge in top-right corner
+        show.voteAverage?.let { rating ->
+            if (rating > 0) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "★ ${String.format("%.1f", rating)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFFFD700)
+                    )
+                }
+            }
+        }
+        
+        // Availability badge in bottom-left corner (shows if in Jellyfin library)
+        if (show.mediaInfo?.isAvailable == true) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(4.dp)
+                    .background(Color(0xFF4CAF50), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "✓",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                    color = Color.White
+                )
+            }
+        }
+    }
+}
+
+
+
+/**
+ * A row of TV shows for a specific category with focus memory.
+ * Remembers the last focused item index and restores it when focus enters the row.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun CategoryRow(
+    categoryName: String,
+    shows: List<JellyseerrTvShow>,
+    onShowClick: (JellyseerrTvShow) -> Unit,
+    onShowFocused: (JellyseerrTvShow) -> Unit,
+    titleTopPadding: androidx.compose.ui.unit.Dp = 12.dp,
+    disableUIAnimations: Boolean,
+    debugOutlinesEnabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    // Remember the last focused item index for this specific category
+    // key is implicit by position but rememberSaveable helps if scrolled away
+    var lastFocusedIndex by androidx.compose.runtime.saveable.rememberSaveable(categoryName) { 
+        androidx.compose.runtime.mutableIntStateOf(0) 
+    }
+    
+    // Map of FocusRequesters for visible items
+    // We use a map because LazyRow decomposes items
+    val focusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
+    
+    // Title
+    Text(
+        text = categoryName,
+        style = MaterialTheme.typography.headlineMedium.copy(
+            fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+        ),
+        modifier = Modifier.padding(bottom = 12.dp, top = titleTopPadding)
+    )
+    
+    LazyRow(
+        contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        flingBehavior = if (disableUIAnimations) ScrollableDefaults.flingBehavior() else ScrollableDefaults.flingBehavior(),
+        modifier = modifier
+            .focusProperties {
+                // When focus enters the row, redirect to the last focused item
+                enter = {
+                    focusRequesters[lastFocusedIndex] ?: FocusRequester.Default
+                }
+            }
+            .then(if (debugOutlinesEnabled) Modifier.border(2.dp, Color.Magenta) else Modifier)
+    ) {
+        items(
+            count = shows.size,
+            key = { index -> shows[index].id }
+        ) { index ->
+            val show = shows[index]
+            val focusRequester = remember { FocusRequester() }
+            
+            // Register focus requester
+            DisposableEffect(index) {
+                focusRequesters[index] = focusRequester
+                onDispose { focusRequesters.remove(index) }
+            }
+            
+            JellyseerrTvShowCard(
+                show = show,
+                onClick = { onShowClick(show) },
+                onFocusChanged = { isFocused ->
+                    if (isFocused) {
+                        lastFocusedIndex = index
+                        onShowFocused(show)
+                    }
+                },
+                modifier = Modifier.focusRequester(focusRequester)
+            )
+        }
+    }
+}

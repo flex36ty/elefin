@@ -45,6 +45,11 @@ class GLVideoSurfaceView @JvmOverloads constructor(
     // Callback for when the surface is ready
     private var onSurfaceReadyCallback: ((Surface) -> Unit)? = null
     
+    // Video dimensions for aspect ratio correction
+    private var videoWidth: Int = 0
+    private var videoHeight: Int = 0
+    private var aspectRatioVertexBuffer: FloatBuffer? = null
+    
     /**
      * Set a callback to be notified when the GL surface is ready.
      * This is needed because surface creation is asynchronous.
@@ -53,6 +58,66 @@ class GLVideoSurfaceView @JvmOverloads constructor(
         onSurfaceReadyCallback = callback
         // If surface is already ready, call immediately
         codecSurface?.let { callback(it) }
+    }
+    
+    /**
+     * Set the video dimensions for proper aspect ratio rendering.
+     * Call this when the video format is known (e.g., from ExoPlayer's onVideoSizeChanged).
+     */
+    fun setVideoSize(width: Int, height: Int) {
+        if (width > 0 && height > 0 && (width != videoWidth || height != videoHeight)) {
+            videoWidth = width
+            videoHeight = height
+            Log.d(TAG, "🎬 Video size set: ${width}x${height}")
+            updateAspectRatioVertexBuffer()
+            requestRender()
+        }
+    }
+    
+    /**
+     * Calculate and update vertex coordinates to maintain proper aspect ratio.
+     * This creates letterboxing (black bars top/bottom) or pillarboxing (black bars left/right)
+     * as needed to display the video without stretching.
+     */
+    private fun updateAspectRatioVertexBuffer() {
+        if (videoWidth <= 0 || videoHeight <= 0 || viewportWidth <= 0 || viewportHeight <= 0) {
+            aspectRatioVertexBuffer = null
+            return
+        }
+        
+        val videoAspect = videoWidth.toFloat() / videoHeight.toFloat()
+        val viewportAspect = viewportWidth.toFloat() / viewportHeight.toFloat()
+        
+        val scaleX: Float
+        val scaleY: Float
+        
+        if (videoAspect > viewportAspect) {
+            // Video is wider than viewport - letterbox (black bars top/bottom)
+            scaleX = 1.0f
+            scaleY = viewportAspect / videoAspect
+        } else {
+            // Video is taller than viewport - pillarbox (black bars left/right)
+            scaleX = videoAspect / viewportAspect
+            scaleY = 1.0f
+        }
+        
+        Log.d(TAG, "🎬 Aspect ratio: video=$videoAspect, viewport=$viewportAspect, scale=($scaleX, $scaleY)")
+        
+        // Adjusted vertex coordinates for proper aspect ratio
+        val adjustedCoords = floatArrayOf(
+            -scaleX, -scaleY,  // Bottom-left
+             scaleX, -scaleY,  // Bottom-right
+            -scaleX,  scaleY,  // Top-left
+             scaleX,  scaleY   // Top-right
+        )
+        
+        aspectRatioVertexBuffer = ByteBuffer.allocateDirect(adjustedCoords.size * 4)
+            .order(ByteOrder.nativeOrder())
+            .asFloatBuffer()
+            .apply {
+                put(adjustedCoords)
+                position(0)
+            }
     }
     
     // Frame blending resources
@@ -336,6 +401,9 @@ class GLVideoSurfaceView @JvmOverloads constructor(
                 GLES20.glDeleteTextures(1, textures, 0)
             }
             createPreviousFrameFBO()
+            
+            // Recalculate aspect ratio vertex buffer
+            updateAspectRatioVertexBuffer()
         }
     }
     
@@ -431,9 +499,10 @@ class GLVideoSurfaceView @JvmOverloads constructor(
         GLES20.glEnableVertexAttribArray(positionHandle)
         GLES20.glEnableVertexAttribArray(texCoordHandle)
         
-        // Set vertex positions
+        // Set vertex positions - use aspect ratio corrected buffer if available
+        val vBuffer = aspectRatioVertexBuffer ?: vertexBuffer
         GLES20.glVertexAttribPointer(
-            positionHandle, 2, GLES20.GL_FLOAT, false, 0, vertexBuffer
+            positionHandle, 2, GLES20.GL_FLOAT, false, 0, vBuffer
         )
         
         // Set texture coordinates

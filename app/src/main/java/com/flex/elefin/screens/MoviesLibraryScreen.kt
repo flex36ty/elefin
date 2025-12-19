@@ -10,9 +10,9 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.gestures.FlingBehavior
@@ -68,6 +68,10 @@ import com.flex.elefin.jellyfin.JellyfinApiService
 import com.flex.elefin.jellyfin.JellyfinConfig
 import com.flex.elefin.jellyfin.JellyfinItem
 import com.flex.elefin.jellyfin.JellyfinRepository
+import com.flex.elefin.jellyseerr.JellyseerrApiService
+import com.flex.elefin.jellyseerr.JellyseerrMovie
+import com.flex.elefin.jellyseerr.JellyseerrImageUrl
+import com.flex.elefin.jellyseerr.JellyseerrGenres
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -77,11 +81,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Locale
+import com.flex.elefin.ui.ArtworkPalette
+import com.flex.elefin.ui.PlexPaletteExtractor
+import com.flex.elefin.ui.PlexBackdropGradient
+import android.graphics.drawable.BitmapDrawable
+import coil.request.SuccessResult
+import coil.annotation.ExperimentalCoilApi
 
 /**
  * Movies Library Screen - A dedicated screen for the Movies library
  * that is a 1:1 copy of the home screen layout but focused only on movie content.
  */
+@OptIn(ExperimentalCoilApi::class)
 @Composable
 fun MoviesLibraryScreen(
     libraryId: String,
@@ -130,8 +141,41 @@ fun MoviesLibraryScreen(
     var useSimpleCardsWhenSettingsOpened by remember { mutableStateOf(false) }
     var useGoogleTvCardsWhenSettingsOpened by remember { mutableStateOf(false) }
     
-    // Tab state: "recommendations" or "library"
+    // Tab state: "recommendations", "library", or "discover"
     var selectedTab by remember { mutableStateOf("recommendations") }
+    
+    // Jellyseerr API Service for discover content
+    val jellyseerrApiService = remember(
+        settings.jellyseerrUrl, 
+        settings.jellyseerrAuthType, 
+        settings.jellyseerrApiKey, 
+        settings.jellyseerrSessionCookie
+    ) {
+        if (settings.jellyseerrUrl.isBlank()) return@remember null
+        
+        when (settings.jellyseerrAuthType) {
+            "api_key" -> {
+                if (settings.jellyseerrApiKey.isNotBlank()) {
+                    JellyseerrApiService.withApiKey(settings.jellyseerrUrl, settings.jellyseerrApiKey)
+                } else null
+            }
+            "credentials" -> {
+                if (settings.jellyseerrSessionCookie.isNotBlank()) {
+                    JellyseerrApiService.withCookie(settings.jellyseerrUrl, settings.jellyseerrSessionCookie)
+                } else null
+            }
+            else -> null
+        }
+    }
+    
+    // Jellyseerr Discover data states (each category in its own row)
+    var discoverMoviesByCategory by remember { mutableStateOf<Map<String, List<JellyseerrMovie>>>(emptyMap()) }
+    var isDiscoverLoading by remember { mutableStateOf(false) }
+    var discoverHighlightedMovie by remember { mutableStateOf<JellyseerrMovie?>(null) }
+    var instantDiscoverHighlightedMovie by remember { mutableStateOf<JellyseerrMovie?>(null) }
+    
+    // Movie request screen state
+    var movieToRequest by remember { mutableStateOf<JellyseerrMovie?>(null) }
     
     // Refresh state
     var isRefreshing by remember { mutableStateOf(false) }
@@ -168,6 +212,9 @@ fun MoviesLibraryScreen(
     var instantHighlightedItem by remember { mutableStateOf<JellyfinItem?>(null) }
     var instantHighlightedItemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     var backgroundChangeJob by remember { mutableStateOf<Job?>(null) }
+    
+    // Plex-style dynamic background palette
+    var currentArtworkPalette by remember { mutableStateOf<ArtworkPalette?>(null) }
     
     // Focus requester for initial focus
     val focusRequester = remember { FocusRequester() }
@@ -276,6 +323,33 @@ fun MoviesLibraryScreen(
         }
     }
     
+    // Fetch Jellyseerr discover movies when tab is selected
+    LaunchedEffect(selectedTab, jellyseerrApiService) {
+        if (selectedTab == "discover" && jellyseerrApiService != null && discoverMoviesByCategory.isEmpty()) {
+            isDiscoverLoading = true
+            withContext(Dispatchers.IO) {
+                try {
+                    Log.d("MoviesLibraryScreen", "Fetching Jellyseerr discover movies...")
+                    val discoverData = jellyseerrApiService.getAllMovieCategories()
+                    discoverMoviesByCategory = discoverData
+                    
+                    // Set initial highlighted discover movie
+                    val firstMovie = discoverData["🔥 Trending"]?.firstOrNull()
+                        ?: discoverData["Popular"]?.firstOrNull()
+                    if (firstMovie != null) {
+                        discoverHighlightedMovie = firstMovie
+                        instantDiscoverHighlightedMovie = firstMovie
+                    }
+                    
+                    Log.d("MoviesLibraryScreen", "Loaded ${discoverData.size} discover movie categories")
+                } catch (e: Exception) {
+                    Log.e("MoviesLibraryScreen", "Error loading Jellyseerr discover movies", e)
+                }
+            }
+            isDiscoverLoading = false
+        }
+    }
+    
     // Request initial focus
     LaunchedEffect(isLoading) {
         if (!isLoading) {
@@ -336,30 +410,70 @@ fun MoviesLibraryScreen(
             modifier = Modifier.fillMaxSize()
         ) {
             // Get image URL for current highlighted item - use backdrop photo
-            val imageUrl = highlightedItem?.let { item ->
-                // Low power mode uses 720p, normal mode uses 1080p
-                val bgMaxWidth = if (lowPowerMode.value) 1280 else 1920
-                val bgMaxHeight = if (lowPowerMode.value) 720 else 1080
-                val bgQuality = if (lowPowerMode.value) 75 else 90
-                
-                val backdropUrl = apiService?.getImageUrl(item.Id, "Backdrop", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
-                if (backdropUrl.isNotEmpty()) {
-                    backdropUrl
+            // For discover tab, use TMDB backdrop (via Jellyseerr); for recommendations, use Jellyfin backdrop
+            val imageUrl = if (selectedTab == "discover") {
+                discoverHighlightedMovie?.backdropPath?.let { JellyseerrImageUrl.backdrop(it) } ?: ""
+            } else {
+                highlightedItem?.let { item ->
+                    // Low power mode uses 720p, normal mode uses 1080p
+                    val bgMaxWidth = if (lowPowerMode.value) 1280 else 1920
+                    val bgMaxHeight = if (lowPowerMode.value) 720 else 1080
+                    val bgQuality = if (lowPowerMode.value) 75 else 90
+                    
+                    val backdropUrl = apiService?.getImageUrl(item.Id, "Backdrop", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
+                    if (backdropUrl.isNotEmpty()) {
+                        backdropUrl
+                    } else {
+                        // Fall back to primary image if no backdrop
+                        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
+                    }
+                } ?: ""
+            }
+            
+            // Extract palette from the current image URL
+            LaunchedEffect(imageUrl) {
+                if (imageUrl.isNotEmpty()) {
+                    withContext(Dispatchers.IO) {
+                        try {
+                            val loader = coil.ImageLoader(context)
+                            val request = ImageRequest.Builder(context)
+                                .data(imageUrl)
+                                .allowHardware(false) // Required for Palette
+                                .build()
+                            
+                            val result = loader.execute(request)
+                            if (result is SuccessResult) {
+                                val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
+                                if (bitmap != null) {
+                                    val palette = PlexPaletteExtractor.extract(context, bitmap)
+                                    withContext(Dispatchers.Main) {
+                                        currentArtworkPalette = palette
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e("MoviesLibraryScreen", "Error extracting palette", e)
+                        }
+                    }
                 } else {
-                    // Fall back to primary image if no backdrop
-                    apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
+                    currentArtworkPalette = null
                 }
-            } ?: ""
+            }
             
             // Use Crossfade for smooth fade in/out animation (same as home screen)
-            if (!darkModeEnabled && selectedTab == "recommendations") {
+            if (!darkModeEnabled && (selectedTab == "recommendations" || selectedTab == "discover")) {
                 Crossfade(
                     targetState = imageUrl,
                     animationSpec = tween(durationMillis = 500),
                     label = "background_fade"
                 ) { currentUrl ->
-                    if (currentUrl.isNotEmpty() && apiService != null) {
-                        val headerMap = apiService.getImageRequestHeaders()
+                    if (currentUrl.isNotEmpty()) {
+                        // For recommendations, use Jellyfin headers; for discover, no headers needed
+                        val headerMap = if (selectedTab == "recommendations" && apiService != null) {
+                            apiService.getImageRequestHeaders()
+                        } else {
+                            okhttp3.Headers.Builder().build()
+                        }
                         AsyncImage(
                             model = ImageRequest.Builder(LocalContext.current)
                                 .data(currentUrl)
@@ -369,7 +483,7 @@ fun MoviesLibraryScreen(
                                 .crossfade(300)
                                 .allowHardware(true)
                                 .build(),
-                            contentDescription = highlightedItem?.Name ?: "",
+                            contentDescription = if (selectedTab == "discover") discoverHighlightedMovie?.title ?: "" else highlightedItem?.Name ?: "",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.FillBounds,
                             alignment = Alignment.Center
@@ -392,26 +506,36 @@ fun MoviesLibraryScreen(
             }
             
             // Dark overlay and scrim (same as home screen)
-            if (!darkModeEnabled && selectedTab == "recommendations") {
-                // Default view: 20% darkness + gradient scrim
+            if (!darkModeEnabled && (selectedTab == "recommendations" || selectedTab == "discover")) {
+                // Default view: 10% darkness (reduced from 20% for vibrancy)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.2f))
+                        .background(Color.Black.copy(alpha = 0.1f))
                 )
                 
-                // Scrim gradient overlay (same as home screen)
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .carouselGradient()
-                )
+                // Scrim gradient overlay - only show if NOT using dynamic Plex background
+                if (currentArtworkPalette == null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .carouselGradient()
+                    )
+                }
             } else {
-                // Library view: 50% darkness (no gradient scrim)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Color.Black.copy(alpha = 0.5f))
+                )
+            }
+            
+            // Apply Plex-style dynamic gradient overlay
+            if (currentArtworkPalette != null && !darkModeEnabled && (selectedTab == "recommendations" || selectedTab == "discover")) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(PlexBackdropGradient(currentArtworkPalette!!))
                 )
             }
         }
@@ -638,8 +762,15 @@ fun MoviesLibraryScreen(
                         }
                     }
                     
-                    // Recommendations and Library tabs
-                    val tabs = listOf("Recommendations" to "recommendations", "$libraryName Library" to "library")
+                    // Recommendations, Library, and Discover tabs
+                    val hasJellyseerr = settings.isJellyseerrConfigured
+                    val tabs = buildList {
+                        add("Recommendations" to "recommendations")
+                        add("$libraryName Library" to "library")
+                        if (hasJellyseerr) {
+                            add("Discover" to "discover")
+                        }
+                    }
                     val selectedTabIndex = tabs.indexOfFirst { it.second == selectedTab }.takeIf { it >= 0 } ?: 0
                     
                     TabRow(
@@ -1202,7 +1333,7 @@ fun MoviesLibraryScreen(
                     }
                 }
             }
-        } else {
+        } else if (selectedTab == "library") {
             // Library grid view (same as home screen library view)
             val columns = 6
             val lazyListState = rememberLazyListState()
@@ -1365,6 +1496,275 @@ fun MoviesLibraryScreen(
                     }
                 }
             }
+        } else if (selectedTab == "discover") {
+            // Discover tab content - Jellyseerr trending/popular/upcoming movies
+            if (jellyseerrApiService == null) {
+                // No Jellyseerr configured
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "Jellyseerr Not Configured",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Add your Jellyseerr URL and API key in Settings to discover movies",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+            } else if (isDiscoverLoading) {
+                // Loading state
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Loading discover movies...",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Color.White
+                    )
+                }
+            } else {
+                // Discover content with rows (same layout as recommendations)
+                // Background is already handled at the top level
+                
+                // Discover movie details section with Crossfade animation (like recommendations)
+                val discoverMetadataKey = instantDiscoverHighlightedMovie?.id?.toString() ?: ""
+                
+                Crossfade(
+                    targetState = discoverMetadataKey,
+                    animationSpec = tween(durationMillis = 200),
+                    label = "discover_metadata_fade"
+                ) { currentKey ->
+                    val discoverMovie = instantDiscoverHighlightedMovie
+                    if (discoverMovie != null && currentKey == discoverMovie.id.toString()) {
+                        Column(
+                            modifier = Modifier
+                                .padding(start = 54.dp, top = 77.dp, end = 38.dp)
+                                .fillMaxWidth(0.75f)
+                        ) {
+                            // Title
+                            Text(
+                                text = discoverMovie.title ?: "Unknown",
+                                style = MaterialTheme.typography.headlineMedium.copy(
+                                    fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+                                ),
+                                color = Color.White,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            
+                            // Metadata row
+                            Row(
+                                modifier = Modifier.padding(bottom = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Rating
+                                discoverMovie.voteAverage?.let { rating ->
+                                    Text(
+                                        text = "★ ${String.format("%.1f", rating)}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color(0xFFFFD700)
+                                    )
+                                }
+                                
+                                // Release year
+                                discoverMovie.releaseDate?.take(4)?.let { year ->
+                                    Text(
+                                        text = year,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.White.copy(alpha = 0.8f)
+                                    )
+                                }
+                                
+                                // Genre (from genre IDs)
+                                val genreNames = discoverMovie.genreIds.take(2).mapNotNull { 
+                                    JellyseerrGenres.MOVIE_GENRES[it] 
+                                }
+                                if (genreNames.isNotEmpty()) {
+                                    Text(
+                                        text = genreNames.joinToString(", "),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.White.copy(alpha = 0.8f)
+                                    )
+                                }
+                                
+                                // Availability badge
+                                if (discoverMovie.mediaInfo?.isAvailable == true) {
+                                    Text(
+                                        text = "In Library",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White,
+                                        modifier = Modifier
+                                            .background(Color(0xFF4CAF50), RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            
+                            // Overview/Synopsis
+                            discoverMovie.overview?.let { overview ->
+                                if (overview.isNotEmpty()) {
+                                    Text(
+                                        text = overview,
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f,
+                                            lineHeight = MaterialTheme.typography.bodyLarge.fontSize * 0.8f * 1.1f
+                                        ),
+                                        color = Color.White.copy(alpha = 0.9f),
+                                        maxLines = 3,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Bottom container with discover rows
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(
+                            if (debugOutlinesEnabled) {
+                                Modifier.border(4.dp, Color.Blue)
+                            } else {
+                                Modifier
+                            }
+                        )
+                ) {
+                    // Spacer to push content down (40% for details)
+                    Spacer(modifier = Modifier.weight(0.4f))
+                    
+                    // Content rows (60% for rows)
+                    LazyColumn(
+                        contentPadding = PaddingValues(bottom = 20.dp * 1.15f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(0.6f)
+                            .padding(start = 54.dp, top = 0.dp, end = 38.dp, bottom = 0.dp)
+                            .then(
+                                if (debugOutlinesEnabled) {
+                                    Modifier.border(3.dp, Color.Yellow)
+                                } else {
+                                    Modifier
+                                }
+                            )
+                    ) {
+                        item {
+                            Column(
+                                modifier = Modifier
+                                    .padding(top = 24.dp)
+                                    .focusRequester(focusRequester)
+                            ) {
+                                // Sort categories: "🔥 Trending" first, then "Popular", then "Upcoming"
+                                val sortedCategories = discoverMoviesByCategory.keys.sortedWith(
+                                    compareBy<String> { 
+                                        when {
+                                            it.startsWith("🔥") -> 0
+                                            it == "Popular" -> 1
+                                            it == "Upcoming" -> 2
+                                            else -> 3
+                                        }
+                                    }
+                                )
+                                
+                                sortedCategories.forEachIndexed { index, categoryName ->
+                                    val movies = discoverMoviesByCategory[categoryName] ?: return@forEachIndexed
+                                    if (movies.isEmpty()) return@forEachIndexed
+                                    
+                                    Text(
+                                        text = categoryName,
+                                        style = MaterialTheme.typography.headlineMedium.copy(
+                                            fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+                                        ),
+                                        modifier = Modifier.padding(
+                                            bottom = 12.dp,
+                                            top = if (index == 0) 12.dp else 30.36.dp
+                                        )
+                                    )
+                                    
+                                    LazyRow(
+                                        contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
+                                        horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                        flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
+                                        modifier = if (debugOutlinesEnabled) {
+                                            Modifier.border(2.dp, Color.Magenta)
+                                        } else {
+                                            Modifier
+                                        }
+                                    ) {
+                                        items(movies) { movie ->
+                                            JellyseerrMovieCard(
+                                                movie = movie,
+                                                onClick = {
+                                                    // Search for this movie in Jellyfin library and navigate to details
+                                                    scope.launch {
+                                                        Log.d("MoviesLibraryScreen", "Searching for movie: ${movie.title} (ID: ${movie.id})")
+                                                        
+                                                        // Check if Jellyseerr knows it's in the library
+                                                        val jellyfinId = movie.mediaInfo?.jellyfinId
+                                                        if (jellyfinId != null) {
+                                                            // Directly fetch from Jellyfin using the known ID
+                                                            val jellyfinItem = apiService?.getItemDetails(jellyfinId)
+                                                            if (jellyfinItem != null) {
+                                                                Log.d("MoviesLibraryScreen", "Found movie in library via Jellyseerr: ${jellyfinItem.Name}")
+                                                                onItemClick(jellyfinItem, 0L)
+                                                                return@launch
+                                                            }
+                                                        }
+                                                        
+                                                        // Try to find by TMDB ID
+                                                        var jellyfinItem = apiService?.findItemByTmdbId(movie.id, "Movie")
+                                                        
+                                                        // Fall back to title search if TMDB ID not found
+                                                        if (jellyfinItem == null) {
+                                                            val year = movie.releaseDate?.take(4)
+                                                            jellyfinItem = apiService?.findItemByTitle(movie.title ?: "", year, "Movie")
+                                                        }
+                                                        
+                                                        if (jellyfinItem != null) {
+                                                            Log.d("MoviesLibraryScreen", "Found movie in library: ${jellyfinItem.Name} (ID: ${jellyfinItem.Id})")
+                                                            onItemClick(jellyfinItem, 0L)
+                                                        } else {
+                                                            Log.d("MoviesLibraryScreen", "Movie not found in library, showing request screen: ${movie.title}")
+                                                            // Show movie request screen
+                                                            movieToRequest = movie
+                                                        }
+                                                    }
+                                                },
+                                                onFocusChanged = { isFocused ->
+                                                    if (isFocused) {
+                                                        instantDiscoverHighlightedMovie = movie
+                                                        backgroundChangeJob?.cancel()
+                                                        backgroundChangeJob = scope.launch {
+                                                            delay(500)
+                                                            discoverHighlightedMovie = movie
+                                                        }
+                                                    }
+                                                },
+                                                useSimpleCards = useSimpleCards.value,
+                                                useGoogleTvCards = useGoogleTvCards.value,
+                                                lowPowerMode = lowPowerMode.value
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         
         // Loading indicator removed - content loads progressively without blocking UI
@@ -1503,6 +1903,28 @@ fun MoviesLibraryScreen(
                 },
                 onDismiss = { showSortDialog = false }
             )
+        }
+        
+        // Movie Request Screen Overlay - Use Dialog for absolute focus isolation
+        movieToRequest?.let { movie ->
+            Dialog(
+                onDismissRequest = { movieToRequest = null },
+                properties = DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black)
+                ) {
+                    MovieRequestScreen(
+                        movie = movie,
+                        jellyseerrApiService = jellyseerrApiService,
+                        onBackPressed = {
+                            movieToRequest = null
+                        }
+                    )
+                }
+            }
         }
     }
 }
@@ -1835,6 +2257,128 @@ private fun MovieLetterOverlay(
                 ),
                 color = Color.White.copy(alpha = 0.9f)
             )
+        }
+    }
+}
+
+/**
+ * Jellyseerr Movie Card - displays a movie from Jellyseerr discover data
+ * Styled to match JellyfinHorizontalCard for visual consistency
+ */
+@Composable
+fun JellyseerrMovieCard(
+    movie: JellyseerrMovie,
+    onClick: () -> Unit,
+    onFocusChanged: (Boolean) -> Unit,
+    useSimpleCards: Boolean = false,
+    useGoogleTvCards: Boolean = false,
+    lowPowerMode: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+    
+    // Scale animation for focus
+    val scale by animateFloatAsState(
+        targetValue = if (isFocused) 1.1f else 1f,
+        animationSpec = tween(durationMillis = if (lowPowerMode) 0 else 150),
+        label = "jellyseerr_card_scale"
+    )
+    
+    // Card dimensions matching JellyfinHorizontalCard
+    val cardWidth = 105.dp
+    val cardHeight = 157.5.dp // 2:3 aspect ratio for posters
+    
+    val posterUrl = JellyseerrImageUrl.poster(movie.posterPath, "w342")
+    
+    Box(
+        modifier = modifier
+            .width(cardWidth)
+            .height(cardHeight)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.DarkGray.copy(alpha = 0.3f))
+            .onFocusChanged { focusState ->
+                onFocusChanged(focusState.isFocused)
+            }
+            .focusable(interactionSource = interactionSource)
+            .clickable { onClick() }
+    ) {
+        // Poster image
+        if (posterUrl != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(posterUrl)
+                    .crossfade(true)
+                    .memoryCachePolicy(CachePolicy.ENABLED)
+                    .diskCachePolicy(CachePolicy.ENABLED)
+                    .build(),
+                contentDescription = movie.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            // Placeholder when no poster
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.DarkGray),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = (movie.title ?: "?").take(1),
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = Color.White.copy(alpha = 0.5f)
+                )
+            }
+        }
+        
+        // Focus border
+        if (isFocused) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .border(3.dp, Color.White, RoundedCornerShape(8.dp))
+            )
+        }
+        
+        // Rating badge in top-right corner
+        movie.voteAverage?.let { rating ->
+            if (rating > 0) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "★ ${String.format("%.1f", rating)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFFFD700)
+                    )
+                }
+            }
+        }
+        
+        // Availability badge in bottom-left corner (shows if in Jellyfin library)
+        if (movie.mediaInfo?.isAvailable == true) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(4.dp)
+                    .background(Color(0xFF4CAF50), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "✓",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                    color = Color.White
+                )
+            }
         }
     }
 }

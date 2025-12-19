@@ -21,6 +21,31 @@ import kotlinx.serialization.json.Json
 import okhttp3.Headers
 import androidx.compose.runtime.Stable
 
+// Chapter info for movies/episodes
+@Stable
+@Serializable
+data class ChapterInfo(
+    val StartPositionTicks: Long = 0,
+    val Name: String? = null,
+    val ImageTag: String? = null
+) {
+    // Convert ticks to milliseconds (1 tick = 100 nanoseconds = 0.0001 ms)
+    val startMs: Long get() = StartPositionTicks / 10000
+    
+    // Format start time as HH:MM:SS or MM:SS
+    fun formatStartTime(): String {
+        val totalSeconds = startMs / 1000
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        return if (hours > 0) {
+            String.format("%d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            String.format("%d:%02d", minutes, seconds)
+        }
+    }
+}
+
 @Stable
 @Serializable
 data class JellyfinItem(
@@ -49,7 +74,8 @@ data class JellyfinItem(
     val ParentIndexNumber: Int? = null, // Season number for episodes
     val ChildCount: Int? = null, // Number of child items (e.g., seasons for Series)
     val RecursiveItemCount: Int? = null, // Total recursive item count (e.g., total episodes for Series)
-    val NextEpisodeId: String? = null // ID of the next episode for autoplay
+    val NextEpisodeId: String? = null, // ID of the next episode for autoplay
+    val Chapters: List<ChapterInfo>? = null // Chapter markers for the video
 ) {
     // Helper to get the last played date from either UserData or calculate from position
     fun getLastPlayedDateForSort(): String {
@@ -662,6 +688,21 @@ class JellyfinApiService(
         return urlBuilder.buildString()
     }
     
+    // Get chapter image URL
+    // API endpoint: /Items/{itemId}/Images/Chapter/{chapterIndex}
+    fun getChapterImageUrl(itemId: String, chapterIndex: Int, imageTag: String? = null, maxWidth: Int = 320, maxHeight: Int = 180): String {
+        val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+        val urlBuilder = URLBuilder().takeFrom("${base}Items/$itemId/Images/Chapter/$chapterIndex").apply {
+            parameters.append("maxWidth", maxWidth.toString())
+            parameters.append("maxHeight", maxHeight.toString())
+            parameters.append("quality", "90")
+            imageTag?.let { tag ->
+                parameters.append("tag", tag)
+            }
+        }
+        return urlBuilder.buildString()
+    }
+    
     fun getImageRequestHeaders(): Headers {
         return Headers.Builder()
             .add("Authorization", "MediaBrowser Token=\"$accessToken\"")
@@ -676,7 +717,8 @@ class JellyfinApiService(
             val url = URLBuilder().takeFrom("${base}Items/$itemId").apply {
                 parameters.append("UserId", userId)
                 // Request UserData fields to get PositionTicks for resume functionality, and IndexNumber/ParentIndexNumber for episodes
-                parameters.append("Fields", "MediaSources,Genres,Overview,People,ProviderIds,UserData,ImageTags,IndexNumber,ParentIndexNumber,NextEpisodeId")
+                // Also request Chapters for chapter markers
+                parameters.append("Fields", "MediaSources,Genres,Overview,People,ProviderIds,UserData,ImageTags,IndexNumber,ParentIndexNumber,NextEpisodeId,Chapters")
             }.buildString()
             android.util.Log.d("JellyfinAPI", "Fetching item details from: $url")
             
@@ -1325,8 +1367,54 @@ class JellyfinApiService(
     }
     
     /**
-     * Get the next episode directly using the simpler StartIndex approach
-     * This is the recommended approach: /Shows/{seriesId}/Episodes?StartIndex={currentIndex + 1}&Limit=1
+     * Get the next episode in the same season
+     * Uses /Shows/{seriesId}/Episodes with SeasonId filter to stay within the current season
+     * @param seriesId The series ID
+     * @param seasonId The current season ID (required to filter within the same season)
+     * @param currentEpisodeIndex The current episode's IndexNumber (1-based)
+     * @param currentSeasonNumber The current season number (ParentIndexNumber) for logging
+     * @return The next episode in the same season, or null if this is the last episode of the season
+     */
+    suspend fun getNextEpisodeInSeason(seriesId: String, seasonId: String, currentEpisodeIndex: Int, currentSeasonNumber: Int): JellyfinItem? {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            
+            // Get all episodes in the current season and find the next one
+            val url = URLBuilder().takeFrom("${base}Shows/$seriesId/Episodes").apply {
+                parameters.append("UserId", userId)
+                parameters.append("SeasonId", seasonId) // Filter by season to stay within the same season
+                parameters.append("Fields", "MediaSources,Overview,UserData,SeriesName,SeriesId,ImageTags,IndexNumber,ParentIndexNumber")
+                parameters.append("SortBy", "IndexNumber")
+                parameters.append("SortOrder", "Ascending")
+            }.buildString()
+            
+            android.util.Log.d("JellyfinAPI", "Fetching episodes in season: seriesId=$seriesId, seasonId=$seasonId, currentEpisode=$currentEpisodeIndex, season=$currentSeasonNumber")
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
+            }.body()
+            
+            // Find the episode with IndexNumber = currentEpisodeIndex + 1
+            val nextEpisodeNumber = currentEpisodeIndex + 1
+            val nextEpisode = response.Items.firstOrNull { it.IndexNumber == nextEpisodeNumber }
+            
+            if (nextEpisode != null) {
+                android.util.Log.d("JellyfinAPI", "✅ Found next episode in S${currentSeasonNumber}: E${nextEpisode.IndexNumber} - ${nextEpisode.Name}")
+            } else {
+                android.util.Log.d("JellyfinAPI", "No next episode in S${currentSeasonNumber} after E${currentEpisodeIndex} (last episode of season)")
+            }
+            nextEpisode
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error fetching next episode in season", e)
+            e.printStackTrace()
+            null
+        }
+    }
+    
+    /**
+     * Get the next episode directly using the simpler StartIndex approach (across all seasons)
+     * NOTE: This returns episodes across ALL seasons, use getNextEpisodeInSeason for same-season lookup
      * @param seriesId The series ID
      * @param currentEpisodeIndex The current episode's IndexNumber (1-based)
      * @return The next episode, or null if not found
@@ -1345,7 +1433,7 @@ class JellyfinApiService(
                 parameters.append("Fields", "MediaSources,Overview,UserData,SeriesName,SeriesId,ImageTags,IndexNumber,ParentIndexNumber")
             }.buildString()
             
-            android.util.Log.d("JellyfinAPI", "Fetching next episode: seriesId=$seriesId, StartIndex=$startIndex (current episode index=$currentEpisodeIndex)")
+            android.util.Log.d("JellyfinAPI", "Fetching next episode (all seasons): seriesId=$seriesId, StartIndex=$startIndex (current episode index=$currentEpisodeIndex)")
             
             val response: ItemsResponse = client.get(url) {
                 header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
@@ -1354,7 +1442,7 @@ class JellyfinApiService(
             
             val nextEpisode = response.Items.firstOrNull()
             if (nextEpisode != null) {
-                android.util.Log.d("JellyfinAPI", "✅ Found next episode: ${nextEpisode.Name} (IndexNumber=${nextEpisode.IndexNumber})")
+                android.util.Log.d("JellyfinAPI", "✅ Found next episode: S${nextEpisode.ParentIndexNumber}E${nextEpisode.IndexNumber} - ${nextEpisode.Name}")
             } else {
                 android.util.Log.d("JellyfinAPI", "No next episode found (this might be the last episode)")
             }
@@ -2124,6 +2212,49 @@ class JellyfinApiService(
     }
 
     /**
+     * Refresh a specific item's metadata on the Jellyfin server
+     * POST /Items/{itemId}/Refresh
+     * Triggers a rescan of the item's folder to detect new files (like external subtitles)
+     * Reference: https://api.jellyfin.org/
+     * 
+     * @param itemId The ID of the item to refresh
+     * @param metadataRefreshMode How to refresh metadata: "None", "ValidationOnly", "Default", "FullRefresh"
+     * @param imageRefreshMode How to refresh images: "None", "ValidationOnly", "Default", "FullRefresh"
+     * @param replaceAllMetadata Whether to replace all metadata
+     * @param replaceAllImages Whether to replace all images
+     */
+    suspend fun refreshItemMetadata(
+        itemId: String,
+        metadataRefreshMode: String = "ValidationOnly",
+        imageRefreshMode: String = "None",
+        replaceAllMetadata: Boolean = false,
+        replaceAllImages: Boolean = false
+    ): Boolean {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Items/$itemId/Refresh").apply {
+                parameters.append("MetadataRefreshMode", metadataRefreshMode)
+                parameters.append("ImageRefreshMode", imageRefreshMode)
+                parameters.append("ReplaceAllMetadata", replaceAllMetadata.toString())
+                parameters.append("ReplaceAllImages", replaceAllImages.toString())
+            }.buildString()
+            
+            android.util.Log.d("JellyfinAPI", "Refreshing item metadata for $itemId")
+            
+            client.post(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
+            }
+            android.util.Log.d("JellyfinAPI", "Item metadata refresh triggered successfully for $itemId")
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error refreshing item metadata for $itemId", e)
+            e.printStackTrace()
+            false
+        }
+    }
+
+    /**
      * Refresh library scan on the Jellyfin server
      * POST /Library/Refresh
      * Triggers a library scan to detect new or updated media
@@ -2183,6 +2314,101 @@ class JellyfinApiService(
             android.util.Log.e("JellyfinAPI", "Error searching for items", e)
             e.printStackTrace()
             emptyList()
+        }
+    }
+
+    /**
+     * Find an item in the Jellyfin library by TMDB ID
+     * This searches for movies or series that have a matching TMDB provider ID
+     * 
+     * @param tmdbId The TMDB ID to search for
+     * @param itemType The type of item to search for ("Movie" or "Series")
+     * @return The matching JellyfinItem if found, null otherwise
+     */
+    suspend fun findItemByTmdbId(tmdbId: Int, itemType: String = "Movie"): JellyfinItem? {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("Recursive", "true")
+                parameters.append("IncludeItemTypes", itemType)
+                parameters.append("HasTmdbId", "true")
+                parameters.append("Fields", "ProviderIds,ImageTags,UserData")
+                parameters.append("Limit", "100") // Limit results, we'll filter by TMDB ID
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
+            }.body()
+            
+            // Find the item with matching TMDB ID
+            val matchingItem = response.Items.find { item ->
+                item.ProviderIds?.get("Tmdb") == tmdbId.toString()
+            }
+            
+            if (matchingItem != null) {
+                android.util.Log.d("JellyfinAPI", "Found $itemType with TMDB ID $tmdbId: ${matchingItem.Name}")
+            } else {
+                android.util.Log.d("JellyfinAPI", "No $itemType found with TMDB ID $tmdbId")
+            }
+            
+            matchingItem
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error finding item by TMDB ID", e)
+            null
+        }
+    }
+
+    /**
+     * Find an item in the Jellyfin library by searching for the title
+     * Falls back to this if TMDB ID search fails
+     * 
+     * @param title The title to search for
+     * @param year The release year (optional, for more accurate matching)
+     * @param itemType The type of item to search for ("Movie" or "Series")
+     * @return The matching JellyfinItem if found, null otherwise
+     */
+    suspend fun findItemByTitle(title: String, year: String? = null, itemType: String = "Movie"): JellyfinItem? {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("SearchTerm", title)
+                parameters.append("Recursive", "true")
+                parameters.append("IncludeItemTypes", itemType)
+                parameters.append("Fields", "ProductionYear,ImageTags,UserData")
+                parameters.append("Limit", "20")
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
+            }.body()
+            
+            // Find the best matching item
+            val matchingItem = if (year != null) {
+                // Try to match by year first for more accuracy
+                response.Items.find { item ->
+                    item.ProductionYear?.toString() == year && 
+                    item.Name?.equals(title, ignoreCase = true) == true
+                } ?: response.Items.find { item ->
+                    item.Name?.equals(title, ignoreCase = true) == true
+                } ?: response.Items.firstOrNull()
+            } else {
+                response.Items.find { item ->
+                    item.Name?.equals(title, ignoreCase = true) == true
+                } ?: response.Items.firstOrNull()
+            }
+            
+            if (matchingItem != null) {
+                android.util.Log.d("JellyfinAPI", "Found $itemType by title '$title': ${matchingItem.Name}")
+            } else {
+                android.util.Log.d("JellyfinAPI", "No $itemType found with title '$title'")
+            }
+            
+            matchingItem
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error finding item by title", e)
+            null
         }
     }
 

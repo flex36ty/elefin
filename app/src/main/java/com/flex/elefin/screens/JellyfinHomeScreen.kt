@@ -128,6 +128,12 @@ import com.flex.elefin.jellyfin.JellyfinLibrary
 import com.flex.elefin.jellyfin.JellyfinRepository
 import java.text.SimpleDateFormat
 import java.util.Locale
+import com.flex.elefin.ui.ArtworkPalette
+import com.flex.elefin.ui.PlexPaletteExtractor
+import com.flex.elefin.ui.PlexBackdropGradient
+import android.graphics.drawable.BitmapDrawable
+import coil.request.SuccessResult
+import kotlinx.coroutines.Dispatchers
 
 enum class SortType {
     Alphabetically,
@@ -346,9 +352,10 @@ fun JellyfinHomeScreen(
         }
     }
     
-    // Refresh Continue Watching and Next Up when the screen becomes visible again
+    // Refresh all content when the screen becomes visible again
     // This ensures items appear after watching/partially watching content
     // Also refresh settings when screen resumes
+    // This is critical when app resumes from memory after device sleep/power up
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -356,10 +363,17 @@ fun JellyfinHomeScreen(
                 // Refresh settings when screen resumes
                 darkModeEnabled = settings.darkModeEnabled
                 hideShowsWithZeroEpisodes = settings.hideShowsWithZeroEpisodes
-                // Refresh Continue Watching and Next Up when returning to the screen
+                // Refresh all content when returning to the screen
+                // This fixes issue where only Continue Watching and Next Up show after device resume
                 scope.launch {
                     repository?.fetchContinueWatching()
                     repository?.fetchNextUp()
+                    repository?.fetchRecentlyAddedMovies()
+                    repository?.fetchRecentlyReleasedMovies()
+                    repository?.fetchLibraries()
+                    repository?.fetchCollections()
+                    repository?.fetchRecentlyAddedShows()
+                    repository?.fetchRecentlyAddedEpisodes()
                 }
             }
         }
@@ -372,6 +386,10 @@ fun JellyfinHomeScreen(
     // Auto-refresh: Periodically check for new media and refresh rows if new content is detected
     var autoRefreshEnabled by remember { mutableStateOf(settings.autoRefreshEnabled) }
     var autoRefreshIntervalMinutes by remember { mutableStateOf(settings.autoRefreshIntervalMinutes) }
+    
+    // Image refresh key - incremented when new content is detected to force image reload
+    // This ensures Coil re-fetches images that may have failed to load initially
+    var imageRefreshKey by remember { mutableStateOf(0L) }
     
     LaunchedEffect(autoRefreshEnabled, autoRefreshIntervalMinutes, repository) {
         if (autoRefreshEnabled && repository != null) {
@@ -392,6 +410,10 @@ fun JellyfinHomeScreen(
                     val refreshed = repository.checkForNewMediaAndRefresh()
                     if (refreshed) {
                         android.util.Log.d("JellyfinHomeScreen", "Auto-refresh: New media detected, rows refreshed")
+                        // Increment image refresh key to force Coil to reload images
+                        // This fixes issue where new content appears but posters don't load
+                        imageRefreshKey = System.currentTimeMillis()
+                        android.util.Log.d("JellyfinHomeScreen", "Auto-refresh: Image cache invalidated, forcing reload")
                     }
                 } catch (e: Exception) {
                     android.util.Log.w("JellyfinHomeScreen", "Auto-refresh: Error checking for new media", e)
@@ -428,6 +450,9 @@ fun JellyfinHomeScreen(
     
     // Job to track debounced background image changes
     var backgroundChangeJob by remember { mutableStateOf<Job?>(null) }
+    
+    // Plex-style dynamic background palette
+    var currentArtworkPalette by remember { mutableStateOf<ArtworkPalette?>(null) }
     
     // Set initial highlighted item to first continue watching item or first recently added movie
     LaunchedEffect(continueWatchingItems, recentlyAddedMoviesByLibrary) {
@@ -513,6 +538,36 @@ fun JellyfinHomeScreen(
                 }
             } ?: ""
             
+            // Extract palette from the current image URL
+            LaunchedEffect(imageUrl) {
+                if (imageUrl.isNotEmpty()) {
+                    withContext(Dispatchers.IO) {
+                        try {
+                            val loader = coil.ImageLoader(context)
+                            val request = ImageRequest.Builder(context)
+                                .data(imageUrl)
+                                .allowHardware(false) // Required for Palette
+                                .build()
+                            
+                            val result = loader.execute(request)
+                            if (result is SuccessResult) {
+                                val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
+                                if (bitmap != null) {
+                                    val palette = PlexPaletteExtractor.extract(context, bitmap)
+                                    withContext(Dispatchers.Main) {
+                                        currentArtworkPalette = palette
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e("JellyfinHomeScreen", "Error extracting palette", e)
+                        }
+                    }
+                } else {
+                    currentArtworkPalette = null
+                }
+            }
+            
             // Use Crossfade for smooth fade in/out animation
             // In dark mode, don't show background image - use Material dark background instead
             if (!darkModeEnabled) {
@@ -583,6 +638,15 @@ fun JellyfinHomeScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .carouselGradient()
+                )
+            }
+            
+            // Apply Plex-style dynamic gradient overlay
+            if (currentArtworkPalette != null && !darkModeEnabled) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(PlexBackdropGradient(currentArtworkPalette!!))
                 )
             }
         }
@@ -1471,7 +1535,8 @@ fun JellyfinHomeScreen(
                                                         disableAnimations = disableUIAnimations.value,
                                                         useSimpleCards = useSimpleCards.value,
                                                         useGoogleTvCards = useGoogleTvCards.value,
-                                                        lowPowerMode = lowPowerMode.value
+                                                        lowPowerMode = lowPowerMode.value,
+                                                        imageRefreshKey = imageRefreshKey
                                                     )
                                                     // Item name below the card - skip in low power mode for smoother scrolling
                                                     if (!lowPowerMode.value) {
@@ -1562,7 +1627,7 @@ fun JellyfinHomeScreen(
                                     )
                                     
                                     LazyRow(
-                                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)),
+                                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                         horizontalArrangement = Arrangement.spacedBy(20.dp),
                                         flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                         modifier = if (debugOutlinesEnabled) {
@@ -1616,7 +1681,8 @@ fun JellyfinHomeScreen(
                                                 useSeriesPosterForEpisodes = true,
                                                 useSimpleCards = useSimpleCards.value,
                                                 useGoogleTvCards = useGoogleTvCards.value,
-                                                lowPowerMode = lowPowerMode.value
+                                                lowPowerMode = lowPowerMode.value,
+                                                imageRefreshKey = imageRefreshKey
                                             )
                                         }
                                     }
@@ -1661,7 +1727,7 @@ fun JellyfinHomeScreen(
                                 )
                                 
                                 LazyRow(
-                                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)),
+                                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(26.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                     modifier = if (debugOutlinesEnabled) {
@@ -1704,7 +1770,8 @@ fun JellyfinHomeScreen(
                                             },
                                             useSimpleCards = useSimpleCards.value,
                                             useGoogleTvCards = useGoogleTvCards.value,
-                                            lowPowerMode = lowPowerMode.value
+                                            lowPowerMode = lowPowerMode.value,
+                                            imageRefreshKey = imageRefreshKey
                                         )
                                     }
                                 }
@@ -1715,11 +1782,11 @@ fun JellyfinHomeScreen(
                                     style = MaterialTheme.typography.headlineMedium.copy(
                                         fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
                                     ),
-                                    modifier = Modifier.padding(bottom = 12.dp, top = 30.3186.dp)
+                                    modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
                                 )
                                 
                                 LazyRow(
-                                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)),
+                                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                     modifier = if (debugOutlinesEnabled) {
@@ -1761,7 +1828,8 @@ fun JellyfinHomeScreen(
                                             },
                                             useSimpleCards = useSimpleCards.value,
                                             useGoogleTvCards = useGoogleTvCards.value,
-                                            lowPowerMode = lowPowerMode.value
+                                            lowPowerMode = lowPowerMode.value,
+                                            imageRefreshKey = imageRefreshKey
                                         )
                                     }
                                 }
@@ -1777,11 +1845,11 @@ fun JellyfinHomeScreen(
                                             style = MaterialTheme.typography.headlineMedium.copy(
                                                 fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
                                             ),
-                                            modifier = Modifier.padding(bottom = 12.dp, top = 12.dp)
+                                            modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
                                         )
                                         
                                         LazyRow(
-                                            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)),
+                                            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                             horizontalArrangement = Arrangement.spacedBy(20.dp),
                                             flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                             modifier = if (debugOutlinesEnabled) {
@@ -1810,7 +1878,8 @@ fun JellyfinHomeScreen(
                                                     reducePosterResolution = reducePosterResolution,
                                                     useSimpleCards = useSimpleCards.value,
                                                     useGoogleTvCards = useGoogleTvCards.value,
-                                                    lowPowerMode = lowPowerMode.value
+                                                    lowPowerMode = lowPowerMode.value,
+                                                    imageRefreshKey = imageRefreshKey
                                                 )
                                             }
                                         }
@@ -1823,11 +1892,11 @@ fun JellyfinHomeScreen(
                                     style = MaterialTheme.typography.headlineMedium.copy(
                                         fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
                                     ),
-                                    modifier = Modifier.padding(bottom = 12.dp, top = 12.dp)
+                                    modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
                                 )
                                 
                                 LazyRow(
-                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)),
+                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     modifier = if (debugOutlinesEnabled) {
                                         Modifier.border(2.dp, Color.Magenta)
@@ -1855,7 +1924,8 @@ fun JellyfinHomeScreen(
                                             reducePosterResolution = reducePosterResolution,
                                             useSimpleCards = useSimpleCards.value,
                                             useGoogleTvCards = useGoogleTvCards.value,
-                                            lowPowerMode = lowPowerMode.value
+                                            lowPowerMode = lowPowerMode.value,
+                                            imageRefreshKey = imageRefreshKey
                                         )
                                     }
                                 }
@@ -1885,11 +1955,11 @@ fun JellyfinHomeScreen(
                                             style = MaterialTheme.typography.headlineMedium.copy(
                                                 fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
                                             ),
-                                            modifier = Modifier.padding(bottom = 12.dp, top = 12.dp)
+                                            modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
                                         )
                                         
                                         LazyRow(
-                                            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f)),
+                                            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                             horizontalArrangement = Arrangement.spacedBy(20.dp),
                                             flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                             modifier = if (debugOutlinesEnabled) {
@@ -1919,7 +1989,8 @@ fun JellyfinHomeScreen(
                                                     unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null,
                                                     useSimpleCards = useSimpleCards.value,
                                                     useGoogleTvCards = useGoogleTvCards.value,
-                                                    lowPowerMode = lowPowerMode.value
+                                                    lowPowerMode = lowPowerMode.value,
+                                                    imageRefreshKey = imageRefreshKey
                                                 )
                                             }
                                         }
@@ -1938,7 +2009,7 @@ fun JellyfinHomeScreen(
                                             style = MaterialTheme.typography.headlineMedium.copy(
                                                 fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
                                             ),
-                                            modifier = Modifier.padding(bottom = 12.dp, top = 12.dp)
+                                            modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
                                         )
                                         
                                         LazyRow(
@@ -1984,7 +2055,8 @@ fun JellyfinHomeScreen(
                                                     useSeriesPosterForEpisodes = true,
                                                     useSimpleCards = useSimpleCards.value,
                                                     useGoogleTvCards = useGoogleTvCards.value,
-                                                    lowPowerMode = lowPowerMode.value
+                                                    lowPowerMode = lowPowerMode.value,
+                                                    imageRefreshKey = imageRefreshKey
                                                 )
                                             }
                                         }
@@ -2567,13 +2639,14 @@ fun JellyfinHorizontalCard(
     disableAnimations: Boolean = false,
     useSimpleCards: Boolean = false,
     useGoogleTvCards: Boolean = false,
-    lowPowerMode: Boolean = false
+    lowPowerMode: Boolean = false,
+    imageRefreshKey: Long = 0L
 ) {
     // For episodes, use series poster (Primary) if requested; otherwise use poster (Primary) for movies/shows
     // When animations disabled, simple cards, or Google TV cards enabled, force reduced resolution for better performance
     // Low power mode uses even smaller images (300x450) for budget devices
     val effectiveReduceResolution = reducePosterResolution || disableAnimations || useSimpleCards || useGoogleTvCards
-    val imageUrl = remember(item.Id, item.Type, item.SeriesId, useSeriesPosterForEpisodes, effectiveReduceResolution, lowPowerMode) {
+    val imageUrl = remember(item.Id, item.Type, item.SeriesId, useSeriesPosterForEpisodes, effectiveReduceResolution, lowPowerMode, imageRefreshKey) {
         // Low power mode: 300x450, Reduced: 300x450, Standard: 400x600
         val maxWidth = if (lowPowerMode) 300 else if (effectiveReduceResolution) 300 else 400
         val maxHeight = if (lowPowerMode) 450 else if (effectiveReduceResolution) 450 else 600
@@ -2632,7 +2705,7 @@ fun JellyfinHorizontalCard(
             ) {
                 if (imageUrl.isNotEmpty() && apiService != null) {
                     val headerMap = apiService.getImageRequestHeaders()
-                    val imageRequest = remember(item.Id, imageUrl, enableCaching) {
+                    val imageRequest = remember(item.Id, imageUrl, enableCaching, imageRefreshKey) {
                         ImageRequest.Builder(context)
                             .data(imageUrl)
                             .headers(headerMap)
@@ -2647,7 +2720,8 @@ fun JellyfinHorizontalCard(
                         contentDescription = item.Name,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
-                        placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
+                        placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
+                        error = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
                     )
                 } else {
                     Box(
@@ -2720,7 +2794,7 @@ fun JellyfinHorizontalCard(
             Box(modifier = Modifier.fillMaxWidth()) {
                 if (imageUrl.isNotEmpty() && apiService != null) {
                     val headerMap = apiService.getImageRequestHeaders()
-                    val imageRequest = remember(item.Id, imageUrl, enableCaching) {
+                    val imageRequest = remember(item.Id, imageUrl, enableCaching, imageRefreshKey) {
                         ImageRequest.Builder(context)
                             .data(imageUrl)
                             .headers(headerMap)
@@ -2738,7 +2812,8 @@ fun JellyfinHorizontalCard(
                             .aspectRatio(2f / 3f)
                             .clip(RoundedCornerShape(8.dp)),
                         contentScale = ContentScale.Crop,
-                        placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
+                        placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
+                        error = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
                     )
                 } else {
                     Box(
@@ -2806,7 +2881,8 @@ fun JellyfinHorizontalCard(
                         val headerMap = apiService.getImageRequestHeaders()
                         // Use stable ImageRequest based on item ID to ensure proper caching
                         // Coil will cache based on the URL, but using remember ensures we don't recreate the request on recomposition
-                        val imageRequest = remember(item.Id, imageUrl, enableCaching) {
+                        // imageRefreshKey forces cache invalidation when auto-refresh detects new content
+                        val imageRequest = remember(item.Id, imageUrl, enableCaching, imageRefreshKey) {
                             ImageRequest.Builder(context)
                                 .data(imageUrl)
                                 .headers(headerMap)
@@ -2814,6 +2890,7 @@ fun JellyfinHorizontalCard(
                                 .crossfade(true) // Smooth fade-in when image loads
                                 .memoryCachePolicy(if (enableCaching) CachePolicy.ENABLED else CachePolicy.DISABLED)
                                 .diskCachePolicy(if (enableCaching) CachePolicy.ENABLED else CachePolicy.DISABLED)
+                                .networkCachePolicy(CachePolicy.ENABLED) // Allow network caching but Coil will retry on error
                                 .build()
                         }
                         Box(modifier = Modifier.fillMaxWidth()) {
@@ -2824,7 +2901,8 @@ fun JellyfinHorizontalCard(
                                     .fillMaxWidth()
                                     .aspectRatio(2f / 3f), // 2:3 portrait aspect ratio for posters (movies/shows/episodes)
                                 contentScale = ContentScale.Crop,
-                                placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
+                                placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
+                                error = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
                             )
                             
                             // Watched indicator - checkmark in black box (top-right corner)
@@ -2982,7 +3060,8 @@ fun JellyfinHorizontalCardWithProgress(
     disableAnimations: Boolean = false,
     useSimpleCards: Boolean = false,
     useGoogleTvCards: Boolean = false,
-    lowPowerMode: Boolean = false
+    lowPowerMode: Boolean = false,
+    imageRefreshKey: Long = 0L
 ) {
     // Use reduced resolution for simple/Google TV cards for better performance
     // Low power mode uses even smaller images (320x180) for budget devices
@@ -3079,7 +3158,7 @@ fun JellyfinHorizontalCardWithProgress(
             ) {
                 if (imageUrl.isNotEmpty() && apiService != null) {
                     val headerMap = apiService.getImageRequestHeaders()
-                    val imageRequest = remember(item.Id, imageUrl) {
+                    val imageRequest = remember(item.Id, imageUrl, imageRefreshKey) {
                         ImageRequest.Builder(context)
                             .data(imageUrl)
                             .headers(headerMap)
@@ -3093,7 +3172,8 @@ fun JellyfinHorizontalCardWithProgress(
                         contentDescription = item.Name,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
-                        placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
+                        placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
+                        error = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
                     )
                 } else {
                     Box(
@@ -3147,7 +3227,7 @@ fun JellyfinHorizontalCardWithProgress(
             Box(modifier = Modifier.fillMaxWidth()) {
                 if (imageUrl.isNotEmpty() && apiService != null) {
                     val headerMap = apiService.getImageRequestHeaders()
-                    val imageRequest = remember(item.Id, imageUrl) {
+                    val imageRequest = remember(item.Id, imageUrl, imageRefreshKey) {
                         ImageRequest.Builder(context)
                             .data(imageUrl)
                             .headers(headerMap)
@@ -3164,7 +3244,8 @@ fun JellyfinHorizontalCardWithProgress(
                             .aspectRatio(16f / 9f)
                             .clip(RoundedCornerShape(12.dp)),
                         contentScale = ContentScale.Crop,
-                        placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
+                        placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
+                        error = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
                     )
                 } else {
                     Box(
@@ -3215,34 +3296,50 @@ fun JellyfinHorizontalCardWithProgress(
                         .clip(RoundedCornerShape(12.dp))) {
                         if (imageUrl.isNotEmpty() && apiService != null) {
                             val headerMap = apiService.getImageRequestHeaders()
-                            AsyncImage(
-                                model = ImageRequest.Builder(LocalContext.current)
+                            val imageRequest = remember(item.Id, imageUrl, imageRefreshKey) {
+                                ImageRequest.Builder(context)
                                     .data(imageUrl)
                                     .headers(headerMap)
-                                    .build(),
+                                    .crossfade(true)
+                                    .memoryCachePolicy(CachePolicy.ENABLED)
+                                    .diskCachePolicy(CachePolicy.ENABLED)
+                                    .build()
+                            }
+                            AsyncImage(
+                                model = imageRequest,
                                 contentDescription = item.Name,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(16f / 9f) // 16:9 landscape aspect ratio
                                     .clip(RoundedCornerShape(12.dp)),
-                                contentScale = ContentScale.Crop
+                                contentScale = ContentScale.Crop,
+                                placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
+                                error = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
                             )
                         } else {
                             // Fallback to primary image if no thumbnail/backdrop
                             val primaryUrl = apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 400, maxHeight = 600, quality = 85) ?: ""
                             if (primaryUrl.isNotEmpty() && apiService != null) {
                                 val headerMap = apiService.getImageRequestHeaders()
-                                AsyncImage(
-                                    model = ImageRequest.Builder(LocalContext.current)
+                                val primaryImageRequest = remember(item.Id, primaryUrl, imageRefreshKey) {
+                                    ImageRequest.Builder(context)
                                         .data(primaryUrl)
                                         .headers(headerMap)
-                                        .build(),
+                                        .crossfade(true)
+                                        .memoryCachePolicy(CachePolicy.ENABLED)
+                                        .diskCachePolicy(CachePolicy.ENABLED)
+                                        .build()
+                                }
+                                AsyncImage(
+                                    model = primaryImageRequest,
                                     contentDescription = item.Name,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .aspectRatio(16f / 9f)
                                         .clip(RoundedCornerShape(12.dp)),
-                                    contentScale = ContentScale.Crop
+                                    contentScale = ContentScale.Crop,
+                                    placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
+                                    error = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
                                 )
                             } else {
                                 androidx.compose.foundation.layout.Box(

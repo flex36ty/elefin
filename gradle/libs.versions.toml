@@ -20,9 +20,11 @@ compose-compiler = "1.5.8"
 media3 = "1.8.0"
 jellyfin-media3-ffmpeg = "1.8.0+1"
 lottie = "6.1.0"
+palette = "1.0.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-palette = { group = "androidx.palette", name = "palette", version.ref = "palette" }
 androidx-leanback = { group = "androidx.leanback", name = "leanback", version.ref = "leanback" }
 glide = { group = "com.github.bumptech.glide", name = "glide", version.ref = "glide" }
 glide-compiler = { group = "com.github.bumptech.glide", name = "compiler", version.ref = "glide-compiler" }

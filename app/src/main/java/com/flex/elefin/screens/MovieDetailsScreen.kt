@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -52,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.PathEffect
@@ -532,7 +534,7 @@ fun BottomContainer(
         state = scrollState,
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 48.dp, vertical = 24.dp)
+            .padding(horizontal = 48.dp)
             .then(
                 if (showDebugOutlines) {
                     Modifier.border(3.dp, Color.Cyan)
@@ -540,7 +542,8 @@ fun BottomContainer(
                     Modifier
                 }
             ),
-        verticalArrangement = Arrangement.spacedBy(24.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(top = 16.dp, bottom = 24.dp)
     ) {
         // Cast row - now focusable so selector can navigate to it
         if (castMembers.isNotEmpty()) {
@@ -556,7 +559,8 @@ fun BottomContainer(
                     )
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp)
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp), // Extra padding for focus scale animation
+                        modifier = Modifier.graphicsLayer { clip = false } // Prevent clipping of scaled cards
                     ) {
                         items(castMembers) { person ->
                             CastMemberCard(
@@ -569,22 +573,65 @@ fun BottomContainer(
             }
         }
         
+        // Chapters row
+        val chapters = item.Chapters ?: emptyList()
+        if (chapters.isNotEmpty()) {
+            item {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Chapters",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp),
+                        modifier = Modifier.graphicsLayer { clip = false }
+                    ) {
+                        itemsIndexed(chapters) { index, chapter ->
+                            ChapterCard(
+                                chapter = chapter,
+                                chapterIndex = index,
+                                itemId = item.Id,
+                                apiService = apiService,
+                                onClick = {
+                                    // Launch video player at chapter start position
+                                    val intent = JellyfinVideoPlayerActivity.createIntent(
+                                        context = context,
+                                        itemId = item.Id,
+                                        resumePositionMs = chapter.startMs,
+                                        subtitleStreamIndex = null,
+                                        audioStreamIndex = null,
+                                        itemName = item.Name
+                                    )
+                                    context.startActivity(intent)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        
         // Movies similar to row
         if (firstGenre != null && (!isLoadingSimilar && similarMovies.isNotEmpty())) {
             item {
                 Column(
-                    modifier = Modifier.padding(top = 6.dp), // 25% increase (24dp * 0.25 = 6dp)
+                    modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
                         text = "Similar Movies",
                         style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(bottom = 4.dp)
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp)
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp), // Extra padding for focus scale animation
+                        modifier = Modifier.graphicsLayer { clip = false } // Prevent clipping of scaled cards
                     ) {
                         items(similarMovies) { movie ->
                             JellyfinHorizontalCard(
@@ -608,18 +655,18 @@ fun BottomContainer(
         if (firstCastMember != null && (!isLoadingCastMovies && moviesWithCast.isNotEmpty())) {
             item {
                 Column(
-                    modifier = Modifier.padding(top = 6.dp), // 25% increase (24dp * 0.25 = 6dp)
+                    modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
                         text = "More Movies with ${firstCastMember.Name}",
                         style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(bottom = 4.dp)
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp)
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp), // Extra padding for focus scale animation
+                        modifier = Modifier.graphicsLayer { clip = false } // Prevent clipping of scaled cards
                     ) {
                         items(moviesWithCast) { movie ->
                             JellyfinHorizontalCard(
@@ -739,6 +786,128 @@ fun CastMemberCard(
 }
 
 @Composable
+fun ChapterCard(
+    chapter: com.flex.elefin.jellyfin.ChapterInfo,
+    chapterIndex: Int,
+    itemId: String,
+    apiService: JellyfinApiService?,
+    onClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val chapterImageUrl = apiService?.getChapterImageUrl(
+        itemId = itemId,
+        chapterIndex = chapterIndex,
+        imageTag = chapter.ImageTag
+    ) ?: ""
+    
+    // Card dimensions - 16:9 aspect ratio for chapter thumbnails
+    val cardWidth = 180.dp
+    val cardHeight = 101.dp // 180 / 16 * 9
+    
+    Column(
+        modifier = Modifier.width(cardWidth),
+        horizontalAlignment = Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Chapter thumbnail with play overlay
+        StandardCardContainer(
+            modifier = Modifier
+                .width(cardWidth)
+                .height(cardHeight),
+            imageCard = { interactionSource ->
+                Card(
+                    onClick = onClick,
+                    interactionSource = interactionSource,
+                    colors = CardDefaults.colors(containerColor = Color.Transparent)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        if (chapterImageUrl.isNotEmpty() && apiService != null) {
+                            val headerMap = apiService.getImageRequestHeaders()
+                            AsyncImage(
+                                model = ImageRequest.Builder(context)
+                                    .data(chapterImageUrl)
+                                    .headers(headerMap)
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = chapter.Name ?: "Chapter ${chapterIndex + 1}",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            // Placeholder with chapter number
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "${chapterIndex + 1}",
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                )
+                            }
+                        }
+                        
+                        // Timestamp badge in bottom-left corner
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(6.dp)
+                                .background(
+                                    Color.Black.copy(alpha = 0.7f),
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = chapter.formatStartTime(),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White
+                            )
+                        }
+                        
+                        // Play icon overlay
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .size(36.dp)
+                                .background(
+                                    Color.Black.copy(alpha = 0.5f),
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Play from chapter",
+                                modifier = Modifier.size(24.dp),
+                                tint = Color.White
+                            )
+                        }
+                    }
+                }
+            },
+            title = { }
+        )
+        
+        // Chapter name below the card
+        Text(
+            text = chapter.Name ?: "Chapter ${chapterIndex + 1}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
 fun SubtitleSelectionDialog(
     item: JellyfinItem,
     apiService: JellyfinApiService?,
@@ -774,13 +943,26 @@ fun SubtitleSelectionDialog(
     }
     
     // Fetch full item details to get MediaSources with subtitle streams
+    // First refresh the item on the server to detect any newly added external subtitles
     LaunchedEffect(item.Id, apiService) {
         if (apiService != null) {
             withContext(Dispatchers.IO) {
                 try {
+                    // Refresh item metadata on server to detect new external subtitle files
+                    Log.d("SubtitleDialog", "Refreshing item metadata to detect new subtitles...")
+                    apiService.refreshItemMetadata(item.Id)
+                    
+                    // Small delay to allow server to process the refresh
+                    kotlinx.coroutines.delay(500)
+                    
+                    // Now fetch the updated item details
                     val details = apiService.getItemDetails(item.Id)
                     itemDetails = details
                     isLoadingSubtitles = false
+                    
+                    val subtitleCount = details?.MediaSources?.firstOrNull()?.MediaStreams
+                        ?.count { it.Type == "Subtitle" } ?: 0
+                    Log.d("SubtitleDialog", "Loaded $subtitleCount subtitle streams after refresh")
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     // Normal cancellation when composable leaves composition - don't log as error
                     throw e // Re-throw to respect cancellation
@@ -1573,50 +1755,50 @@ fun ActionButtonsRow(
         
         // Audio track button (only show if media has multiple audio tracks)
         if (hasMultiAudio) {
-            var audioFocused by remember { mutableStateOf(false) }
-            
-            Button(
-                onClick = {
-                    showAudioDialog = true
-                },
-                modifier = Modifier
-                    .then(
-                        if (audioFocused) {
-                            Modifier
-                                .wrapContentWidth()
-                                .height(28.dp)
-                        } else {
-                            Modifier.size(28.dp)
-                        }
-                    )
-                    .animateContentSize(
-                        animationSpec = tween(
-                            durationMillis = 300,
-                            easing = FastOutSlowInEasing
-                        )
-                    )
-                    .onFocusChanged { audioFocused = it.isFocused }
-                    .clip(CircleShape),
-                colors = ButtonDefaults.colors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.onSurface
-                ),
-                contentPadding = PaddingValues(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.VolumeUp,
-                    contentDescription = "Audio Track",
-                    modifier = Modifier.size(14.3.dp)
+        var audioFocused by remember { mutableStateOf(false) }
+        
+        Button(
+            onClick = {
+                showAudioDialog = true
+            },
+            modifier = Modifier
+                .then(
+                    if (audioFocused) {
+                        Modifier
+                            .wrapContentWidth()
+                            .height(28.dp)
+                    } else {
+                        Modifier.size(28.dp)
+                    }
                 )
-                if (audioFocused) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Audio",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                        ),
-                        modifier = Modifier.padding(horizontal = 12.dp)
+                .animateContentSize(
+                    animationSpec = tween(
+                        durationMillis = 300,
+                        easing = FastOutSlowInEasing
                     )
+                )
+                .onFocusChanged { audioFocused = it.isFocused }
+                .clip(CircleShape),
+            colors = ButtonDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            ),
+            contentPadding = PaddingValues(8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.VolumeUp,
+                contentDescription = "Audio Track",
+                modifier = Modifier.size(14.3.dp)
+            )
+            if (audioFocused) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Audio",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
+                    ),
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
                 }
             }
         }
