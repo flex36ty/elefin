@@ -44,6 +44,7 @@ All notable changes to Elefin will be documented in this file.
 ### Added
 
 - **Jellyseerr Integration - Discover Tab**
+  - Requests Movies directly from the Elefin app (TV Shows support coming soon)
   - Replaced TMDB trending feature with Jellyseerr integration for richer discovery
   - New "Discover" tab in Movies and TV Shows libraries (replaces "Trending")
   - Displays three category rows: 🔥 Trending, Popular, and Upcoming
