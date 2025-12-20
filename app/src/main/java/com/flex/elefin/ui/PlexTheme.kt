@@ -85,8 +85,8 @@ object PlexPaletteExtractor {
         ColorUtils.colorToHSL(color.toArgb(), hsl)
 
         // Plex-like rules
-        hsl[1] = hsl[1].coerceAtMost(0.45f)   // kill neon saturation
-        hsl[2] = hsl[2].coerceIn(0.10f, 0.25f) // force dark luminance
+        hsl[1] = hsl[1].coerceAtMost(0.60f)   // kill neon saturation (relaxed to 0.60f)
+        hsl[2] = hsl[2].coerceIn(0.15f, 0.40f) // force dark luminance (relaxed to 0.40f)
 
         return Color(ColorUtils.HSLToColor(hsl))
     }
@@ -124,7 +124,7 @@ fun PlexBackdropGradient(palette: ArtworkPalette): Brush {
     return Brush.verticalGradient(
         colors = listOf(
             palette.background.copy(alpha = 0f), // Transparent top to show artwork
-            palette.background.copy(alpha = 0.6f),
+            palette.background.copy(alpha = 0.3f),
             palette.backgroundDark,
             Color.Black
         ),

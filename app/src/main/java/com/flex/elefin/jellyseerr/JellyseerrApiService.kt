@@ -478,6 +478,65 @@ class JellyseerrApiService private constructor(
             Result.failure(e)
         }
     }
+
+    /**
+     * Get full details for a TV show by TMDB ID
+     */
+    suspend fun getTvShowDetails(tmdbId: Int): JellyseerrTvShow? {
+        return try {
+            Log.d(TAG, "Fetching TV show details for TMDB ID: $tmdbId")
+            val response = client.get("$normalizedBaseUrl/api/v1/tv/$tmdbId") {
+                addAuth()
+            }
+            
+            if (response.status.isSuccess()) {
+                response.body<JellyseerrTvShow>()
+            } else {
+                Log.e(TAG, "Failed to fetch TV show details: ${response.status}")
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching TV show details", e)
+            null
+        }
+    }
+
+    /**
+     * Request a TV show (specific seasons or all)
+     */
+    suspend fun requestTvShow(tmdbId: Int, seasons: List<Int>? = null): Result<MediaRequest> {
+        return try {
+            // Build the request body
+            val requestBody = TvRequestBody(
+                mediaType = "tv",
+                mediaId = tmdbId,
+                seasons = seasons
+            )
+            
+            Log.d(TAG, "Requesting TV show with TMDB ID: $tmdbId, seasons: $seasons")
+            
+            val response = client.post("$normalizedBaseUrl/api/v1/request") {
+                addAuth()
+                contentType(ContentType.Application.Json)
+                setBody(requestBody)
+            }
+            
+            if (response.status.isSuccess()) {
+                val request = response.body<MediaRequest>()
+                Log.d(TAG, "TV show request created successfully: ID ${request.id}, status ${request.status}")
+                Result.success(request)
+            } else {
+                // Try to get error message from response
+                val errorBody = try { response.bodyAsText() } catch (e: Exception) { "" }
+                val errorMsg = "Request failed with status: ${response.status}, body: $errorBody"
+                Log.e(TAG, errorMsg)
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error requesting TV show", e)
+            Result.failure(e)
+        }
+    }
     
     /**
      * Get movie details from Jellyseerr (includes request status)

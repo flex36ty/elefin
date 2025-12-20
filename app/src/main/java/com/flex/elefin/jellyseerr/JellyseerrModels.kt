@@ -56,7 +56,20 @@ data class JellyseerrTvShow(
     val originalName: String? = null,
     val originCountry: List<String> = emptyList(),
     val firstAirDate: String? = null,
-    val mediaInfo: MediaInfo? = null
+    val mediaInfo: MediaInfo? = null,
+    val seasons: List<JellyseerrSeason> = emptyList()
+)
+
+@Serializable
+data class JellyseerrSeason(
+    val id: Int,
+    val airDate: String? = null,
+    val episodeCount: Int? = null,
+    val name: String? = null,
+    val overview: String? = null,
+    val posterPath: String? = null,
+    val seasonNumber: Int,
+    val voteAverage: Double? = null
 )
 
 // Media info (status in Jellyfin/request status)

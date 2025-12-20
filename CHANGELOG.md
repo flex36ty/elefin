@@ -25,14 +25,8 @@ All notable changes to Elefin will be documented in this file.
   - Repositioned the Request button to the standard action button row below the synopsis
   - Added full-screen backdrop with dynamic overlay
 
-- **Vibrant Backgrounds**
-  - Reduced background scrim opacity from 20% to 10% for a brighter, more vibrant look
-  - Disabled generic gradient overlay when dynamic Plex-style color background is active to prevent "double-scrimming"
-  - Significantly improved visual quality of background art on Home and Library screens
-
-- **Discover Screen Focus Optimization**
-  - Metadata (Title/Synopsis) now updates **instantly** when a card is focused (zero lag)
-  - Background image updates are debounced (500ms) to prevent flickering during fast scrolling
+- **Vibrant Backgrounds**: Significantly reduced background scrim opacity (5% base, 30% gradient) and relaxed color clamping rules to allow for more saturated and brighter dynamic backgrounds, addressing user feedback about "intense blur/scrim".
+- **Discover Screen Focus Optimization**: Fixed an issue where synopsis and background updates were not triggering on focus by reordering modifier chains in `JellyseerrTvShowCard` and `JellyseerrMovieCard`. Implemented instant metadata updates on focus for a snappier feel, while keeping background image updates debounced (500ms) to prevent flickering during fast scrolling
   - Implemented correct focus observation order to fix issue where background wouldn't update
 
 ### Fixed

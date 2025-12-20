@@ -507,11 +507,11 @@ fun MoviesLibraryScreen(
             
             // Dark overlay and scrim (same as home screen)
             if (!darkModeEnabled && (selectedTab == "recommendations" || selectedTab == "discover")) {
-                // Default view: 10% darkness (reduced from 20% for vibrancy)
+                // Default view: 5% darkness (reduced from 10% for vibrancy)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.1f))
+                        .background(Color.Black.copy(alpha = 0.05f))
                 )
                 
                 // Scrim gradient overlay - only show if NOT using dynamic Plex background
