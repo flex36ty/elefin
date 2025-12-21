@@ -4,6 +4,42 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2025-12-20
+
+### Added
+
+- **Digital Clock Integration**
+  - Integrated a real-time digital clock into the top navigation bar of Home, Movies, TV Shows, and Music screens.
+  - Supports 12/24-hour format with instant switching based on user settings.
+  - Consistent 30% size reduction styling across all navigation elements.
+- **Discover "View More" Pagination**
+  - Added "View More" cards to Trending, Popular, and Upcoming rows in Movies and TV discovery sections.
+  - Supports on-demand loading of additional items from Jellyseerr with automatic duplicate filtering.
+  - New `DiscoverViewMoreCard` component for triggers loading of additional content.
+- **Individual Season Requests**
+  - Added support for requesting specific seasons or all seasons of a TV show via the Jellyseerr API.
+  - New `TvShowRequestScreen` with season selection grid.
+
+### Changed
+
+- **UI & Navigation Scaling**
+  - Reduced Home, Movies, TV, and Music navigation elements by 30% for a cleaner look.
+  - Updated backdrop gradient and scrim intensity for a more modern, cinematic feel.
+  - Standardized background artwork sizing (60% height, 80% width) in details screens.
+- **Music Screen Enhancements**
+  - Refactored Music header with a proper `TabRow` and underlined indicator.
+  - Fine-tuned selection border for Album and Artist cards.
+  - Fixed ServiceConnection leak when closing the music screen.
+
+### Fixed
+
+- **Artists Tab Loading Logic**
+  - Fixed issues with artists not appearing in the grid by implementing a smart fallback from albums.
+- **Build & Compilation Issues**
+  - Resolved several brace mismatches and duplicate argument errors from recent UI refactors.
+
+---
+
 ## 2025-12-19
 
 ### Added
