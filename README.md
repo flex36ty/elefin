@@ -8,20 +8,20 @@ Elefin is a modern Android TV Jellyfin client built from the ground up using Jet
 
 ## Features
 
-Plex inspired home screen navigation
-Auto play next episode
-Download subtitles via the app from open Subtitles
-Jellyseer integration to request movies and tv shows directly from the app itself
-MPV player support / Exoplayer is still preferred
-Subtitles size and color customization
-Dark mode support
-Image and poster caching for smoother navigation
-Autoupdates directly from github when new releases are available
-Fake HDR and video sharpening options
-Auto refresh media
-Hide shows with empty folders (maintainneerr users will love this)
+- **Plex inspired home screen navigation
+- **Auto play next episode
+- **Download subtitles via the app from open Subtitles
+- **Jellyseer integration to request movies and tv shows directly from the app itself
+- **MPV player support / Exoplayer is still preferred
+- **Subtitles size and color customization
+- **Dark mode support
+- **Image and poster caching for smoother navigation
+- **Autoupdates directly from github when new releases are available
+- **Fake HDR and video sharpening options
+- **Auto refresh media
+- **Hide shows with empty folders (maintainneerr users will love this)
 
-and a lot more (see changelog for detailed features list)
+- **and a lot more (see changelog for detailed features list)
 
 ## Screenshots
 
