@@ -94,10 +94,9 @@ class JellyfinMusicApi(
      */
     suspend fun getArtists(limit: Int = 100, startIndex: Int = 0): List<Artist> {
         return try {
-            val url = URLBuilder().takeFrom("${base}Artists").apply {
-                parameters.append("UserId", userId)
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("IncludeItemTypes", "MusicArtist,Artist")
                 parameters.append("Recursive", "true")
-                parameters.append("IncludeItemTypes", "MusicArtist")
                 parameters.append("SortBy", "SortName")
                 parameters.append("SortOrder", "Ascending")
                 parameters.append("Limit", limit.toString())
@@ -105,7 +104,7 @@ class JellyfinMusicApi(
                 parameters.append("Fields", "Overview,SongCount,AlbumCount")
             }.buildString()
 
-            Log.d(TAG, "Fetching artists: $url")
+            Log.d(TAG, "Fetching artists (via Items): $url")
 
             val response: MusicItemsResponse = client.get(url) {
                 header("X-Emby-Token", accessToken)
@@ -357,8 +356,9 @@ class JellyfinMusicApi(
 
         return try {
             // Search artists
-            val artistsUrl = URLBuilder().takeFrom("${base}Artists").apply {
-                parameters.append("UserId", userId)
+            val artistsUrl = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("IncludeItemTypes", "MusicArtist")
+                parameters.append("Recursive", "true")
                 parameters.append("SearchTerm", query)
                 parameters.append("Limit", limit.toString())
                 parameters.append("Fields", "Overview")

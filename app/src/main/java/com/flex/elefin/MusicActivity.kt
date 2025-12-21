@@ -28,6 +28,12 @@ class MusicActivity : ComponentActivity() {
         setContent {
             JellyfinAppTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
+                    DisposableEffect(Unit) {
+                        onDispose {
+                            // Disconnect when activity is destroyed
+                            com.flex.elefin.music.player.PlayerConnection.disconnect()
+                        }
+                    }
                     MusicNavHost(
                         onBackToHome = { finish() }
                     )

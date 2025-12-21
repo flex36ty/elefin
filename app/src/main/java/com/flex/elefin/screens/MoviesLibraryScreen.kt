@@ -40,6 +40,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -47,6 +49,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.flex.elefin.components.DigitalClock
+import com.flex.elefin.components.DiscoverViewMoreCard
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -59,6 +63,10 @@ import androidx.tv.material3.TabDefaults
 import androidx.tv.material3.TabRow
 import androidx.tv.material3.TabRowDefaults
 import androidx.tv.material3.Text
+import androidx.tv.material3.Card
+import androidx.tv.material3.CardDefaults
+import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Border
 import coil.compose.AsyncImage
 import coil.imageLoader
 import coil.request.CachePolicy
@@ -131,6 +139,9 @@ fun MoviesLibraryScreen(
     val lowPowerMode = remember { mutableStateOf(settings.lowPowerMode) }
     val hideShowsWithZeroEpisodes by remember { mutableStateOf(settings.hideShowsWithZeroEpisodes) }
     
+    // 24-hour time format setting - read from settings
+    var use24HourTime by remember { mutableStateOf(settings.use24HourTime) }
+    
     // Dialog states
     var showSettings by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
@@ -140,6 +151,7 @@ fun MoviesLibraryScreen(
     var lowPowerModeWhenSettingsOpened by remember { mutableStateOf(false) }
     var useSimpleCardsWhenSettingsOpened by remember { mutableStateOf(false) }
     var useGoogleTvCardsWhenSettingsOpened by remember { mutableStateOf(false) }
+    var use24HourTimeWhenSettingsOpened by remember { mutableStateOf(false) }
     
     // Tab state: "recommendations", "library", or "discover"
     var selectedTab by remember { mutableStateOf("recommendations") }
@@ -173,6 +185,7 @@ fun MoviesLibraryScreen(
     var isDiscoverLoading by remember { mutableStateOf(false) }
     var discoverHighlightedMovie by remember { mutableStateOf<JellyseerrMovie?>(null) }
     var instantDiscoverHighlightedMovie by remember { mutableStateOf<JellyseerrMovie?>(null) }
+    var discoverMoviePages by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     
     // Movie request screen state
     var movieToRequest by remember { mutableStateOf<JellyseerrMovie?>(null) }
@@ -347,6 +360,57 @@ fun MoviesLibraryScreen(
                 }
             }
             isDiscoverLoading = false
+        }
+    }
+    
+    // Function to load more discover movies
+    val loadMoreDiscoverMovies: (String) -> Unit = { categoryName ->
+        if (jellyseerrApiService != null) {
+            scope.launch {
+                val currentPage = discoverMoviePages[categoryName] ?: 1
+                val nextPage = currentPage + 1
+                val newMovies = when {
+                    categoryName.startsWith("🔥") -> {
+                        val trending = jellyseerrApiService.getTrending(nextPage)
+                        trending.filter { it.mediaType == "movie" }.map { item ->
+                            JellyseerrMovie(
+                                id = item.id,
+                                mediaType = "movie",
+                                popularity = item.popularity,
+                                posterPath = item.posterPath,
+                                backdropPath = item.backdropPath,
+                                voteCount = item.voteCount,
+                                voteAverage = item.voteAverage,
+                                genreIds = item.genreIds,
+                                overview = item.overview,
+                                originalLanguage = item.originalLanguage,
+                                title = item.title,
+                                originalTitle = item.originalTitle,
+                                releaseDate = item.releaseDate,
+                                adult = item.adult,
+                                video = item.video,
+                                mediaInfo = item.mediaInfo
+                            )
+                        }
+                    }
+                    categoryName == "Popular" -> jellyseerrApiService.getPopularMovies(nextPage)
+                    categoryName == "Upcoming" -> jellyseerrApiService.getUpcomingMovies(nextPage)
+                    else -> emptyList()
+                }
+                
+                if (newMovies.isNotEmpty()) {
+                    val currentMovies = discoverMoviesByCategory[categoryName] ?: emptyList()
+                    // Filter out any duplicates
+                    val currentIds = currentMovies.map { it.id }.toSet()
+                    val filteredNewMovies = newMovies.filter { it.id !in currentIds }
+                    
+                    if (filteredNewMovies.isNotEmpty()) {
+                        discoverMoviesByCategory = discoverMoviesByCategory + (categoryName to (currentMovies + filteredNewMovies))
+                        discoverMoviePages = discoverMoviePages + (categoryName to nextPage)
+                        Log.d("MoviesLibraryScreen", "Loaded ${filteredNewMovies.size} more $categoryName movies (page $nextPage)")
+                    }
+                }
+            }
         }
     }
     
@@ -545,7 +609,7 @@ fun MoviesLibraryScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
-                .padding(top = 22.4.dp)
+                .padding(top = 22.dp) // Reduced by 30% (32 * 0.7 = 22.4, rounded to 22)
                 .then(
                     if (debugOutlinesEnabled) {
                         Modifier.border(4.dp, Color.Red)
@@ -562,7 +626,7 @@ fun MoviesLibraryScreen(
                 Row(
                     horizontalArrangement = Arrangement.Start,
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.weight(1f)
                 ) {
                     // Settings button
                     IconButton(
@@ -573,6 +637,7 @@ fun MoviesLibraryScreen(
                             lowPowerModeWhenSettingsOpened = settings.lowPowerMode
                             useSimpleCardsWhenSettingsOpened = settings.useSimpleCards
                             useGoogleTvCardsWhenSettingsOpened = settings.useGoogleTvCards
+                            use24HourTimeWhenSettingsOpened = settings.use24HourTime
                             showSettings = true
                         },
                         colors = IconButtonDefaults.colors(
@@ -580,13 +645,13 @@ fun MoviesLibraryScreen(
                             contentColor = MaterialTheme.colorScheme.onSurface
                         ),
                         modifier = Modifier
-                            .padding(start = 54.dp, end = 20.dp)
-                            .size(48.dp)
+                            .padding(start = 38.dp, end = 14.dp) // Start reduced from 54 to 38, end from 20 to 14
+                            .size(34.dp) // 30% smaller (from 48dp to 34dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Settings",
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(14.dp) // Reduced from 20dp to 14dp
                         )
                     }
                     
@@ -598,13 +663,13 @@ fun MoviesLibraryScreen(
                             contentColor = MaterialTheme.colorScheme.onSurface
                         ),
                         modifier = Modifier
-                            .padding(end = 20.dp)
-                            .size(48.dp)
+                            .padding(end = 14.dp) // Reduced from 20 to 14
+                            .size(34.dp) // Same size as settings button (34dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = "Search",
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(14.dp) // Reduced from 20dp to 14dp
                         )
                     }
                     
@@ -698,15 +763,15 @@ fun MoviesLibraryScreen(
                             disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         ),
                         modifier = Modifier
-                            .padding(end = 20.dp)
-                            .size(48.dp)
+                            .padding(end = 14.dp) // Reduced from 20 to 14
+                            .size(34.dp) // Same size as settings button (34dp)
                     ) {
                         if (isLibraryTab) {
                             // Show sort icon when library tab is selected
                             Icon(
                                 imageVector = Icons.Default.SwapVert,
                                 contentDescription = "Sort",
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(14.dp) // Reduced from 20dp to 14dp
                             )
                         } else {
                             // Show refresh icon on recommendations tab
@@ -714,7 +779,7 @@ fun MoviesLibraryScreen(
                                 imageVector = Icons.Default.Refresh,
                                 contentDescription = if (isRefreshing) "Refreshing..." else "Refresh",
                                 modifier = Modifier
-                                    .size(20.dp)
+                                    .size(14.dp) // Reduced from 20dp to 14dp
                                     .then(
                                         if (isRefreshing) {
                                             Modifier.rotate(rotationAngle)
@@ -730,7 +795,7 @@ fun MoviesLibraryScreen(
                     var homeFocused by remember { mutableStateOf(false) }
                     
                     TabRow(
-                        modifier = Modifier.padding(end = 20.dp),
+                        modifier = Modifier.padding(end = 14.dp), // Reduced from 20 to 14
                         selectedTabIndex = -1, // Never selected since we're not on home
                         indicator = { _, _ -> } // No indicator
                     ) {
@@ -756,8 +821,8 @@ fun MoviesLibraryScreen(
                                 contentDescription = "Home",
                                 tint = if (homeFocused) Color.Black else Color.White,
                                 modifier = Modifier
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                                    .size(28.dp)
+                                    .padding(horizontal = 8.dp, vertical = 4.dp) // Reduced from (12, 6) to (8, 4)
+                                    .size(20.dp) // Reduced from 28dp to 20dp
                             )
                         }
                     }
@@ -776,7 +841,7 @@ fun MoviesLibraryScreen(
                     TabRow(
                         modifier = Modifier.fillMaxWidth(),
                         selectedTabIndex = selectedTabIndex,
-                        separator = { Spacer(modifier = Modifier.width(16.dp)) },
+                        separator = { Spacer(modifier = Modifier.width(11.dp)) }, // Reduced from 16dp to 11dp (30% smaller)
                         indicator = { tabPositions, doesTabRowHaveFocus ->
                             if (selectedTabIndex >= 0 && selectedTabIndex < tabPositions.size) {
                                 TabRowDefaults.UnderlinedIndicator(
@@ -807,8 +872,8 @@ fun MoviesLibraryScreen(
                                         }
                                     )
                             ) {
-                                val scaledFontSize = MaterialTheme.typography.labelLarge.fontSize * 1.17f
-                                val horizontalPadding = 16.dp * 1.2f
+                                val scaledFontSize = MaterialTheme.typography.labelLarge.fontSize * 0.82f // Reduced by 30% from 1.17f
+                                val horizontalPadding = 16.dp * 0.84f // Reduced by 30% from 1.2f
                                 Text(
                                     text = tabName,
                                     style = MaterialTheme.typography.labelLarge.copy(
@@ -816,12 +881,15 @@ fun MoviesLibraryScreen(
                                         fontSize = scaledFontSize
                                     ),
                                     color = if (isFocused) Color.Black else Color.White,
-                                    modifier = Modifier.padding(horizontal = horizontalPadding, vertical = 6.dp)
+                                    modifier = Modifier.padding(horizontal = horizontalPadding, vertical = 4.dp) // Reduced vertical from 6 to 4
                                 )
                             }
                         }
                     }
                 }
+                
+                // Digital clock on the far right
+                DigitalClock(use24HourFormat = use24HourTime)
             }
         }
         
@@ -1683,82 +1751,61 @@ fun MoviesLibraryScreen(
                                     val movies = discoverMoviesByCategory[categoryName] ?: return@forEachIndexed
                                     if (movies.isEmpty()) return@forEachIndexed
                                     
-                                    Text(
-                                        text = categoryName,
-                                        style = MaterialTheme.typography.headlineMedium.copy(
-                                            fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
-                                        ),
-                                        modifier = Modifier.padding(
-                                            bottom = 12.dp,
-                                            top = if (index == 0) 12.dp else 30.36.dp
-                                        )
+                                    MovieCategoryRow(
+                                        categoryName = categoryName,
+                                        movies = movies,
+                                        titleTopPadding = if (index == 0) 12.dp else 30.36.dp,
+                                        onViewMoreClick = { loadMoreDiscoverMovies(categoryName) },
+                                        onMovieClick = { movie ->
+                                            // Search for this movie in Jellyfin library and navigate to details
+                                            scope.launch {
+                                                Log.d("MoviesLibraryScreen", "Searching for movie: ${movie.title} (ID: ${movie.id})")
+                                                
+                                                // Check if Jellyseerr knows it's in the library
+                                                val jellyfinId = movie.mediaInfo?.jellyfinId
+                                                if (jellyfinId != null) {
+                                                    // Directly fetch from Jellyfin using the known ID
+                                                    val jellyfinItem = apiService?.getItemDetails(jellyfinId)
+                                                    if (jellyfinItem != null) {
+                                                        Log.d("MoviesLibraryScreen", "Found movie in library via Jellyseerr: ${jellyfinItem.Name}")
+                                                        onItemClick(jellyfinItem, 0L)
+                                                        return@launch
+                                                    }
+                                                }
+                                                
+                                                // Try to find by TMDB ID
+                                                var jellyfinItem = apiService?.findItemByTmdbId(movie.id, "Movie")
+                                                
+                                                // Fall back to title search if TMDB ID not found
+                                                if (jellyfinItem == null) {
+                                                    val year = movie.releaseDate?.take(4)
+                                                    jellyfinItem = apiService?.findItemByTitle(movie.title ?: "", year, "Movie")
+                                                }
+                                                
+                                                if (jellyfinItem != null) {
+                                                    Log.d("MoviesLibraryScreen", "Found movie in library: ${jellyfinItem.Name} (ID: ${jellyfinItem.Id})")
+                                                    onItemClick(jellyfinItem, 0L)
+                                                } else {
+                                                    Log.d("MoviesLibraryScreen", "Movie not found in library, showing request screen: ${movie.title}")
+                                                    // Show movie request screen
+                                                    movieToRequest = movie
+                                                }
+                                            }
+                                        },
+                                        onMovieFocused = { movie ->
+                                            instantDiscoverHighlightedMovie = movie
+                                            backgroundChangeJob?.cancel()
+                                            backgroundChangeJob = scope.launch {
+                                                delay(500)
+                                                discoverHighlightedMovie = movie
+                                            }
+                                        },
+                                        disableUIAnimations = disableUIAnimations.value,
+                                        debugOutlinesEnabled = debugOutlinesEnabled,
+                                        useSimpleCards = useSimpleCards.value,
+                                        useGoogleTvCards = useGoogleTvCards.value,
+                                        lowPowerMode = lowPowerMode.value
                                     )
-                                    
-                                    LazyRow(
-                                        contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
-                                        horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                        flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
-                                        modifier = if (debugOutlinesEnabled) {
-                                            Modifier.border(2.dp, Color.Magenta)
-                                        } else {
-                                            Modifier
-                                        }
-                                    ) {
-                                        items(movies) { movie ->
-                                            JellyseerrMovieCard(
-                                                movie = movie,
-                                                onClick = {
-                                                    // Search for this movie in Jellyfin library and navigate to details
-                                                    scope.launch {
-                                                        Log.d("MoviesLibraryScreen", "Searching for movie: ${movie.title} (ID: ${movie.id})")
-                                                        
-                                                        // Check if Jellyseerr knows it's in the library
-                                                        val jellyfinId = movie.mediaInfo?.jellyfinId
-                                                        if (jellyfinId != null) {
-                                                            // Directly fetch from Jellyfin using the known ID
-                                                            val jellyfinItem = apiService?.getItemDetails(jellyfinId)
-                                                            if (jellyfinItem != null) {
-                                                                Log.d("MoviesLibraryScreen", "Found movie in library via Jellyseerr: ${jellyfinItem.Name}")
-                                                                onItemClick(jellyfinItem, 0L)
-                                                                return@launch
-                                                            }
-                                                        }
-                                                        
-                                                        // Try to find by TMDB ID
-                                                        var jellyfinItem = apiService?.findItemByTmdbId(movie.id, "Movie")
-                                                        
-                                                        // Fall back to title search if TMDB ID not found
-                                                        if (jellyfinItem == null) {
-                                                            val year = movie.releaseDate?.take(4)
-                                                            jellyfinItem = apiService?.findItemByTitle(movie.title ?: "", year, "Movie")
-                                                        }
-                                                        
-                                                        if (jellyfinItem != null) {
-                                                            Log.d("MoviesLibraryScreen", "Found movie in library: ${jellyfinItem.Name} (ID: ${jellyfinItem.Id})")
-                                                            onItemClick(jellyfinItem, 0L)
-                                                        } else {
-                                                            Log.d("MoviesLibraryScreen", "Movie not found in library, showing request screen: ${movie.title}")
-                                                            // Show movie request screen
-                                                            movieToRequest = movie
-                                                        }
-                                                    }
-                                                },
-                                                onFocusChanged = { isFocused ->
-                                                    if (isFocused) {
-                                                        instantDiscoverHighlightedMovie = movie
-                                                        backgroundChangeJob?.cancel()
-                                                        backgroundChangeJob = scope.launch {
-                                                            delay(500)
-                                                            discoverHighlightedMovie = movie
-                                                        }
-                                                    }
-                                                },
-                                                useSimpleCards = useSimpleCards.value,
-                                                useGoogleTvCards = useGoogleTvCards.value,
-                                                lowPowerMode = lowPowerMode.value
-                                            )
-                                        }
-                                    }
                                 }
                             }
                         }
@@ -1799,6 +1846,11 @@ fun MoviesLibraryScreen(
                     if (simpleCardsChanged || googleTvCardsChanged || lowPowerModeChanged) {
                         useSimpleCards.value = settings.useSimpleCards
                         useGoogleTvCards.value = settings.useGoogleTvCards
+                    }
+                    // Check if 24-hour time setting changed
+                    val use24HourTimeChanged = settings.use24HourTime != use24HourTimeWhenSettingsOpened
+                    if (use24HourTimeChanged) {
+                        use24HourTime = settings.use24HourTime
                     }
                     showSettings = false 
                 },
@@ -1841,6 +1893,11 @@ fun MoviesLibraryScreen(
                                 val lowPowerModeChanged = settings.lowPowerMode != lowPowerModeWhenSettingsOpened
                                 if (lowPowerModeChanged) {
                                     lowPowerMode.value = settings.lowPowerMode
+                                }
+                                // Check if 24-hour time setting changed
+                                val use24HourTimeChanged = settings.use24HourTime != use24HourTimeWhenSettingsOpened
+                                if (use24HourTimeChanged) {
+                                    use24HourTime = settings.use24HourTime
                                 }
                                 // Check if simple cards or Google TV cards settings changed and refresh UI if needed
                                 val simpleCardsChanged = settings.useSimpleCards != useSimpleCardsWhenSettingsOpened
@@ -2265,6 +2322,7 @@ private fun MovieLetterOverlay(
  * Jellyseerr Movie Card - displays a movie from Jellyseerr discover data
  * Styled to match JellyfinHorizontalCard for visual consistency
  */
+@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun JellyseerrMovieCard(
     movie: JellyseerrMovie,
@@ -2275,110 +2333,191 @@ fun JellyseerrMovieCard(
     lowPowerMode: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
+    var isFocused by remember { mutableStateOf(false) }
     
-    // Scale animation for focus
-    val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.1f else 1f,
-        animationSpec = tween(durationMillis = if (lowPowerMode) 0 else 150),
-        label = "jellyseerr_card_scale"
-    )
-    
-    // Card dimensions matching JellyfinHorizontalCard
+    // Width matching JellyfinHorizontalCard
     val cardWidth = 105.dp
-    val cardHeight = 157.5.dp // 2:3 aspect ratio for posters
     
     val posterUrl = JellyseerrImageUrl.poster(movie.posterPath, "w342")
     
-    Box(
+    Card(
+        onClick = onClick,
         modifier = modifier
             .width(cardWidth)
-            .height(cardHeight)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.DarkGray.copy(alpha = 0.3f))
             .onFocusChanged { focusState ->
+                isFocused = focusState.isFocused
                 onFocusChanged(focusState.isFocused)
-            }
-            .focusable(interactionSource = interactionSource)
-            .clickable { onClick() }
+            },
+        scale = CardDefaults.scale(focusedScale = 1.1f),
+        colors = CardDefaults.colors(
+            containerColor = Color.DarkGray.copy(alpha = 0.3f),
+            focusedContainerColor = Color.DarkGray.copy(alpha = 0.5f)
+        ),
+        shape = CardDefaults.shape(RoundedCornerShape(8.dp)),
+        border = CardDefaults.border(
+            focusedBorder = Border(
+                border = androidx.compose.foundation.BorderStroke(3.dp, Color.White),
+                shape = RoundedCornerShape(8.dp)
+            )
+        )
     ) {
-        // Poster image
-        if (posterUrl != null) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(posterUrl)
-                    .crossfade(true)
-                    .memoryCachePolicy(CachePolicy.ENABLED)
-                    .diskCachePolicy(CachePolicy.ENABLED)
-                    .build(),
-                contentDescription = movie.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            // Placeholder when no poster
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.DarkGray),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = (movie.title ?: "?").take(1),
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = Color.White.copy(alpha = 0.5f)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f)
+        ) {
+            // Poster image
+            if (posterUrl != null) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(posterUrl)
+                        .crossfade(true)
+                        .memoryCachePolicy(CachePolicy.ENABLED)
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .build(),
+                    contentDescription = movie.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
                 )
-            }
-        }
-        
-        // Focus border
-        if (isFocused) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .border(3.dp, Color.White, RoundedCornerShape(8.dp))
-            )
-        }
-        
-        // Rating badge in top-right corner
-        movie.voteAverage?.let { rating ->
-            if (rating > 0) {
+            } else {
+                // Placeholder when no poster
                 Box(
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
+                        .fillMaxSize()
+                        .background(Color.DarkGray),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = (movie.title ?: "?").take(1),
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = Color.White.copy(alpha = 0.5f)
+                    )
+                }
+            }
+            
+            // Rating badge in top-right corner
+            movie.voteAverage?.let { rating ->
+                if (rating > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(4.dp)
+                            .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "★ ${String.format("%.1f", rating)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFFFFD700)
+                        )
+                    }
+                }
+            }
+            
+            // Availability badge in bottom-left corner (shows if in Jellyfin library)
+            if (movie.mediaInfo?.isAvailable == true) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
                         .padding(4.dp)
-                        .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                        .background(Color(0xFF4CAF50), RoundedCornerShape(4.dp))
                         .padding(horizontal = 4.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = "★ ${String.format("%.1f", rating)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFFFD700)
+                        text = "✓",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                        color = Color.White
                     )
                 }
             }
         }
-        
-        // Availability badge in bottom-left corner (shows if in Jellyfin library)
-        if (movie.mediaInfo?.isAvailable == true) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(4.dp)
-                    .background(Color(0xFF4CAF50), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 4.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    text = "✓",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
-                    color = Color.White
-                )
+    }
+}
+
+/**
+ * A row of movies for a specific category with focus memory.
+ * Remembers the last focused item index and restores it when focus enters the row.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun MovieCategoryRow(
+    categoryName: String,
+    movies: List<JellyseerrMovie>,
+    onMovieClick: (JellyseerrMovie) -> Unit,
+    onMovieFocused: (JellyseerrMovie) -> Unit,
+    onViewMoreClick: () -> Unit,
+    titleTopPadding: androidx.compose.ui.unit.Dp = 12.dp,
+    disableUIAnimations: Boolean,
+    debugOutlinesEnabled: Boolean,
+    useSimpleCards: Boolean,
+    useGoogleTvCards: Boolean,
+    lowPowerMode: Boolean,
+    modifier: Modifier = Modifier
+) {
+    // Remember the last focused item index for this specific category
+    var lastFocusedIndex by androidx.compose.runtime.saveable.rememberSaveable(categoryName) { 
+        androidx.compose.runtime.mutableIntStateOf(0) 
+    }
+    
+    // Map of FocusRequesters for visible items
+    val focusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
+    
+    // Title
+    Text(
+        text = categoryName,
+        style = MaterialTheme.typography.headlineMedium.copy(
+            fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+        ),
+        modifier = Modifier.padding(bottom = 12.dp, top = titleTopPadding)
+    )
+    
+    LazyRow(
+        contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        flingBehavior = if (disableUIAnimations) ScrollableDefaults.flingBehavior() else ScrollableDefaults.flingBehavior(),
+        modifier = modifier
+            .focusProperties {
+                // When focus enters the row, redirect to the last focused item
+                enter = {
+                    focusRequesters[lastFocusedIndex] ?: FocusRequester.Default
+                }
             }
+            .then(if (debugOutlinesEnabled) Modifier.border(2.dp, Color.Magenta) else Modifier)
+    ) {
+        items(
+            count = movies.size,
+            key = { index -> movies[index].id }
+        ) { index ->
+            val movie = movies[index]
+            val focusRequester = remember { FocusRequester() }
+            
+            // Register focus requester
+            DisposableEffect(index) {
+                focusRequesters[index] = focusRequester
+                onDispose { focusRequesters.remove(index) }
+            }
+            
+            JellyseerrMovieCard(
+                movie = movie,
+                onClick = { onMovieClick(movie) },
+                onFocusChanged = { isFocused ->
+                    if (isFocused) {
+                        lastFocusedIndex = index
+                        onMovieFocused(movie)
+                    }
+                },
+                useSimpleCards = useSimpleCards,
+                useGoogleTvCards = useGoogleTvCards,
+                lowPowerMode = lowPowerMode,
+                modifier = Modifier.focusRequester(focusRequester)
+            )
+        }
+        
+        item(key = "view_more") {
+            DiscoverViewMoreCard(
+                onClick = onViewMoreClick,
+                lowPowerMode = lowPowerMode
+            )
         }
     }
 }

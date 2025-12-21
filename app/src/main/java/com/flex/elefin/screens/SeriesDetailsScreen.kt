@@ -406,7 +406,14 @@ fun SeriesDetailsScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.5f))
+                        .background(Color.Black.copy(alpha = 0.1f))
+                )
+
+                // Scrim gradient overlay (matching home screen)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .carouselGradient()
                 )
             } else {
                 // Dark mode: use Material dark background
@@ -3291,3 +3298,4 @@ private fun getEpisodeResolution(episode: JellyfinItem): String? {
         null
     }
 }
+

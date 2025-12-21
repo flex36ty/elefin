@@ -89,14 +89,20 @@ object PlayerConnection {
             return
         }
 
+        // Use application context to avoid leaking Activity context in singleton
+        val appContext = context.applicationContext
+
         Log.d(TAG, "Connecting to AudioPlayerService...")
         
         val sessionToken = SessionToken(
-            context,
-            ComponentName(context, AudioPlayerService::class.java)
+            appContext,
+            ComponentName(appContext, AudioPlayerService::class.java)
         )
 
-        controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
+        // If a future is already in progress, cancel it before creating a new one
+        controllerFuture?.let { MediaController.releaseFuture(it) }
+
+        controllerFuture = MediaController.Builder(appContext, sessionToken).buildAsync()
         controllerFuture?.addListener({
             try {
                 _controller = controllerFuture?.get()

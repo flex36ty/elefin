@@ -12,6 +12,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +38,8 @@ import androidx.tv.material3.*
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.flex.elefin.jellyfin.JellyfinConfig
+import com.flex.elefin.components.DigitalClock
+import com.flex.elefin.jellyfin.AppSettings
 import com.flex.elefin.music.data.JellyfinMusicApi
 import com.flex.elefin.music.data.MusicRepository
 import com.flex.elefin.music.model.Album
@@ -63,6 +68,7 @@ fun MusicHomeScreen(
 ) {
     val context = LocalContext.current
     val config = remember { JellyfinConfig(context) }
+    val settings = remember { AppSettings(context) }
     val scope = rememberCoroutineScope()
 
     // Create repository
@@ -94,10 +100,32 @@ fun MusicHomeScreen(
     // Load data
     LaunchedEffect(Unit) {
         isLoading = true
+        Log.d(TAG, "Loading music data...")
         try {
             recentAlbums = repository.getRecentlyAddedAlbums(20)
+            Log.d(TAG, "Loaded ${recentAlbums.size} recent albums")
             artists = repository.getArtists(100)
+            Log.d(TAG, "Loaded ${artists.size} artists")
             allAlbums = repository.getAllAlbums(100)
+            Log.d(TAG, "Loaded ${allAlbums.size} albums")
+
+            // Fallback: If direct artist loading fails but we have albums, extract artists from them
+            if (artists.isEmpty() && allAlbums.isNotEmpty()) {
+                Log.d(TAG, "Artists list empty, extracting unique artists from loaded albums...")
+                artists = allAlbums.mapNotNull { album ->
+                    if (album.artistId != null) {
+                        Artist(
+                            id = album.artistId,
+                            name = album.artist,
+                            overview = null,
+                            imageUrl = album.imageUrl, // Use album art as fallback for artist profile
+                            albumCount = 0,
+                            songCount = 0
+                        )
+                    } else null
+                }.distinctBy { it.id }.sortedBy { it.name }
+                Log.d(TAG, "Extracted ${artists.size} unique artists from albums")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error loading music data", e)
         }
@@ -107,22 +135,18 @@ fun MusicHomeScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF0D0D0D),
-                        Color(0xFF1A1A2E),
-                        Color(0xFF0D0D0D)
-                    )
-                )
-            )
+            .background(MaterialTheme.colorScheme.surface)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Header with tabs
             MusicHeader(
                 selectedTab = selectedTab,
-                onTabSelected = { selectedTab = it },
-                onBackPress = onBackPress
+                onTabSelected = { 
+                    Log.d(TAG, "Tab selected: $it")
+                    selectedTab = it 
+                },
+                onBackPress = onBackPress,
+                use24HourFormat = settings.use24HourTime
             )
 
             // Content based on selected tab
@@ -178,12 +202,13 @@ fun MusicHomeScreen(
 private fun MusicHeader(
     selectedTab: MusicTab,
     onTabSelected: (MusicTab) -> Unit,
-    onBackPress: () -> Unit
+    onBackPress: () -> Unit,
+    use24HourFormat: Boolean = false
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 48.dp, vertical = 24.dp),
+            .padding(horizontal = 48.dp, vertical = 17.dp), // Reduced from 24 to 17 (30% reduction)
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -191,12 +216,13 @@ private fun MusicHeader(
             // Back button
             IconButton(
                 onClick = onBackPress,
-                modifier = Modifier.size(48.dp)
+                modifier = Modifier.size(34.dp) // Reduced from 48 to 34
             ) {
                 Icon(
                     imageVector = Icons.Default.ArrowBack,
                     contentDescription = "Back",
-                    tint = Color.White
+                    tint = Color.White,
+                    modifier = Modifier.size(17.dp) // Reduced icon size
                 )
             }
 
@@ -207,66 +233,71 @@ private fun MusicHeader(
                 imageVector = Icons.Default.MusicNote,
                 contentDescription = null,
                 tint = Color(0xFF1DB954), // Spotify green accent
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(22.dp) // Reduced from 32 to 22
             )
             Spacer(modifier = Modifier.width(12.dp))
             Text(
                 text = "Music",
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.headlineSmall, // Reduced from Medium to Small
                 color = Color.White,
                 fontWeight = FontWeight.Bold
             )
         }
 
-        // Tab row
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        // Tab row using TV Material3 TabRow for consistent indicator style
+        TabRow(
+            selectedTabIndex = selectedTab.ordinal,
+            indicator = { tabPositions, doesFocusExist ->
+                if (selectedTab.ordinal < tabPositions.size) {
+                    TabRowDefaults.UnderlinedIndicator(
+                        currentTabPosition = tabPositions[selectedTab.ordinal],
+                        doesTabRowHaveFocus = doesFocusExist
+                    )
+                }
+            },
+            separator = { Spacer(modifier = Modifier.width(8.dp)) }, // Reduced from 12 to 8
+            modifier = Modifier.wrapContentWidth()
         ) {
             MusicTab.entries.forEach { tab ->
-                MusicTabButton(
-                    text = tab.name.lowercase().replaceFirstChar { it.uppercase() },
-                    isSelected = selectedTab == tab,
-                    onClick = { onTabSelected(tab) }
-                )
-            }
-        }
+                var isFocused by remember { mutableStateOf(false) }
+                val isSelected = selectedTab == tab
+                
+                Tab(
+                    selected = isSelected,
+                    onClick = { onTabSelected(tab) },
+                    onFocus = { /* Handled by TabRow */ },
+                    colors = TabDefaults.underlinedIndicatorTabColors(
+                        contentColor = Color.White.copy(alpha = 0.7f),
+                        selectedContentColor = Color.White,
+                        focusedContentColor = Color.Black
+                    ),
+                    modifier = Modifier
+                        .onFocusChanged { isFocused = it.isFocused }
+                        .then(
+                            if (isFocused) {
+                                Modifier.background(Color.White, RoundedCornerShape(4.dp))
+                            } else {
+                                Modifier
+                            }
+                        )
+                ) {
+                    Text(
+                        text = tab.name.lowercase().replaceFirstChar { it.uppercase() },
+                        style = MaterialTheme.typography.labelLarge.copy(
+                        fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.77f // Reduced from 1.1f to 0.77f (30% reduction)
+                        ),
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp) // Reduced horizontal from 16 to 11, vertical from 8 to 6
+                    )
+                }
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun MusicTabButton(
-    text: String,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    var isFocused by remember { mutableStateOf(false) }
-    
-    val backgroundColor = when {
-        isSelected -> Color(0xFF1DB954)
-        isFocused -> Color.White.copy(alpha = 0.2f)
-        else -> Color.Transparent
-    }
-
-    Surface(
-        onClick = onClick,
-        modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .onFocusChanged { isFocused = it.isFocused },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(20.dp)),
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = backgroundColor,
-            focusedContainerColor = if (isSelected) Color(0xFF1DB954) else Color.White.copy(alpha = 0.2f)
-        )
-    ) {
-        Text(
-            text = text,
-            color = if (isSelected) Color.Black else Color.White,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
-        )
-    }
+// Digital clock on the far right
+DigitalClock(use24HourFormat = use24HourFormat)
 }
+}
+
+
 
 @Composable
 private fun MusicHomeContent(
@@ -400,14 +431,16 @@ private fun AlbumCard(
                 .then(
                     if (isFocused) Modifier.border(
                         3.dp,
-                        Color(0xFF1DB954),
+                        Color.White,
                         RoundedCornerShape(8.dp)
                     ) else Modifier
                 ),
             colors = CardDefaults.colors(
-                containerColor = Color(0xFF282828)
+                containerColor = Color(0xFF282828),
+                focusedContainerColor = Color(0xFF282828)
             ),
-            shape = CardDefaults.shape(RoundedCornerShape(8.dp))
+            shape = CardDefaults.shape(RoundedCornerShape(8.dp)),
+            scale = CardDefaults.scale(focusedScale = 1.0f) // Keep static size, we use outer column scale
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 AsyncImage(
@@ -492,14 +525,16 @@ private fun ArtistCard(
                 .then(
                     if (isFocused) Modifier.border(
                         3.dp,
-                        Color(0xFF1DB954),
+                        Color.White,
                         CircleShape
                     ) else Modifier
                 ),
             colors = CardDefaults.colors(
-                containerColor = Color(0xFF282828)
+                containerColor = Color(0xFF282828),
+                focusedContainerColor = Color(0xFF282828)
             ),
-            shape = CardDefaults.shape(CircleShape)
+            shape = CardDefaults.shape(CircleShape),
+            scale = CardDefaults.scale(focusedScale = 1.0f)
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 if (artist.imageUrl != null) {
@@ -568,16 +603,28 @@ private fun ArtistListContent(
             CircularProgressIndicator(color = Color(0xFF1DB954))
         }
     } else {
-        LazyRow(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 48.dp, vertical = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
-            items(artists) { artist ->
-                ArtistCard(
-                    artist = artist,
-                    onClick = { onArtistClick(artist.id) }
-                )
+        if (artists.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "No artists found", color = Color.Gray)
+            }
+        } else {
+            // Use a grid for better visibility on TV
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(160.dp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 48.dp, vertical = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                verticalArrangement = Arrangement.spacedBy(32.dp)
+            ) {
+                items(artists) { artist ->
+                    ArtistCard(
+                        artist = artist,
+                        onClick = { onArtistClick(artist.id) }
+                    )
+                }
             }
         }
     }
@@ -597,16 +644,27 @@ private fun AlbumGridContent(
             CircularProgressIndicator(color = Color(0xFF1DB954))
         }
     } else {
-        LazyRow(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 48.dp, vertical = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
-            items(albums) { album ->
-                AlbumCard(
-                    album = album,
-                    onClick = { onAlbumClick(album.id) }
-                )
+        if (albums.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "No albums found", color = Color.Gray)
+            }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(180.dp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 48.dp, vertical = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                verticalArrangement = Arrangement.spacedBy(32.dp)
+            ) {
+                items(albums) { album ->
+                    AlbumCard(
+                        album = album,
+                        onClick = { onAlbumClick(album.id) }
+                    )
+                }
             }
         }
     }

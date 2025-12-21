@@ -47,6 +47,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.rememberSplineBasedDecay
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.ui.draw.rotate
+import com.flex.elefin.components.DigitalClock
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -197,6 +198,9 @@ fun JellyfinHomeScreen(
     // Hide shows with zero episodes setting - read from settings
     var hideShowsWithZeroEpisodes by remember { mutableStateOf(settings.hideShowsWithZeroEpisodes) }
     
+    // 24-hour time format setting - read from settings
+    var use24HourTime by remember { mutableStateOf(settings.use24HourTime) }
+    
     val apiService = remember(config.isConfigured(), config.serverUrl) {
         val serverUrl = config.serverUrl
         // Only create API service if server URL is valid
@@ -309,6 +313,7 @@ fun JellyfinHomeScreen(
     var lowPowerModeWhenSettingsOpened by remember { mutableStateOf(false) }
     var useSimpleCardsWhenSettingsOpened by remember { mutableStateOf(false) }
     var useGoogleTvCardsWhenSettingsOpened by remember { mutableStateOf(false) }
+    var use24HourTimeWhenSettingsOpened by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     var showSortDialog by remember { mutableStateOf(false) }
@@ -616,7 +621,7 @@ fun JellyfinHomeScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.2f))
+                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.1f))
                 )
                 
                 // Scrim gradient overlay
@@ -630,7 +635,7 @@ fun JellyfinHomeScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.2f))
+                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.1f))
                 )
                 
                 // Scrim gradient overlay
@@ -656,7 +661,7 @@ fun JellyfinHomeScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
-                .padding(top = 22.4.dp) // Reduced by 30% (32 * 0.7 = 22.4)
+                .padding(top = 22.dp) // Reduced by 30% (32 * 0.7 = 22.4, rounded to 22)
                 .then(
                     if (debugOutlinesEnabled) {
                         Modifier.border(4.dp, Color.Red)
@@ -673,7 +678,7 @@ fun JellyfinHomeScreen(
                 Row(
                     horizontalArrangement = Arrangement.Start,
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.weight(1f)
                 ) {
                 // Settings button - first on the left (same size as library buttons)
                 IconButton(
@@ -684,6 +689,7 @@ fun JellyfinHomeScreen(
                         lowPowerModeWhenSettingsOpened = settings.lowPowerMode
                         useSimpleCardsWhenSettingsOpened = settings.useSimpleCards
                         useGoogleTvCardsWhenSettingsOpened = settings.useGoogleTvCards
+                        use24HourTimeWhenSettingsOpened = settings.use24HourTime
                         showSettings = true
                     },
                     colors = IconButtonDefaults.colors(
@@ -691,13 +697,13 @@ fun JellyfinHomeScreen(
                         contentColor = MaterialTheme.colorScheme.onSurface
                     ),
                     modifier = Modifier
-                        .padding(start = 54.dp, end = 20.dp)
-                        .size(48.dp) // 30% smaller (from default ~68dp to ~48dp)
+                        .padding(start = 38.dp, end = 14.dp) // Start reduced from 54 to 38, end from 20 to 14
+                        .size(34.dp) // 30% smaller (from 48dp to 34dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Settings,
                         contentDescription = "Settings",
-                        modifier = Modifier.size(20.dp) // Reduced icon size to decrease visual padding around it
+                        modifier = Modifier.size(14.dp) // Reduced from 20dp to 14dp
                     )
                 }
                 
@@ -711,13 +717,13 @@ fun JellyfinHomeScreen(
                         contentColor = MaterialTheme.colorScheme.onSurface
                     ),
                     modifier = Modifier
-                        .padding(end = 20.dp)
-                        .size(48.dp) // Same size as settings button
+                        .padding(end = 14.dp) // Reduced from 20 to 14
+                        .size(34.dp) // Same size as settings button (34dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = "Search",
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(14.dp) // Reduced from 20dp to 14dp
                     )
                 }
                 
@@ -779,15 +785,15 @@ fun JellyfinHomeScreen(
                         disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     ),
                     modifier = Modifier
-                        .padding(end = 20.dp)
-                        .size(48.dp) // Same size as settings button
+                        .padding(end = 14.dp) // Reduced from 20 to 14
+                        .size(34.dp) // Same size as settings button (34dp)
                 ) {
                     if (isLibrarySelected) {
                         // Show sort icon when library is selected
                         Icon(
                             imageVector = Icons.Default.SwapVert,
                             contentDescription = "Sort",
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(14.dp) // Reduced from 20dp to 14dp
                         )
                     } else {
                         // Show refresh icon on home screen
@@ -795,7 +801,7 @@ fun JellyfinHomeScreen(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = if (isRefreshing) "Refreshing..." else "Refresh",
                             modifier = Modifier
-                                .size(20.dp)
+                                .size(14.dp) // Reduced from 20dp to 14dp
                                 .then(
                                     if (isRefreshing) {
                                         Modifier.rotate(rotationAngle)
@@ -813,7 +819,7 @@ fun JellyfinHomeScreen(
                 
                 // Create a mini TabRow for the home button to get the underline indicator
                 TabRow(
-                    modifier = Modifier.padding(end = 20.dp),
+                    modifier = Modifier.padding(end = 14.dp), // Reduced from 20 to 14
                     selectedTabIndex = if (homeSelected) 0 else -1,
                     indicator = { tabPositions, doesTabRowHaveFocus ->
                         if (homeSelected && tabPositions.isNotEmpty()) {
@@ -851,8 +857,8 @@ fun JellyfinHomeScreen(
                             contentDescription = "Home",
                             tint = if (homeFocused) Color.Black else Color.White,
                             modifier = Modifier
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
-                                .size(28.dp)
+                                .padding(horizontal = 8.dp, vertical = 4.dp) // Reduced from (12, 6) to (8, 4)
+                                .size(20.dp) // Reduced from 28dp to 20dp
                         )
                     }
                 }
@@ -887,7 +893,7 @@ fun JellyfinHomeScreen(
                     TabRow(
                         modifier = Modifier.fillMaxWidth(),
                         selectedTabIndex = if (selectedLibraryId != null || selectedCollectionId == "__COLLECTIONS__") selectedTabIndex else -1,
-                        separator = { Spacer(modifier = Modifier.width(16.dp)) },
+                        separator = { Spacer(modifier = Modifier.width(11.dp)) }, // Reduced from 16dp to 11dp (30% smaller)
                         indicator = { tabPositions, doesTabRowHaveFocus ->
                             if ((selectedLibraryId != null || selectedCollectionId == "__COLLECTIONS__") && selectedTabIndex >= 0 && selectedTabIndex < tabPositions.size) {
                                 TabRowDefaults.UnderlinedIndicator(
@@ -989,9 +995,10 @@ fun JellyfinHomeScreen(
                                     )
                             ) {
                                 // Make 30% bigger, then 10% smaller (1.3 * 0.9 = 1.17x normal size)
-                                val scaledFontSize = MaterialTheme.typography.labelLarge.fontSize * 1.17f
-                                // Add horizontal padding (20% increase from default 16dp = 19.2dp)
-                                val horizontalPadding = 16.dp * 1.2f
+                                // Now reduced by additional 30% from the enlarged state: 1.17 * 0.7 = 0.819f
+                                val scaledFontSize = MaterialTheme.typography.labelLarge.fontSize * 0.82f
+                                // Add horizontal padding (Reduced by 30% from current enlarged state: 1.2 * 0.7 = 0.84)
+                                val horizontalPadding = 16.dp * 0.84f
                                 Text(
                                     text = itemName,
                                     style = MaterialTheme.typography.labelLarge.copy(
@@ -1005,9 +1012,12 @@ fun JellyfinHomeScreen(
                         }
                     }
                 }
-                }
             }
+                
+            // Digital clock on the far right
+            DigitalClock(use24HourFormat = use24HourTime)
         }
+    }
         
         // Item details section - below settings button (only show when not viewing a library)
         // Show highlighted item panel for home screen and collections
@@ -2103,6 +2113,11 @@ fun JellyfinHomeScreen(
                 if (animationsChanged) {
                     disableUIAnimations.value = settings.disableUIAnimations
                 }
+                // Check if 24-hour time setting changed
+                val use24HourTimeChanged = settings.use24HourTime != use24HourTimeWhenSettingsOpened
+                if (use24HourTimeChanged) {
+                    use24HourTime = settings.use24HourTime
+                }
                 // Check if low power mode changed
                 val lowPowerModeChanged = settings.lowPowerMode != lowPowerModeWhenSettingsOpened
                 if (lowPowerModeChanged) {
@@ -2152,6 +2167,11 @@ fun JellyfinHomeScreen(
                             val animationsChanged = settings.disableUIAnimations != disableUIAnimationsWhenSettingsOpened
                             if (animationsChanged) {
                                 disableUIAnimations.value = settings.disableUIAnimations
+                            }
+                            // Check if 24-hour time setting changed
+                            val use24HourTimeChanged = settings.use24HourTime != use24HourTimeWhenSettingsOpened
+                            if (use24HourTimeChanged) {
+                                use24HourTime = settings.use24HourTime
                             }
                             // Check if low power mode changed
                             val lowPowerModeChanged = settings.lowPowerMode != lowPowerModeWhenSettingsOpened
@@ -3384,10 +3404,12 @@ fun Modifier.carouselGradient(): Modifier = composed {
 
     // Stronger left-side gradient for navigation drawer readability
     // Left side is fully opaque, fading to transparent on the right (30% darker than before)
-    val colorAlphaList = listOf(1.0f, 0.7f, 0.0f)
+    // REDUCED INTENSITY: Changed from 1.0f to 0.9f start, and 0.7f to 0.5f mid
+    val colorAlphaList = listOf(0.9f, 0.5f, 0.0f)
     val colorStopList = listOf(0.0f, 0.35f, 0.7f)
 
-    val colorAlphaList2 = listOf(1.0f, 0.4f, 0.0f)
+    // REDUCED INTENSITY: Changed from 1.0f to 0.9f start, and 0.4f to 0.3f mid
+    val colorAlphaList2 = listOf(0.9f, 0.3f, 0.0f)
     val colorStopList2 = listOf(0.1f, 0.4f, 0.9f)
     this
         .then(

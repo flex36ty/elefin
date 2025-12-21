@@ -47,6 +47,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.flex.elefin.components.DigitalClock
+import com.flex.elefin.components.DiscoverViewMoreCard
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -59,6 +61,10 @@ import androidx.tv.material3.TabDefaults
 import androidx.tv.material3.TabRow
 import androidx.tv.material3.TabRowDefaults
 import androidx.tv.material3.Text
+import androidx.tv.material3.Card
+import androidx.tv.material3.CardDefaults
+import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Border
 import coil.compose.AsyncImage
 import coil.imageLoader
 import coil.annotation.ExperimentalCoilApi
@@ -132,6 +138,9 @@ fun TvShowsLibraryScreen(
     val lowPowerMode = remember { mutableStateOf(settings.lowPowerMode) }
     val hideShowsWithZeroEpisodes by remember { mutableStateOf(settings.hideShowsWithZeroEpisodes) }
     
+    // 24-hour time format setting - read from settings
+    var use24HourTime by remember { mutableStateOf(settings.use24HourTime) }
+    
     // Dialog states
     var showSettings by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
@@ -141,6 +150,7 @@ fun TvShowsLibraryScreen(
     var lowPowerModeWhenSettingsOpened by remember { mutableStateOf(false) }
     var useSimpleCardsWhenSettingsOpened by remember { mutableStateOf(false) }
     var useGoogleTvCardsWhenSettingsOpened by remember { mutableStateOf(false) }
+    var use24HourTimeWhenSettingsOpened by remember { mutableStateOf(false) }
     
     // Tab state: "recommendations", "library", or "discover"
     var selectedTab by remember { mutableStateOf("recommendations") }
@@ -174,6 +184,7 @@ fun TvShowsLibraryScreen(
     var isDiscoverLoading by remember { mutableStateOf(false) }
     var discoverHighlightedShow by remember { mutableStateOf<JellyseerrTvShow?>(null) }
     var instantDiscoverHighlightedShow by remember { mutableStateOf<JellyseerrTvShow?>(null) }
+    var discoverTvPages by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     
     // TV show request screen state
     var showToRequest by remember { mutableStateOf<JellyseerrTvShow?>(null) }
@@ -359,6 +370,56 @@ fun TvShowsLibraryScreen(
                 }
             }
             isDiscoverLoading = false
+        }
+    }
+    
+    // Function to load more discover TV shows
+    val loadMoreDiscoverTvShows: (String) -> Unit = { categoryName ->
+        if (jellyseerrApiService != null) {
+            scope.launch {
+                val currentPage = discoverTvPages[categoryName] ?: 1
+                val nextPage = currentPage + 1
+                val newShows = when {
+                    categoryName.startsWith("🔥") -> {
+                        val trending = jellyseerrApiService.getTrending(nextPage)
+                        trending.filter { it.mediaType == "tv" }.map { item ->
+                            JellyseerrTvShow(
+                                id = item.id,
+                                mediaType = "tv",
+                                popularity = item.popularity,
+                                posterPath = item.posterPath,
+                                backdropPath = item.backdropPath,
+                                voteCount = item.voteCount,
+                                voteAverage = item.voteAverage,
+                                genreIds = item.genreIds,
+                                overview = item.overview,
+                                originalLanguage = item.originalLanguage,
+                                name = item.name,
+                                originalName = item.originalName,
+                                originCountry = item.originCountry,
+                                firstAirDate = item.firstAirDate,
+                                mediaInfo = item.mediaInfo
+                            )
+                        }
+                    }
+                    categoryName == "Popular" -> jellyseerrApiService.getPopularTvShows(nextPage)
+                    categoryName == "Upcoming" -> jellyseerrApiService.getUpcomingTvShows(nextPage)
+                    else -> emptyList()
+                }
+                
+                if (newShows.isNotEmpty()) {
+                    val currentShows = discoverTvShowsByCategory[categoryName] ?: emptyList()
+                    // Filter out duplicates
+                    val currentIds = currentShows.map { it.id }.toSet()
+                    val filteredNewShows = newShows.filter { it.id !in currentIds }
+                    
+                    if (filteredNewShows.isNotEmpty()) {
+                        discoverTvShowsByCategory = discoverTvShowsByCategory + (categoryName to (currentShows + filteredNewShows))
+                        discoverTvPages = discoverTvPages + (categoryName to nextPage)
+                        Log.d("TvShowsLibraryScreen", "Loaded ${filteredNewShows.size} more $categoryName TV shows (page $nextPage)")
+                    }
+                }
+            }
         }
     }
     
@@ -610,7 +671,7 @@ fun TvShowsLibraryScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.TopCenter)
-                        .padding(top = 22.4.dp)
+                .padding(top = 22.dp) // Reduced by 30% (32 * 0.7 = 22.4, rounded to 22)
                         .then(
                             if (debugOutlinesEnabled) {
                                 Modifier.border(4.dp, Color.Red)
@@ -627,7 +688,7 @@ fun TvShowsLibraryScreen(
                         Row(
                             horizontalArrangement = Arrangement.Start,
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.weight(1f)
                         ) {
                             // Settings button
                             IconButton(
@@ -638,6 +699,7 @@ fun TvShowsLibraryScreen(
                                     lowPowerModeWhenSettingsOpened = settings.lowPowerMode
                                     useSimpleCardsWhenSettingsOpened = settings.useSimpleCards
                                     useGoogleTvCardsWhenSettingsOpened = settings.useGoogleTvCards
+                                    use24HourTimeWhenSettingsOpened = settings.use24HourTime
                                     showSettings = true
                                 },
                                 colors = IconButtonDefaults.colors(
@@ -645,13 +707,13 @@ fun TvShowsLibraryScreen(
                                     contentColor = MaterialTheme.colorScheme.onSurface
                                 ),
                                 modifier = Modifier
-                                    .padding(start = 54.dp, end = 20.dp)
-                                    .size(48.dp)
+                                    .padding(start = 38.dp, end = 14.dp) // Start reduced from 54 to 38, end from 20 to 14
+                                    .size(34.dp) // 30% smaller (from 48dp to 34dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Settings,
                                     contentDescription = "Settings",
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(14.dp) // Reduced from 20dp to 14dp
                                 )
                             }
                             
@@ -663,13 +725,13 @@ fun TvShowsLibraryScreen(
                                     contentColor = MaterialTheme.colorScheme.onSurface
                                 ),
                                 modifier = Modifier
-                                    .padding(end = 20.dp)
-                                    .size(48.dp)
+                                    .padding(end = 14.dp) // Reduced from 20 to 14
+                                    .size(34.dp) // Same size as settings button (34dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Search,
                                     contentDescription = "Search",
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(14.dp) // Reduced from 20dp to 14dp
                                 )
                             }
                             
@@ -769,15 +831,15 @@ fun TvShowsLibraryScreen(
                                     disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                 ),
                                 modifier = Modifier
-                                    .padding(end = 20.dp)
-                                    .size(48.dp)
+                                    .padding(end = 14.dp) // Reduced from 20 to 14
+                                    .size(34.dp) // Same size as settings button (34dp)
                             ) {
                                 if (isLibraryTab) {
                                     // Show sort icon when library tab is selected
                                     Icon(
                                         imageVector = Icons.Default.SwapVert,
                                         contentDescription = "Sort",
-                                        modifier = Modifier.size(20.dp)
+                                        modifier = Modifier.size(14.dp) // Reduced from 20dp to 14dp
                                     )
                                 } else {
                                     // Show refresh icon on recommendations tab
@@ -785,7 +847,7 @@ fun TvShowsLibraryScreen(
                                         imageVector = Icons.Default.Refresh,
                                         contentDescription = if (isRefreshing) "Refreshing..." else "Refresh",
                                         modifier = Modifier
-                                            .size(20.dp)
+                                        .size(14.dp) // Reduced from 20dp to 14dp
                                             .then(
                                                 if (isRefreshing) {
                                                     Modifier.rotate(rotationAngle)
@@ -801,7 +863,7 @@ fun TvShowsLibraryScreen(
                             var homeFocused by remember { mutableStateOf(false) }
                             
                             TabRow(
-                                modifier = Modifier.padding(end = 20.dp),
+                                modifier = Modifier.padding(end = 14.dp), // Reduced from 20 to 14
                                 selectedTabIndex = -1, // Never selected since we're not on home
                                 indicator = { _, _ -> } // No indicator
                             ) {
@@ -827,8 +889,8 @@ fun TvShowsLibraryScreen(
                                         contentDescription = "Home",
                                         tint = if (homeFocused) Color.Black else Color.White,
                                         modifier = Modifier
-                                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                                            .size(28.dp)
+                                            .padding(horizontal = 8.dp, vertical = 4.dp) // Reduced from (12, 6) to (8, 4)
+                                            .size(20.dp) // Reduced from 28dp to 20dp
                                     )
                                 }
                             }
@@ -847,7 +909,7 @@ fun TvShowsLibraryScreen(
                             TabRow(
                                 modifier = Modifier.fillMaxWidth(),
                                 selectedTabIndex = selectedTabIndex,
-                                separator = { Spacer(modifier = Modifier.width(16.dp)) },
+                                separator = { Spacer(modifier = Modifier.width(11.dp)) }, // Reduced from 16dp to 11dp (30% smaller)
                                 indicator = { tabPositions, doesTabRowHaveFocus ->
                                     if (selectedTabIndex >= 0 && selectedTabIndex < tabPositions.size) {
                                         TabRowDefaults.UnderlinedIndicator(
@@ -878,8 +940,8 @@ fun TvShowsLibraryScreen(
                                                 }
                                             )
                                     ) {
-                                        val scaledFontSize = MaterialTheme.typography.labelLarge.fontSize * 1.17f
-                                        val horizontalPadding = 16.dp * 1.2f
+                                        val scaledFontSize = MaterialTheme.typography.labelLarge.fontSize * 0.82f // Reduced by 30% from 1.17f
+                                        val horizontalPadding = 16.dp * 0.84f // Reduced by 30% from 1.2f
                                         Text(
                                             text = tabName,
                                             style = MaterialTheme.typography.labelLarge.copy(
@@ -887,15 +949,19 @@ fun TvShowsLibraryScreen(
                                                 fontSize = scaledFontSize
                                             ),
                                             color = if (isFocused) Color.Black else Color.White,
-                                            modifier = Modifier.padding(horizontal = horizontalPadding, vertical = 6.dp)
+                                            modifier = Modifier.padding(horizontal = horizontalPadding, vertical = 4.dp) // Reduced vertical from 6 to 4
                                         )
                                     }
                                 }
                             }
-                        }
                     }
-                }
                 
+                    // Digital clock on the far right
+                    DigitalClock(use24HourFormat = use24HourTime)
+                }
+        }
+
+
                 // Content based on selected tab
                 if (selectedTab == "recommendations") {
                     // Item details section (same as home screen)
@@ -1834,6 +1900,10 @@ fun TvShowsLibraryScreen(
                                                 categoryName = categoryName,
                                                 shows = shows,
                                                 titleTopPadding = if (index == 0) 12.dp else 30.36.dp,
+                                                onViewMoreClick = { loadMoreDiscoverTvShows(categoryName) },
+                                                disableUIAnimations = disableUIAnimations.value,
+                                                debugOutlinesEnabled = debugOutlinesEnabled,
+                                                lowPowerMode = lowPowerMode.value,
                                                 onShowClick = { show ->
                                                     // Search for this TV show in Jellyfin library and navigate to details
                                                     scope.launch {
@@ -1877,10 +1947,7 @@ fun TvShowsLibraryScreen(
                                                         delay(500)
                                                         discoverHighlightedShow = show
                                                     }
-                                                },
-
-                                                disableUIAnimations = disableUIAnimations.value,
-                                                debugOutlinesEnabled = debugOutlinesEnabled
+                                                }
                                             )
                                         }
                                     }
@@ -1964,6 +2031,11 @@ fun TvShowsLibraryScreen(
                                         val lowPowerModeChanged = settings.lowPowerMode != lowPowerModeWhenSettingsOpened
                                         if (lowPowerModeChanged) {
                                             lowPowerMode.value = settings.lowPowerMode
+                                        }
+                                        // Check if 24-hour time setting changed
+                                        val use24HourTimeChanged = settings.use24HourTime != use24HourTimeWhenSettingsOpened
+                                        if (use24HourTimeChanged) {
+                                            use24HourTime = settings.use24HourTime
                                         }
                                         // Check if simple cards or Google TV cards settings changed and refresh UI if needed
                                         val simpleCardsChanged = settings.useSimpleCards != useSimpleCardsWhenSettingsOpened
@@ -2204,6 +2276,7 @@ private fun TvShowLetterOverlay(
  * Jellyseerr TV Show Card - displays a TV show from Jellyseerr discover data
  * Styled to match JellyfinHorizontalCard for visual consistency
  */
+@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun JellyseerrTvShowCard(
     show: JellyseerrTvShow,
@@ -2214,111 +2287,104 @@ fun JellyseerrTvShowCard(
     lowPowerMode: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
+    var isFocused by remember { mutableStateOf(false) }
     
-    // Scale animation for focus
-    val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.1f else 1f,
-        animationSpec = tween(durationMillis = if (lowPowerMode) 0 else 150),
-        label = "jellyseerr_tv_card_scale"
-    )
-    
-    // Card dimensions matching JellyfinHorizontalCard
+    // Width matching JellyfinHorizontalCard
     val cardWidth = 105.dp
-    val cardHeight = 157.5.dp // 2:3 aspect ratio for posters
     
     val posterUrl = JellyseerrImageUrl.poster(show.posterPath, "w342")
     
-    Box(
+    Card(
+        onClick = { onShowClicked(show) },
         modifier = modifier
             .width(cardWidth)
-            .height(cardHeight)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.DarkGray.copy(alpha = 0.3f))
             .onFocusChanged { focusState ->
+                isFocused = focusState.isFocused
                 if (focusState.isFocused) {
                     onShowFocused(show)
                 }
-            }
-            .focusable(interactionSource = interactionSource)
-            .clickable { onShowClicked(show) }
+            },
+        scale = CardDefaults.scale(focusedScale = 1.1f),
+        colors = CardDefaults.colors(
+            containerColor = Color.DarkGray.copy(alpha = 0.3f),
+            focusedContainerColor = Color.DarkGray.copy(alpha = 0.5f)
+        ),
+        shape = CardDefaults.shape(RoundedCornerShape(8.dp)),
+        border = CardDefaults.border(
+            focusedBorder = Border(
+                border = androidx.compose.foundation.BorderStroke(3.dp, Color.White),
+                shape = RoundedCornerShape(8.dp)
+            )
+        )
     ) {
-        // Poster image
-        if (posterUrl != null) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(posterUrl)
-                    .crossfade(true)
-                    .memoryCachePolicy(CachePolicy.ENABLED)
-                    .diskCachePolicy(CachePolicy.ENABLED)
-                    .build(),
-                contentDescription = show.name,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            // Placeholder when no poster
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.DarkGray),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = (show.name ?: "?").take(1),
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = Color.White.copy(alpha = 0.5f)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f)
+        ) {
+            // Poster image
+            if (posterUrl != null) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(posterUrl)
+                        .crossfade(true)
+                        .memoryCachePolicy(CachePolicy.ENABLED)
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .build(),
+                    contentDescription = show.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
                 )
-            }
-        }
-        
-        // Focus border
-        if (isFocused) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .border(3.dp, Color.White, RoundedCornerShape(8.dp))
-            )
-        }
-        
-        // Rating badge in top-right corner
-        show.voteAverage?.let { rating ->
-            if (rating > 0) {
+            } else {
+                // Placeholder when no poster
                 Box(
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(4.dp)
-                        .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                        .fillMaxSize()
+                        .background(Color.DarkGray),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "★ ${String.format("%.1f", rating)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFFFD700)
+                        text = (show.name ?: "?").take(1),
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = Color.White.copy(alpha = 0.5f)
                     )
                 }
             }
-        }
-        
-        // Availability badge in bottom-left corner (shows if in Jellyfin library)
-        if (show.mediaInfo?.isAvailable == true) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(4.dp)
-                    .background(Color(0xFF4CAF50), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 4.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    text = "✓",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
-                    color = Color.White
-                )
+            
+            // Rating badge in top-right corner
+            show.voteAverage?.let { rating ->
+                if (rating > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(4.dp)
+                            .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "★ ${String.format("%.1f", rating)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFFFFD700)
+                        )
+                    }
+                }
+            }
+            
+            // Availability badge in bottom-left corner (shows if in Jellyfin library)
+            if (show.mediaInfo?.isAvailable == true) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(4.dp)
+                        .background(Color(0xFF4CAF50), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "✓",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                        color = Color.White
+                    )
+                }
             }
         }
     }
@@ -2337,9 +2403,11 @@ private fun CategoryRow(
     shows: List<JellyseerrTvShow>,
     onShowClick: (JellyseerrTvShow) -> Unit,
     onShowFocused: (JellyseerrTvShow) -> Unit,
+    onViewMoreClick: () -> Unit,
     titleTopPadding: androidx.compose.ui.unit.Dp = 12.dp,
     disableUIAnimations: Boolean,
     debugOutlinesEnabled: Boolean,
+    lowPowerMode: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     // Remember the last focused item index for this specific category
@@ -2395,6 +2463,13 @@ private fun CategoryRow(
                     onShowFocused(show)
                 },
                 modifier = Modifier.focusRequester(focusRequester)
+            )
+        }
+        
+        item(key = "view_more") {
+            DiscoverViewMoreCard(
+                onClick = onViewMoreClick,
+                lowPowerMode = lowPowerMode
             )
         }
     }
