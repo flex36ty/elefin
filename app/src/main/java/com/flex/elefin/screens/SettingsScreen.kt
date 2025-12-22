@@ -216,6 +216,7 @@ fun SettingsScreen(
     var useSimpleCards by remember { mutableStateOf(settings.useSimpleCards) }
     var useGoogleTvCards by remember { mutableStateOf(settings.useGoogleTvCards) }
     var lowPowerMode by remember { mutableStateOf(settings.lowPowerMode) }
+    var use4KBackgrounds by remember { mutableStateOf(settings.use4KBackgrounds) }
     
     // Logout confirmation
     var showLogoutConfirmation by remember { mutableStateOf(false) }
@@ -232,6 +233,7 @@ fun SettingsScreen(
     var isLoggingIn by remember { mutableStateOf(false) }
     var loginError by remember { mutableStateOf<String?>(null) }
     var jellyseerrEnabled by remember { mutableStateOf(settings.jellyseerrEnabled) }
+    var jellyseerrSearchEnabled by remember { mutableStateOf(settings.jellyseerrSearchEnabled) }
 
     // OpenSubtitles state variables
     var openSubtitlesApiKey by remember { mutableStateOf(settings.openSubtitlesApiKey) }
@@ -1461,6 +1463,16 @@ fun SettingsScreen(
                                         settings.jellyseerrEnabled = jellyseerrEnabled
                                     }
                                 )
+                                
+                                SettingToggle(
+                                    title = "Include in Search",
+                                    description = "Show results from Jellyseerr in the main search screen",
+                                    isEnabled = jellyseerrSearchEnabled,
+                                    onToggle = {
+                                        jellyseerrSearchEnabled = !jellyseerrSearchEnabled
+                                        settings.jellyseerrSearchEnabled = jellyseerrSearchEnabled
+                                    }
+                                )
                             }
                         }
 
@@ -1507,6 +1519,17 @@ fun SettingsScreen(
                                 onToggle = {
                                     use24HourTimeEnabled = !use24HourTimeEnabled
                                     settings.use24HourTime = use24HourTimeEnabled
+                                }
+                            )
+
+                            // 4K Quality Backgrounds
+                            SettingToggle(
+                                title = "4K Quality Backgrounds",
+                                description = "Use 4K resolution (3840x2160) for backdrop images. May impact performance.",
+                                isEnabled = use4KBackgrounds,
+                                onToggle = {
+                                    use4KBackgrounds = !use4KBackgrounds
+                                    settings.use4KBackgrounds = use4KBackgrounds
                                 }
                             )
                         }

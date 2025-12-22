@@ -4,6 +4,35 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2025-12-22
+
+### Added
+
+- **Jellyseerr Search Integration**
+  - **Unified Search**: Search now queries both your Jellyfin library and Jellyseerr (TMDB) simultaneously.
+  - **Deduplicated Results**: Intelligent filtering ensures you don't see duplicate entries for items you already own – local library items take precedence.
+  - **Seamless Request Flow**: Clicking a Jellyseerr result opens a dedicated details screen where you can instantly request the movie or TV show.
+  - **Search Settings**: Added "Include in Search" toggle under Jellyseerr settings to enable/disable this feature (On by default).
+  - **Integrated UI**: Jellyseerr results appear natively within the search grid with high-quality poster art.
+
+## 2025-12-21
+
+### Added
+
+- **Enhanced Background Readability & Quality**
+  - **High-Quality Artwork**: Added a new setting under Appearance to enable **4K quality backdrop images** (3840x2160) for a sharper visual experience on compatible displays.
+  - **Global Scrims & Dynamic Colors**: Refactored background layering on the Home screen to apply Plex-style dynamic gradients and atmospheric colors globally.
+  - **Increased Scrim Intensity**: Adjusted alpha values for standard scrims across all screens to improve synopsis text readability.
+  - Fine-tuned Plex-style dynamic backgrounds for a more cinematic and legible experience.
+
+### Changed
+
+- **UI & Navigation Scaling**
+  - Refined the 30% reduction in navigation elements for better visual balance.
+  - Standardized "View More" pagination cards across all discovery rows.
+
+---
+
 ## 2025-12-20
 
 ### Added

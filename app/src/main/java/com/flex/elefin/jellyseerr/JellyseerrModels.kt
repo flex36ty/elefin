@@ -295,3 +295,42 @@ data class JellyseerrCast(
     val gender: Int? = null
 )
 
+@Serializable
+data class JellyseerrSearchResponse(
+    val page: Int,
+    val totalPages: Int,
+    val totalResults: Int,
+    val results: List<JellyseerrSearchResult>
+)
+
+@Serializable
+data class JellyseerrSearchResult(
+    val id: Int,
+    val mediaType: String, // "movie" or "tv"
+    val popularity: Double? = null,
+    val posterPath: String? = null,
+    val backdropPath: String? = null,
+    val voteCount: Int? = null,
+    val voteAverage: Double? = null,
+    val genreIds: List<Int> = emptyList(),
+    val overview: String? = null,
+    val originalLanguage: String? = null,
+    // Movie fields
+    val title: String? = null,
+    val originalTitle: String? = null,
+    val releaseDate: String? = null,
+    val adult: Boolean? = null,
+    val video: Boolean? = null,
+    // TV fields
+    val name: String? = null,
+    val originalName: String? = null,
+    val originCountry: List<String> = emptyList(),
+    val firstAirDate: String? = null,
+    val mediaInfo: MediaInfo? = null
+) {
+    val displayTitle: String
+        get() = title ?: name ?: originalTitle ?: originalName ?: "Unknown"
+
+    val displayDate: String?
+        get() = releaseDate ?: firstAirDate
+}

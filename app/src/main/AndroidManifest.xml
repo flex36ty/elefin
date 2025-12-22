@@ -90,6 +90,10 @@
             android:exported="false"
             android:screenOrientation="landscape" />
         <activity
+            android:name=".JellyseerrDetailsActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+        <activity
             android:name=".player.mpv.MpvTvPlayerActivity"
             android:exported="false"
             android:screenOrientation="landscape"

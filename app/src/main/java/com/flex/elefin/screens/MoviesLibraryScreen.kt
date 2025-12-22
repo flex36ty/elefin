@@ -479,10 +479,10 @@ fun MoviesLibraryScreen(
                 discoverHighlightedMovie?.backdropPath?.let { JellyseerrImageUrl.backdrop(it) } ?: ""
             } else {
                 highlightedItem?.let { item ->
-                    // Low power mode uses 720p, normal mode uses 1080p
-                    val bgMaxWidth = if (lowPowerMode.value) 1280 else 1920
-                    val bgMaxHeight = if (lowPowerMode.value) 720 else 1080
-                    val bgQuality = if (lowPowerMode.value) 75 else 90
+                    // Low power mode uses 720p, normal mode uses 1080p, 4K mode uses 2160p
+                    val bgMaxWidth = if (lowPowerMode.value) 1280 else if (settings.use4KBackgrounds) 3840 else 1920
+                    val bgMaxHeight = if (lowPowerMode.value) 720 else if (settings.use4KBackgrounds) 2160 else 1080
+                    val bgQuality = if (lowPowerMode.value) 75 else if (settings.use4KBackgrounds) 95 else 90
                     
                     val backdropUrl = apiService?.getImageUrl(item.Id, "Backdrop", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
                     if (backdropUrl.isNotEmpty()) {

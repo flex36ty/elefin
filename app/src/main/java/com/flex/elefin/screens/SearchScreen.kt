@@ -66,6 +66,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun SearchScreen(
     apiService: JellyfinApiService?,
+    jellyseerrApiService: com.flex.elefin.jellyseerr.JellyseerrApiService? = null,
     onItemClick: (JellyfinItem) -> Unit,
     onBack: () -> Unit,
     showDebugOutlines: Boolean = false
@@ -80,6 +81,10 @@ fun SearchScreen(
     val searchFocusRequester = remember { FocusRequester() }
     val voiceButtonFocusRequester = remember { FocusRequester() }
     
+    // Get settings
+    val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
+    val jellyseerrSearchEnabled = remember { settings.jellyseerrSearchEnabled }
+    
     // Voice recognition launcher
     val voiceLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -91,7 +96,7 @@ fun SearchScreen(
                 searchQuery = spokenText
                 // Trigger search automatically after voice input
                 scope.launch {
-                    performSearch(spokenText, apiService) { results ->
+                    performSearch(spokenText, apiService, jellyseerrApiService, jellyseerrSearchEnabled) { results ->
                         searchResults = results
                         isLoading = false
                     }
@@ -136,7 +141,7 @@ fun SearchScreen(
         delay(500) // Debounce search
         
         if (searchQuery.isNotBlank()) {
-            performSearch(searchQuery, apiService) { results ->
+            performSearch(searchQuery, apiService, jellyseerrApiService, jellyseerrSearchEnabled) { results ->
                 searchResults = results
                 isLoading = false
             }
@@ -222,7 +227,7 @@ fun SearchScreen(
                 TvTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = "Search movies and TV shows...",
+                    placeholder = if (jellyseerrSearchEnabled) "Search Jellyfin & Jellyseerr..." else "Search movies and TV shows...",
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Text,
                         imeAction = ImeAction.Search
@@ -232,7 +237,7 @@ fun SearchScreen(
                             if (searchQuery.isNotBlank()) {
                                 scope.launch {
                                     isLoading = true
-                                    performSearch(searchQuery, apiService) { results ->
+                                    performSearch(searchQuery, apiService, jellyseerrApiService, jellyseerrSearchEnabled) { results ->
                                         searchResults = results
                                         isLoading = false
                                     }
@@ -386,6 +391,17 @@ fun SearchScreen(
                                 modifier = Modifier.width(105.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
+                                // Check if it's a Jellyseerr item (using external ID pattern or ImageTags hack)
+                                val isJellyseerr = item.Id.startsWith("jellyseerr_")
+                                val externalImageUrl = if (isJellyseerr) {
+                                    // Extract stored URL from Overview (hack since we can't easily add fields to JellyfinItem without breaking serialization)
+                                    // Alternatively, use ImageTags to store the URL if possible, or pass it via a separate mechanism.
+                                    // Better approach: Since we updated JellyfinHorizontalCard to take externalImageUrl, 
+                                    // let's assume we can determine it here or pass it.
+                                    // For now, let's use the ImageTags["Primary"] as the URL container for Jellyseerr items if set there.
+                                    item.ImageTags?.get("Primary")
+                                } else null
+
                                 JellyfinHorizontalCard(
                                     item = item,
                                     apiService = apiService,
@@ -395,7 +411,8 @@ fun SearchScreen(
                                     onFocusChanged = { },
                                     enableCaching = true,
                                     reducePosterResolution = false,
-                                    unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null
+                                    unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null,
+                                    externalImageUrl = externalImageUrl
                                 )
                                 // Item name below the card (same style as home screen)
                                 Text(
@@ -433,20 +450,96 @@ fun SearchScreen(
 private suspend fun performSearch(
     query: String,
     apiService: JellyfinApiService?,
+    jellyseerrApiService: com.flex.elefin.jellyseerr.JellyseerrApiService?,
+    includeJellyseerr: Boolean,
     onResults: (List<JellyfinItem>) -> Unit
 ) {
-    if (apiService == null || query.isBlank()) {
+    if (query.isBlank()) {
         onResults(emptyList())
         return
     }
     
     withContext(Dispatchers.IO) {
         try {
-            val results = apiService.searchItems(query, limit = 50)
-            onResults(results)
+            // Create list to hold all results
+            val allResults = mutableListOf<JellyfinItem>()
+            
+            // 1. Search Jellyfin (primary)
+            val jellyfinJob = launch {
+                if (apiService != null) {
+                    try {
+                        val results = apiService.searchItems(query, limit = 50)
+                        synchronized(allResults) {
+                            allResults.addAll(results)
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("SearchScreen", "Error searching Jellyfin", e)
+                    }
+                }
+            }
+            
+            // 2. Search Jellyseerr (if enabled and configured)
+            val jellyseerrJob = launch {
+                if (includeJellyseerr && jellyseerrApiService != null) {
+                    try {
+                        val response = jellyseerrApiService.search(query)
+                        if (response != null && response.results.isNotEmpty()) {
+                            // Map Jellyseerr results to JellyfinItem
+                            val mappedResults = response.results.mapNotNull { result ->
+                                // Skip if user likely already has it (simple name check for now, can be improved)
+                                // Ideally we check against jellyfin results, but we are running in parallel.
+                                // We'll deduplicate after.
+                                
+                                val mediaType = if (result.mediaType == "tv") "Series" else "Movie"
+                                val posterUrl = com.flex.elefin.jellyseerr.JellyseerrImageUrl.poster(result.posterPath)
+                                
+                                // Create a JellyfinItem structure for the Jellyseerr result
+                                // Use a special ID prefix to identify it later
+                                JellyfinItem(
+                                    Id = "jellyseerr_${result.id}", // Special prefix
+                                    Name = result.displayTitle,
+                                    Overview = result.overview,
+                                    Type = mediaType,
+                                    ProductionYear = result.displayDate?.take(4)?.toIntOrNull(),
+                                    ImageTags = if (posterUrl != null) mapOf("Primary" to posterUrl) else null, // Store URL in ImageTags
+                                    // Store TMDB ID in ProviderIds
+                                    ProviderIds = mapOf("Tmdb" to result.id.toString())
+                                )
+                            }
+                            synchronized(allResults) {
+                                allResults.addAll(mappedResults)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("SearchScreen", "Error searching Jellyseerr", e)
+                    }
+                }
+            }
+            
+            // Wait for both searches
+            jellyfinJob.join()
+            jellyseerrJob.join()
+            
+            // Deduplicate: If a Jellyseerr result matches a Jellyfin result by name/year or generic ID, prefer Jellyfin
+            // Simple deduplication: Remove Jellyseerr item if a Jellyfin item has the same name and year
+            val finalResults = allResults.filter { item ->
+                if (item.Id.startsWith("jellyseerr_")) {
+                    // Check if there's a matching Jellyfin item
+                    val hasMatch = allResults.any { other ->
+                        !other.Id.startsWith("jellyseerr_") && 
+                        other.Name.equals(item.Name, ignoreCase = true) &&
+                        (other.ProductionYear == item.ProductionYear || item.ProductionYear == null)
+                    }
+                    !hasMatch // Keep only if no match found
+                } else {
+                    true // Always keep Jellyfin items
+                }
+            }
+            
+            onResults(finalResults)
         } catch (e: Exception) {
             android.util.Log.e("SearchScreen", "Error performing search", e)
-        onResults(emptyList())
+            onResults(emptyList())
+        }
     }
-}
 }

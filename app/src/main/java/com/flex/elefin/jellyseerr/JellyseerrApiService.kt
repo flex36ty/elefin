@@ -560,6 +560,32 @@ class JellyseerrApiService private constructor(
         }
     }
     
+    /**
+     * Search Jellyseerr for movies and TV shows
+     * @param query The search query
+     * @param page The page number (default 1)
+     * @return JellyseerrSearchResponse with search results
+     */
+    suspend fun search(query: String, page: Int = 1): JellyseerrSearchResponse? {
+        return try {
+            val response = client.get("$normalizedBaseUrl/api/v1/search") {
+                parameter("query", query)
+                parameter("page", page)
+                parameter("language", "en")
+                addAuth()
+            }
+            if (response.status.isSuccess()) {
+                response.body<JellyseerrSearchResponse>()
+            } else {
+                Log.e(TAG, "Failed to perform search: ${response.status}")
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error performing search", e)
+            null
+        }
+    }
+
     fun close() {
         client.close()
     }

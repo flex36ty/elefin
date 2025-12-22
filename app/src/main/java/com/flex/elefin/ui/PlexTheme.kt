@@ -124,7 +124,7 @@ fun PlexBackdropGradient(palette: ArtworkPalette): Brush {
     return Brush.verticalGradient(
         colors = listOf(
             palette.background.copy(alpha = 0f), // Transparent top to show artwork
-            palette.background.copy(alpha = 0.3f),
+            palette.background.copy(alpha = 0.6f),
             palette.backgroundDark,
             Color.Black
         ),

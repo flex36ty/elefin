@@ -66,6 +66,7 @@ class AppSettings(context: Context) {
         private const val KEY_USE_SIMPLE_CARDS = "use_simple_cards"
         private const val KEY_USE_GOOGLE_TV_CARDS = "use_google_tv_cards"
         private const val KEY_LOW_POWER_MODE = "low_power_mode"
+        private const val KEY_USE_4K_BACKGROUNDS = "use_4k_backgrounds"
         
         // OpenSubtitles settings
         private const val KEY_OPENSUBTITLES_API_KEY = "opensubtitles_api_key"
@@ -372,6 +373,11 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean(KEY_LOW_POWER_MODE, false) // Disabled by default
         set(value) = prefs.edit().putBoolean(KEY_LOW_POWER_MODE, value).apply()
     
+    // Use 4K background images (disabled by default)
+    var use4KBackgrounds: Boolean
+        get() = prefs.getBoolean(KEY_USE_4K_BACKGROUNDS, false)
+        set(value) = prefs.edit().putBoolean(KEY_USE_4K_BACKGROUNDS, value).apply()
+    
     // OpenSubtitles API key - users need to get their own key from opensubtitles.com
     var openSubtitlesApiKey: String
         get() = prefs.getString(KEY_OPENSUBTITLES_API_KEY, "") ?: ""
@@ -426,6 +432,11 @@ class AppSettings(context: Context) {
     var jellyseerrEnabled: Boolean
         get() = prefs.getBoolean(KEY_JELLYSEERR_ENABLED, true) // Enabled by default when configured
         set(value) = prefs.edit().putBoolean(KEY_JELLYSEERR_ENABLED, value).apply()
+
+    // Jellyseerr search integration enabled - shows Jellyseerr results in search
+    var jellyseerrSearchEnabled: Boolean
+        get() = prefs.getBoolean("jellyseerr_search_enabled", true) // Enabled by default
+        set(value) = prefs.edit().putBoolean("jellyseerr_search_enabled", value).apply()
     
     // Check if Jellyseerr is properly configured
     val isJellyseerrConfigured: Boolean

@@ -529,10 +529,10 @@ fun JellyfinHomeScreen(
                 }
                 
                 // Prioritize backdrop for home screen background
-                // Low power mode uses 720p, normal mode uses 1080p
-                val bgMaxWidth = if (lowPowerMode.value) 1280 else 1920
-                val bgMaxHeight = if (lowPowerMode.value) 720 else 1080
-                val bgQuality = if (lowPowerMode.value) 75 else 90
+                // Low power mode uses 720p, normal mode uses 1080p, 4K mode uses 2160p
+                val bgMaxWidth = if (lowPowerMode.value) 1280 else if (settings.use4KBackgrounds) 3840 else 1920
+                val bgMaxHeight = if (lowPowerMode.value) 720 else if (settings.use4KBackgrounds) 2160 else 1080
+                val bgQuality = if (lowPowerMode.value) 75 else if (settings.use4KBackgrounds) 95 else 90
                 
                 val backdropUrl = apiService?.getImageUrl(itemId, "Backdrop", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
                 if (backdropUrl.isNotEmpty()) {
@@ -2216,8 +2216,26 @@ fun JellyfinHomeScreen(
                         contentColor = MaterialTheme.colorScheme.onSurface
                     )
                 ) {
+                    // Create Jellyseerr API service if enabled
+                    val jellyseerrApiService = remember(settings.jellyseerrUrl, settings.jellyseerrApiKey, settings.jellyseerrEnabled) {
+                        if (settings.jellyseerrEnabled && settings.jellyseerrUrl.isNotBlank() && settings.jellyseerrApiKey.isNotBlank()) {
+                            try {
+                                com.flex.elefin.jellyseerr.JellyseerrApiService.withApiKey(
+                                    baseUrl = settings.jellyseerrUrl,
+                                    apiKey = settings.jellyseerrApiKey
+                                )
+                            } catch (e: Exception) {
+                                android.util.Log.e("JellyfinHomeScreen", "Error creating Jellyseerr API service", e)
+                                null
+                            }
+                        } else {
+                            null
+                        }
+                    }
+
                     SearchScreen(
                         apiService = apiService,
+                        jellyseerrApiService = jellyseerrApiService,
                         onItemClick = { item ->
                             showSearch = false
                             onItemClick(item, 0L)
@@ -2660,13 +2678,18 @@ fun JellyfinHorizontalCard(
     useSimpleCards: Boolean = false,
     useGoogleTvCards: Boolean = false,
     lowPowerMode: Boolean = false,
-    imageRefreshKey: Long = 0L
+    imageRefreshKey: Long = 0L,
+    externalImageUrl: String? = null // New parameter for external images (e.g., Jellyseerr)
 ) {
     // For episodes, use series poster (Primary) if requested; otherwise use poster (Primary) for movies/shows
     // When animations disabled, simple cards, or Google TV cards enabled, force reduced resolution for better performance
     // Low power mode uses even smaller images (300x450) for budget devices
     val effectiveReduceResolution = reducePosterResolution || disableAnimations || useSimpleCards || useGoogleTvCards
-    val imageUrl = remember(item.Id, item.Type, item.SeriesId, useSeriesPosterForEpisodes, effectiveReduceResolution, lowPowerMode, imageRefreshKey) {
+    val imageUrl = remember(item.Id, item.Type, item.SeriesId, useSeriesPosterForEpisodes, effectiveReduceResolution, lowPowerMode, imageRefreshKey, externalImageUrl) {
+        if (!externalImageUrl.isNullOrBlank()) {
+            return@remember externalImageUrl
+        }
+        
         // Low power mode: 300x450, Reduced: 300x450, Standard: 400x600
         val maxWidth = if (lowPowerMode) 300 else if (effectiveReduceResolution) 300 else 400
         val maxHeight = if (lowPowerMode) 450 else if (effectiveReduceResolution) 450 else 600
@@ -3404,12 +3427,12 @@ fun Modifier.carouselGradient(): Modifier = composed {
 
     // Stronger left-side gradient for navigation drawer readability
     // Left side is fully opaque, fading to transparent on the right (30% darker than before)
-    // REDUCED INTENSITY: Changed from 1.0f to 0.9f start, and 0.7f to 0.5f mid
-    val colorAlphaList = listOf(0.9f, 0.5f, 0.0f)
+    // INCREASED INTENSITY: Changed to 1.0f start, and 0.7f mid for better readability
+    val colorAlphaList = listOf(1.0f, 0.7f, 0.0f)
     val colorStopList = listOf(0.0f, 0.35f, 0.7f)
 
-    // REDUCED INTENSITY: Changed from 1.0f to 0.9f start, and 0.4f to 0.3f mid
-    val colorAlphaList2 = listOf(0.9f, 0.3f, 0.0f)
+    // INCREASED INTENSITY: Changed to 1.0f start, and 0.5f mid
+    val colorAlphaList2 = listOf(1.0f, 0.5f, 0.0f)
     val colorStopList2 = listOf(0.1f, 0.4f, 0.9f)
     this
         .then(
