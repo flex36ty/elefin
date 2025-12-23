@@ -69,6 +69,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.Image
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Check
@@ -108,6 +109,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.rememberCoroutineScope
+import com.flex.elefin.TrailerActivity
+import com.flex.elefin.tmdb.TmdbApiService
 
 @Composable
 fun MovieDetailsScreen(
@@ -1546,6 +1549,49 @@ fun ActionButtonsRow(
     }
     
     val displayItem = itemDetails ?: item
+
+    // Trailer state
+    var trailerKey by remember { mutableStateOf<String?>(null) }
+    
+    // Fetch trailer (TMDB Direct Fallback)
+    LaunchedEffect(displayItem, settings.tmdbApiKey) {
+        trailerKey = null // Reset
+        
+        // Fallback to TMDB directly if key configured
+        if (settings.tmdbApiKey.isNotBlank()) {
+             val tmdbId = displayItem.ProviderIds?.get("Tmdb") ?: displayItem.ProviderIds?.get("tmdb")
+             Log.d("ActionButtonsRow", "Checking TMDB Trailer for ${displayItem.Name}. API Key present: ${settings.tmdbApiKey.isNotBlank()}, TMDB ID: $tmdbId")
+             
+             if (tmdbId != null) {
+                 try {
+                     withContext(Dispatchers.IO) {
+                         Log.d("ActionButtonsRow", "Fetching videos for ID: $tmdbId")
+                         val videos = TmdbApiService.getVideos(
+                             tmdbId = tmdbId.toInt(),
+                             type = if (displayItem.Type == "Series" || displayItem.Type == "Season" || displayItem.Type == "Episode") "tv" else "movie",
+                             apiKey = settings.tmdbApiKey
+                         )
+                         Log.d("ActionButtonsRow", "Fetched ${videos.size} videos from TMDB")
+                         // Prefer official trailers
+                         val trailer = videos.firstOrNull { it.site == "YouTube" && it.type == "Trailer" && it.official }
+                             ?: videos.firstOrNull { it.site == "YouTube" && it.type == "Trailer" }
+                             ?: videos.firstOrNull { it.site == "YouTube" }
+                         
+                         if (trailer != null) {
+                             trailerKey = trailer.key
+                             Log.d("ActionButtonsRow", "Found trailer via TMDB: ${trailer.key}")
+                         } else {
+                             Log.d("ActionButtonsRow", "No suitable trailer found in video list")
+                         }
+                     }
+                 } catch (e: Exception) {
+                     Log.e("ActionButtonsRow", "Error fetching TMDB trailer", e)
+                 }
+             } else {
+                 Log.d("ActionButtonsRow", "No TMDB ID found for item: ${displayItem.Name}")
+             }
+        }
+    }
     
     // Check if media has multiple audio tracks
     val audioStreamCount = remember(displayItem.MediaSources) {
@@ -1760,6 +1806,8 @@ fun ActionButtonsRow(
         }
         }
         
+
+
         // Audio track button (only show if media has multiple audio tracks)
         if (hasMultiAudio) {
         var audioFocused by remember { mutableStateOf(false) }
@@ -1858,6 +1906,58 @@ fun ActionButtonsRow(
             }
         }
         
+        // Trailer button (if key found)
+        if (trailerKey != null) {
+            var trailerFocused by remember { mutableStateOf(false) }
+            
+            Button(
+                onClick = {
+                    trailerKey?.let { key ->
+                        TrailerActivity.launchTmdbTrailer(context, key, displayItem.Name ?: "")
+                    }
+                },
+                modifier = Modifier
+                    .then(
+                        if (trailerFocused) {
+                            Modifier
+                                .wrapContentWidth()
+                                .height(28.dp)
+                        } else {
+                            Modifier.size(28.dp)
+                        }
+                    )
+                    .animateContentSize(
+                        animationSpec = tween(
+                            durationMillis = 300,
+                            easing = FastOutSlowInEasing
+                        )
+                    )
+                    .onFocusChanged { trailerFocused = it.isFocused }
+                    .clip(CircleShape),
+                colors = ButtonDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ),
+                contentPadding = PaddingValues(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Movie,
+                    contentDescription = "Watch Trailer",
+                    modifier = Modifier.size(14.3.dp)
+                )
+                if (trailerFocused) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Watch Trailer",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
+                        ),
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
+            }
+        }
+
         // Mark as Watched/Unwatched button
         val isAlreadyWatched = (displayItem.UserData?.Played == true) ||
                                (displayItem.UserData?.PlayedPercentage == 100.0)

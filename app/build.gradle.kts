@@ -107,6 +107,7 @@ dependencies {
 
     // GitHub updater + YouTube trailer extraction
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation(project(":newpipe-extractor"))
 
     // -------------------------------------------------------------
     // Lottie

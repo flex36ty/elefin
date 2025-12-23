@@ -284,7 +284,7 @@ private fun MusicHeader(
                     Text(
                         text = tab.name.lowercase().replaceFirstChar { it.uppercase() },
                         style = MaterialTheme.typography.labelLarge.copy(
-                        fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.77f // Reduced from 1.1f to 0.77f (30% reduction)
+                        fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.85f // Increased by 10% from 0.77f
                         ),
                         modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp) // Reduced horizontal from 16 to 11, vertical from 8 to 6
                     )

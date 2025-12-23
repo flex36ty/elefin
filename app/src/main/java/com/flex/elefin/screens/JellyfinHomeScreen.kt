@@ -996,7 +996,7 @@ fun JellyfinHomeScreen(
                             ) {
                                 // Make 30% bigger, then 10% smaller (1.3 * 0.9 = 1.17x normal size)
                                 // Now reduced by additional 30% from the enlarged state: 1.17 * 0.7 = 0.819f
-                                val scaledFontSize = MaterialTheme.typography.labelLarge.fontSize * 0.82f
+                                val scaledFontSize = MaterialTheme.typography.labelLarge.fontSize * 0.90f // Increased by 10% from 0.82f
                                 // Add horizontal padding (Reduced by 30% from current enlarged state: 1.2 * 0.7 = 0.84)
                                 val horizontalPadding = 16.dp * 0.84f
                                 Text(

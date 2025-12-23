@@ -12,6 +12,8 @@
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/app" />
             <option value="$PROJECT_DIR$/decoder_av1" />
+            <option value="$PROJECT_DIR$/newpipe-extractor" />
+            <option value="$PROJECT_DIR$/timeago-parser" />
           </set>
         </option>
       </GradleProjectSettings>

@@ -1473,6 +1473,107 @@ fun SettingsScreen(
                                         settings.jellyseerrSearchEnabled = jellyseerrSearchEnabled
                                     }
                                 )
+                                
+                                // TMDB Direct API Key (Fallback)
+                                Spacer(modifier = Modifier.height(16.dp))
+                                val tmdbApiKey = settings.tmdbApiKey
+                                var showTmdbKeyDialog by remember { mutableStateOf(false) }
+                                
+                                SettingButton(
+                                    title = "TMDB API Key (Trailers)",
+                                    description = if (tmdbApiKey.isNotBlank()) 
+                                        "TMDB Key Configured ✓" 
+                                    else 
+                                        "Direct fallback for trailers if Jellyseerr fails",
+                                    buttonText = if (tmdbApiKey.isNotBlank()) "Change" else "Set Key",
+                                    onClick = { showTmdbKeyDialog = true }
+                                )
+                                
+                                if (showTmdbKeyDialog) {
+                                    var apiKeyInput by remember { mutableStateOf(tmdbApiKey) }
+                                    Dialog(
+                                        onDismissRequest = { showTmdbKeyDialog = false },
+                                        properties = DialogProperties(usePlatformDefaultWidth = false)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(Color.Black.copy(alpha = 0.7f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Surface(
+                                                modifier = Modifier.width(500.dp),
+                                                shape = RoundedCornerShape(16.dp),
+                                                colors = SurfaceDefaults.colors(
+                                                    containerColor = MaterialTheme.colorScheme.surface,
+                                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                                )
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier.padding(32.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(24.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "TMDB API Key",
+                                                        style = MaterialTheme.typography.headlineSmall
+                                                    )
+                                                    
+                                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                        Text(
+                                                            text = "Enter your TMDB API Key to fetch trailers directly from The Movie Database.",
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                                        )
+                                                        
+                                                        OutlinedTextField(
+                                                             value = apiKeyInput,
+                                                             onValueChange = { apiKeyInput = it },
+                                                             label = { Text("TMDB API Key") },
+                                                             singleLine = true,
+                                                             modifier = Modifier.fillMaxWidth(),
+                                                             colors = TextFieldDefaults.colors(
+                                                                 focusedTextColor = Color.White,
+                                                                 unfocusedTextColor = Color.White,
+                                                                 focusedContainerColor = Color.Transparent,
+                                                                 unfocusedContainerColor = Color.Transparent,
+                                                                 cursorColor = MaterialTheme.colorScheme.primary,
+                                                                 focusedLabelColor = MaterialTheme.colorScheme.primary,
+                                                                 unfocusedLabelColor = Color.White.copy(alpha = 0.7f),
+                                                                 focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                                                                 unfocusedIndicatorColor = Color.White.copy(alpha = 0.3f)
+                                                             )
+                                                         )
+                                                    }
+                                                    
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                                    ) {
+                                                        Button(
+                                                            onClick = { showTmdbKeyDialog = false },
+                                                            modifier = Modifier.weight(1f),
+                                                            colors = ButtonDefaults.colors(
+                                                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                                            )
+                                                        ) {
+                                                            Text("Cancel")
+                                                        }
+                                                        
+                                                        Button(
+                                                            onClick = {
+                                                                settings.tmdbApiKey = apiKeyInput
+                                                                showTmdbKeyDialog = false
+                                                            },
+                                                            modifier = Modifier.weight(1f)
+                                                        ) {
+                                                            Text("Save")
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
 

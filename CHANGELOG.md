@@ -4,6 +4,17 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2025-12-23
+
+### Added
+
+- **Trailer Playback Support**
+  - **Integrated NewPipeExtractor**: Added native support for parsing and playing YouTube trailers directly within the app without API keys.
+  - **1080p Quality**: Implemented advanced stream merging to support 1080p and higher resolutions for trailers (upgraded from 720p limit).
+  - **Series Support**: Added "Watch Trailer" button to TV Series details screen.
+  - **Smart Selection**: Automatically selects the best available video and audio streams for the highest quality experience.
+  - **Optimized Buffering**: Tuned player buffering settings for instant start and smooth playback of high-bitrate trailers.
+
 ## 2025-12-22
 
 ### Added

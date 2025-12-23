@@ -940,7 +940,7 @@ fun TvShowsLibraryScreen(
                                                 }
                                             )
                                     ) {
-                                        val scaledFontSize = MaterialTheme.typography.labelLarge.fontSize * 0.82f // Reduced by 30% from 1.17f
+                                        val scaledFontSize = MaterialTheme.typography.labelLarge.fontSize * 0.90f // Increased by 10% from 0.82f
                                         val horizontalPadding = 16.dp * 0.84f // Reduced by 30% from 1.2f
                                         Text(
                                             text = tabName,

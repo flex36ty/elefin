@@ -7,7 +7,15 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
 
+import org.schabi.newpipe.extractor.NewPipe
+import com.flex.elefin.networking.ElefinDownloader
+
 class ElefinApplication : Application(), ImageLoaderFactory {
+    override fun onCreate() {
+        super.onCreate()
+        NewPipe.init(ElefinDownloader())
+    }
+
     override fun newImageLoader(): ImageLoader {
         return ImageLoader.Builder(this)
             .memoryCache {
