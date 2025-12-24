@@ -21,6 +21,12 @@ media3 = "1.8.0"
 jellyfin-media3-ffmpeg = "1.8.0+1"
 lottie = "6.1.0"
 palette = "1.0.0"
+nanojson = "e9d656ddb49a412a5a0a5d5ef20ca7ef09549996"
+jsoup = "1.18.1"
+jsr305 = "3.0.2"
+protobuf = "3.25.1" # mental check: compatibility with android
+rhino = "1.8.0"
+protobufPlugin = "0.9.4"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -59,10 +65,16 @@ media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = 
     media3-muxer = { module = "androidx.media3:media3-muxer", version.ref = "media3" }
 jellyfin-media3-ffmpeg-decoder = { module = "org.jellyfin.media3:media3-ffmpeg-decoder", version.ref = "jellyfin-media3-ffmpeg" }
 lottieCompose = { module = "com.airbnb.android:lottie-compose", version.ref = "lottie" }
+nanojson = { module = "com.github.TeamNewPipe:nanojson", version.ref = "nanojson" }
+jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
+jsr305 = { module = "com.google.code.findbugs:jsr305", version.ref = "jsr305" }
+protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf" }
+rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
+rhino-engine = { module = "org.mozilla:rhino-engine", version.ref = "rhino" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-
+protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }

@@ -22,15 +22,10 @@ object MpvElefinLauncher {
     private const val MPV_ELEFIN_ACTIVITY = "com.flex.mpvelefin.MpvPlayerActivity"
     
     /**
-     * Check if mpv-elefin is installed.
+     * Check if MPV is available (always true now as it is embedded).
      */
     fun isInstalled(context: Context): Boolean {
-        return try {
-            context.packageManager.getPackageInfo(MPV_ELEFIN_PACKAGE, 0)
-            true
-        } catch (e: PackageManager.NameNotFoundException) {
-            false
-        }
+        return true
     }
 
     /**
@@ -132,24 +127,15 @@ object MpvElefinLauncher {
         }
 
         return try {
-            val intent = Intent().apply {
-                setClassName(MPV_ELEFIN_PACKAGE, MPV_ELEFIN_ACTIVITY)
-                // Set URL as data URI (mpv-android compatible)
-                data = Uri.parse(url)
-                putExtra("url", url)
-                putExtra("headers", headers)
-                putExtra("title", title)
-                putExtra("item_id", itemId)
-                putExtra("resume_ms", resumePositionMs)
-                putExtra("server_url", serverUrl)
-                putExtra("access_token", accessToken)
-                putExtra("user_id", userId)
-                subtitleFilePath?.let { 
-                    putExtra("subtitle_file", it)
-                    Log.d(TAG, "Adding subtitle_file extra: $it")
-                }
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
+            val intent = MpvTvPlayerActivity.createIntent(
+                context = context,
+                url = url,
+                headers = headers,
+                title = title,
+                itemId = itemId,
+                resumePositionMs = resumePositionMs
+            )
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
             true
         } catch (e: Exception) {

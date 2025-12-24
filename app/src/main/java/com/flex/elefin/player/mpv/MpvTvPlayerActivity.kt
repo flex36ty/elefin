@@ -4,17 +4,21 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
-import android.view.KeyEvent
 import android.view.ViewGroup
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -28,11 +32,14 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.flex.elefin.JellyfinAppTheme
 import com.flex.elefin.jellyfin.JellyfinApiService
 import com.flex.elefin.jellyfin.JellyfinConfig
@@ -42,13 +49,15 @@ import kotlinx.coroutines.*
 import java.io.File
 
 /**
- * Android TV optimized MPV player activity with ExoPlayer-style controls.
+ * Android TV optimized MPV player activity.
  * 
  * Features:
  *   ✔ YouTube TV-style controls
  *   ✔ Resume position support
  *   ✔ Jellyfin progress reporting
  *   ✔ D-pad navigation
+ *   ✔ Track selection (Audio/Subtitles)
+ *   ✔ Aspect ratio control
  */
 class MpvTvPlayerActivity : ComponentActivity() {
 
@@ -83,6 +92,9 @@ class MpvTvPlayerActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Keep screen on
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val url = intent.getStringExtra(EXTRA_URL) ?: run {
             Log.e(TAG, "No URL provided")
@@ -93,9 +105,12 @@ class MpvTvPlayerActivity : ComponentActivity() {
         val title = intent.getStringExtra(EXTRA_TITLE) ?: "Video"
         val itemId = intent.getStringExtra(EXTRA_ITEM_ID) ?: ""
         val resumePositionMs = intent.getLongExtra(EXTRA_RESUME_MS, 0L)
+        // Check for subtitle file in extras (passed by Launcher or other means)
+        val subtitleFile = intent.getStringExtra("subtitle_file")
 
         Log.d(TAG, "Loading: $url")
         Log.d(TAG, "Resume position: ${resumePositionMs}ms")
+        if (subtitleFile != null) Log.d(TAG, "External subtitle: $subtitleFile")
 
         // Initialize API service for progress reporting
         val config = JellyfinConfig(this)
@@ -116,6 +131,7 @@ class MpvTvPlayerActivity : ComponentActivity() {
                     title = title,
                     itemId = itemId,
                     resumePositionMs = resumePositionMs,
+                    subtitleFile = subtitleFile,
                     apiService = apiService,
                     onMpvViewCreated = { view -> mpvView = view },
                     onBack = { finish() }
@@ -136,6 +152,31 @@ class MpvTvPlayerActivity : ComponentActivity() {
     }
 }
 
+// Picture mode / aspect ratio options
+enum class AspectMode(val label: String) {
+    FIT("Fit"),
+    FILL("Fill"),
+    LETTERBOX("16:9"),
+    CINEMA("Cinema"),
+    STRETCH("Stretch"),
+    ORIGINAL("Original");
+
+    fun next(): AspectMode {
+        val modes = values()
+        return modes[(ordinal + 1) % modes.size]
+    }
+}
+
+// Track info data class
+data class TrackInfo(
+    val id: Int,
+    val type: String,
+    val title: String?,
+    val language: String?,
+    val codec: String?,
+    val isSelected: Boolean
+)
+
 @Composable
 private fun MpvPlayerScreen(
     url: String,
@@ -143,6 +184,7 @@ private fun MpvPlayerScreen(
     title: String,
     itemId: String,
     resumePositionMs: Long,
+    subtitleFile: String? = null,
     apiService: JellyfinApiService?,
     onMpvViewCreated: (MPVView) -> Unit,
     onBack: () -> Unit
@@ -159,6 +201,19 @@ private fun MpvPlayerScreen(
     // Controls visibility
     var controlsVisible by remember { mutableStateOf(true) }
     var lastInteractionTime by remember { mutableStateOf(System.currentTimeMillis()) }
+    var controlsInteractionKey by remember { mutableStateOf(0) }
+    
+    // Settings focus
+    var showSettingsMenu by remember { mutableStateOf(false) }
+
+    // Track lists
+    var audioTracks by remember { mutableStateOf<List<TrackInfo>>(emptyList()) }
+    var subtitleTracks by remember { mutableStateOf<List<TrackInfo>>(emptyList()) }
+    var currentAudioId by remember { mutableStateOf(-1) }
+    var currentSubtitleId by remember { mutableStateOf(-1) }
+    
+    // Aspect mode
+    var currentAspectMode by remember { mutableStateOf(AspectMode.FIT) }
     
     // Focus
     val playPauseFocusRequester = remember { FocusRequester() }
@@ -176,7 +231,7 @@ private fun MpvPlayerScreen(
                     isPlaying = mpv.paused != true
                     currentPositionMs = ((mpv.timePos ?: 0.0) * 1000).toLong()
                     durationMs = ((mpv.duration ?: 0.0) * 1000).toLong()
-                    isBuffering = false
+                    if (durationMs > 0) isBuffering = false
                 } catch (e: Exception) {
                     // MPV not ready yet
                 }
@@ -185,10 +240,12 @@ private fun MpvPlayerScreen(
     }
 
     // Auto-hide controls after 5 seconds
-    LaunchedEffect(lastInteractionTime) {
-        delay(5000)
-        if (System.currentTimeMillis() - lastInteractionTime >= 5000) {
-            controlsVisible = false
+    LaunchedEffect(lastInteractionTime, controlsVisible) {
+        if (controlsVisible) {
+            delay(5000)
+            if (System.currentTimeMillis() - lastInteractionTime >= 5000) {
+                controlsVisible = false
+            }
         }
     }
 
@@ -267,6 +324,95 @@ private fun MpvPlayerScreen(
         }
     }
 
+    // Apply aspect mode
+    LaunchedEffect(currentAspectMode, mpvViewRef) {
+        mpvViewRef?.let { mpv ->
+            when (currentAspectMode) {
+                AspectMode.FIT -> {
+                    MPVLib.setOptionString("video-aspect-override", "no")
+                    MPVLib.setOptionString("video-aspect-method", "container")
+                    MPVLib.setOptionString("panscan", "0.0")
+                    MPVLib.setOptionString("video-unscaled", "no")
+                }
+                AspectMode.FILL -> {
+                    MPVLib.setOptionString("video-aspect-override", "no")
+                    MPVLib.setOptionString("video-aspect-method", "container")
+                    MPVLib.setOptionString("panscan", "1.0")
+                    MPVLib.setOptionString("video-unscaled", "no")
+                }
+                AspectMode.LETTERBOX -> {
+                    MPVLib.setOptionString("video-aspect-override", "16:9")
+                    MPVLib.setOptionString("panscan", "0.0")
+                    MPVLib.setOptionString("video-unscaled", "no")
+                }
+                AspectMode.CINEMA -> {
+                    MPVLib.setOptionString("video-aspect-override", "2.39:1")
+                    MPVLib.setOptionString("panscan", "0.0")
+                    MPVLib.setOptionString("video-unscaled", "no")
+                }
+                AspectMode.STRETCH -> {
+                    MPVLib.setOptionString("video-aspect-override", "16:9")
+                    MPVLib.setOptionString("keepaspect", "no")
+                    MPVLib.setOptionString("panscan", "0.0")
+                    MPVLib.setOptionString("video-unscaled", "no")
+                }
+                AspectMode.ORIGINAL -> {
+                    MPVLib.setOptionString("video-aspect-override", "no")
+                    MPVLib.setOptionString("video-aspect-method", "container")
+                    MPVLib.setOptionString("panscan", "0.0")
+                    MPVLib.setOptionString("video-unscaled", "yes")
+                }
+            }
+            if (currentAspectMode != AspectMode.STRETCH) {
+                MPVLib.setOptionString("keepaspect", "yes")
+            }
+        }
+    }
+
+    // Load tracks when MPV is ready
+    LaunchedEffect(mpvViewRef, durationMs) {
+        if (mpvViewRef != null && durationMs > 0) {
+            delay(1500)
+            mpvViewRef?.let { mpv ->
+                MPVLib.setPropertyBoolean("sub-visibility", true)
+                mpv.loadTracks()
+                audioTracks = mpv.tracks["audio"]?.map { track ->
+                    TrackInfo(
+                        id = track.mpvId,
+                        type = "audio",
+                        title = track.name,
+                        language = null,
+                        codec = null,
+                        isSelected = track.mpvId == mpv.aid
+                    )
+                } ?: emptyList()
+                subtitleTracks = mpv.tracks["sub"]?.map { track ->
+                    TrackInfo(
+                        id = track.mpvId,
+                        type = "sub",
+                        title = track.name,
+                        language = null,
+                        codec = null,
+                        isSelected = track.mpvId == mpv.sid
+                    )
+                } ?: emptyList()
+                currentAudioId = mpv.aid
+                currentSubtitleId = mpv.sid
+                
+                // Auto-select first subtitle if none selected and not "Off"
+                if (currentSubtitleId == -1 && subtitleTracks.size > 1) {
+                    val firstSubTrack = subtitleTracks.getOrNull(1)
+                    if (firstSubTrack != null && firstSubTrack.id != -1) {
+                        delay(300)
+                        mpv.sid = firstSubTrack.id
+                        currentSubtitleId = firstSubTrack.id
+                        MPVLib.setPropertyBoolean("sub-visibility", true)
+                    }
+                }
+            }
+        }
+    }
+
     fun showControls() {
         controlsVisible = true
         lastInteractionTime = System.currentTimeMillis()
@@ -278,17 +424,25 @@ private fun MpvPlayerScreen(
             .background(Color.Black)
             .onKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown) {
+                    // Reset auto-hide timer on any key press
+                    if (controlsVisible) {
+                        lastInteractionTime = System.currentTimeMillis()
+                    }
+                    
                     when (event.key) {
-                        Key.DirectionCenter, Key.Enter -> {
-                            if (!controlsVisible) {
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                            if (!controlsVisible && !showSettingsMenu) {
                                 showControls()
                                 true
                             } else {
-                                false // Let focused button handle it
+                                false
                             }
                         }
                         Key.Back -> {
-                            if (controlsVisible) {
+                            if (showSettingsMenu) {
+                                showSettingsMenu = false
+                                true
+                            } else if (controlsVisible) {
                                 controlsVisible = false
                                 true
                             } else {
@@ -297,7 +451,7 @@ private fun MpvPlayerScreen(
                             }
                         }
                         Key.DirectionLeft -> {
-                            if (!controlsVisible) {
+                            if (!controlsVisible && !showSettingsMenu) {
                                 mpvViewRef?.seek(-10)
                                 showControls()
                                 true
@@ -311,7 +465,7 @@ private fun MpvPlayerScreen(
                             }
                         }
                         Key.DirectionRight -> {
-                            if (!controlsVisible) {
+                            if (!controlsVisible && !showSettingsMenu) {
                                 mpvViewRef?.seek(10)
                                 showControls()
                                 true
@@ -324,8 +478,23 @@ private fun MpvPlayerScreen(
                                 false
                             }
                         }
-                        else -> {
+                        Key.MediaPlayPause -> {
+                            mpvViewRef?.cyclePause()
                             showControls()
+                            true
+                        }
+                        Key.MediaPlay -> {
+                            mpvViewRef?.play()
+                            showControls()
+                            true
+                        }
+                        Key.MediaPause -> {
+                            mpvViewRef?.pause()
+                            showControls()
+                            true
+                        }
+                        else -> {
+                            if (!showSettingsMenu) showControls()
                             false
                         }
                     }
@@ -344,7 +513,6 @@ private fun MpvPlayerScreen(
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
                     
-                    // Set headers before initialize
                     setHttpHeaders(headers)
                     
                     val configDir = File(ctx.filesDir, "mpv")
@@ -353,12 +521,16 @@ private fun MpvPlayerScreen(
                     
                     playFile(url)
                     
-                    // Seek to resume position after a delay
                     if (resumePositionMs > 0) {
                         postDelayed({
                             seekTo(resumePositionMs / 1000.0)
-                            Log.d("MpvPlayer", "Seeked to resume position: ${resumePositionMs}ms")
                         }, 1000)
+                    }
+                    
+                    if (subtitleFile != null) {
+                         postDelayed({
+                             MPVLib.command(arrayOf("sub-add", subtitleFile, "auto"))
+                         }, 1500)
                     }
                     
                     mpvViewRef = this
@@ -368,9 +540,9 @@ private fun MpvPlayerScreen(
             modifier = Modifier.fillMaxSize()
         )
 
-        // Title overlay (shown when controls visible)
+        // Title overlay
         AnimatedVisibility(
-            visible = controlsVisible,
+            visible = controlsVisible && title.isNotEmpty(),
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.TopStart)
@@ -527,7 +699,221 @@ private fun MpvPlayerScreen(
                             modifier = Modifier.size(32.dp)
                         )
                     }
+                    
+                    Spacer(modifier = Modifier.width(16.dp))
+                    
+                    // Aspect Ratio Button
+                    IconButton(
+                        onClick = {
+                            currentAspectMode = currentAspectMode.next()
+                            showControls()
+                        },
+                        modifier = Modifier
+                            .size(56.dp)
+                            .background(Color.White.copy(alpha = 0.2f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AspectRatio,
+                            contentDescription = "Aspect Ratio",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    
+                    // Settings Button
+                    IconButton(
+                        onClick = {
+                            showControls()
+                            showSettingsMenu = true
+                        },
+                        modifier = Modifier
+                            .size(56.dp)
+                            .background(Color.White.copy(alpha = 0.2f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = "Settings",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
+            }
+        }
+        
+        // Settings Menu Overlay
+        if (showSettingsMenu) {
+            MpvSettingsMenu(
+                audioTracks = audioTracks,
+                subtitleTracks = subtitleTracks,
+                currentAudioId = currentAudioId,
+                currentSubtitleId = currentSubtitleId,
+                onAudioSelected = { trackId ->
+                    mpvViewRef?.aid = trackId
+                    currentAudioId = trackId
+                },
+                onSubtitleSelected = { trackId ->
+                    mpvViewRef?.sid = trackId
+                    currentSubtitleId = trackId
+                    if (trackId != -1) MPVLib.setPropertyBoolean("sub-visibility", true)
+                },
+                onDismiss = { showSettingsMenu = false }
+            )
+        }
+    }
+}
+
+@Composable
+private fun MpvSettingsMenu(
+    audioTracks: List<TrackInfo>,
+    subtitleTracks: List<TrackInfo>,
+    currentAudioId: Int,
+    currentSubtitleId: Int,
+    onAudioSelected: (Int) -> Unit,
+    onSubtitleSelected: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var currentMenuLevel by remember { mutableStateOf("main") }
+    val focusRequester = remember { FocusRequester() }
+    
+    LaunchedEffect(currentMenuLevel) {
+        focusRequester.requestFocus()
+    }
+    
+    Dialog(
+        onDismissRequest = { onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.8f))
+                .padding(48.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Card(
+                modifier = Modifier
+                    .width(400.dp)
+                    .heightIn(max = 500.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = when (currentMenuLevel) {
+                            "subtitles" -> "Subtitles"
+                            "audio" -> "Audio"
+                            else -> "Settings"
+                        },
+                        color = Color.White,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                    
+                    LazyColumn(
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
+                        if (currentMenuLevel == "main") {
+                             item {
+                                 MenuItem(
+                                     title = "Subtitles",
+                                     subtitle = subtitleTracks.find { it.id == currentSubtitleId }?.title ?: "Off",
+                                     icon = Icons.Filled.Subtitles,
+                                     onClick = { currentMenuLevel = "subtitles" },
+                                     modifier = Modifier.focusRequester(focusRequester)
+                                 )
+                             }
+                             item {Spacer(modifier = Modifier.height(8.dp))}
+                             item {
+                                 MenuItem(
+                                     title = "Audio",
+                                     subtitle = audioTracks.find { it.id == currentAudioId }?.title ?: "Default",
+                                     icon = Icons.Filled.VolumeUp,
+                                     onClick = { currentMenuLevel = "audio" }
+                                 )
+                             }
+                        } else if (currentMenuLevel == "subtitles") {
+                            itemsIndexed(subtitleTracks) { index, track ->
+                                MenuItem(
+                                    title = track.title ?: "Track ${track.id}",
+                                    icon = if (track.id == currentSubtitleId) Icons.Filled.Check else null,
+                                    onClick = {
+                                        onSubtitleSelected(track.id)
+                                        currentMenuLevel = "main"
+                                    },
+                                    modifier = if (index == 0) Modifier.focusRequester(focusRequester) else Modifier
+                                )
+                            }
+                        } else if (currentMenuLevel == "audio") {
+                            itemsIndexed(audioTracks) { index, track ->
+                                MenuItem(
+                                    title = track.title ?: "Track ${track.id}",
+                                    icon = if (track.id == currentAudioId) Icons.Filled.Check else null,
+                                    onClick = {
+                                        onAudioSelected(track.id)
+                                        currentMenuLevel = "main"
+                                    },
+                                    modifier = if (index == 0) Modifier.focusRequester(focusRequester) else Modifier
+                                )
+                            }
+                        }
+                    }
+                    
+                    if (currentMenuLevel != "main") {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = { currentMenuLevel = "main" },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Back")
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = onDismiss,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Close")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MenuItem(
+    title: String,
+    subtitle: String? = null,
+    icon: ImageVector? = null,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+        }
+        
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, color = Color.White, fontSize = 16.sp)
+            if (subtitle != null) {
+                Text(text = subtitle, color = Color.Gray, fontSize = 14.sp)
             }
         }
     }
@@ -545,4 +931,3 @@ private fun formatTime(ms: Long): String {
         String.format("%d:%02d", minutes, seconds)
     }
 }
-

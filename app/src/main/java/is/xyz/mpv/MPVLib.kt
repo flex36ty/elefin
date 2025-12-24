@@ -6,59 +6,72 @@ import android.util.Log
 import android.view.Surface
 
 /**
- * MPVLib - JNI wrapper for libmpv
+ * MPV native library wrapper.
  * 
- * This is the exact interface expected by libplayer.so from mpv-android.
- * All @JvmStatic methods are called from native code and must match exactly.
+ * This provides the JNI interface to libmpv and libplayer.
+ * The native methods must match the signatures expected by libplayer.so
  */
 @Suppress("unused")
 object MPVLib {
     private const val TAG = "MPVLib"
     
-    var initialized = false
-        private set
+    @Volatile
+    private var initialized = false
     
     init {
         try {
             val libs = arrayOf("mpv", "player")
             for (lib in libs) {
                 System.loadLibrary(lib)
+                Log.d(TAG, "Loaded native library: lib$lib.so")
             }
             initialized = true
-            Log.d(TAG, "MPV libraries loaded successfully")
+            Log.d(TAG, "MPV native libraries loaded successfully")
         } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "Failed to load MPV libraries", e)
+            Log.e(TAG, "Failed to load MPV native libraries: ${e.message}", e)
+            initialized = false
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading MPV native libraries: ${e.message}", e)
             initialized = false
         }
     }
+    
+    fun isAvailable(): Boolean = initialized
 
-    // Native methods - called by Kotlin to control MPV
+    // Core lifecycle
     external fun create(appctx: Context)
     external fun init()
     external fun destroy()
+    
+    // Surface management
     external fun attachSurface(surface: Surface)
     external fun detachSurface()
 
+    // Commands
     external fun command(cmd: Array<out String>)
 
+    // Options (set before init)
     external fun setOptionString(name: String, value: String): Int
 
+    // Thumbnail
     external fun grabThumbnail(dimension: Int): Bitmap?
 
+    // Properties - getters
     external fun getPropertyInt(property: String): Int?
-    external fun setPropertyInt(property: String, value: Int)
     external fun getPropertyDouble(property: String): Double?
-    external fun setPropertyDouble(property: String, value: Double)
     external fun getPropertyBoolean(property: String): Boolean?
-    external fun setPropertyBoolean(property: String, value: Boolean)
     external fun getPropertyString(property: String): String?
+    
+    // Properties - setters
+    external fun setPropertyInt(property: String, value: Int)
+    external fun setPropertyDouble(property: String, value: Double)
+    external fun setPropertyBoolean(property: String, value: Boolean)
     external fun setPropertyString(property: String, value: String)
 
+    // Property observation
     external fun observeProperty(property: String, format: Int)
 
-    // ========== Callback methods - called FROM native code ==========
-    // These MUST be @JvmStatic and match the exact signatures expected by libplayer.so
-
+    // Event observers
     private val observers = mutableListOf<EventObserver>()
 
     @JvmStatic
@@ -75,7 +88,6 @@ object MPVLib {
         }
     }
 
-    // Called from native: eventProperty(String, long)
     @JvmStatic
     fun eventProperty(property: String, value: Long) {
         synchronized(observers) {
@@ -84,7 +96,6 @@ object MPVLib {
         }
     }
 
-    // Called from native: eventProperty(String, boolean)
     @JvmStatic
     fun eventProperty(property: String, value: Boolean) {
         synchronized(observers) {
@@ -93,7 +104,6 @@ object MPVLib {
         }
     }
 
-    // Called from native: eventProperty(String, double)
     @JvmStatic
     fun eventProperty(property: String, value: Double) {
         synchronized(observers) {
@@ -102,7 +112,6 @@ object MPVLib {
         }
     }
 
-    // Called from native: eventProperty(String, String)
     @JvmStatic
     fun eventProperty(property: String, value: String) {
         synchronized(observers) {
@@ -111,7 +120,6 @@ object MPVLib {
         }
     }
 
-    // Called from native: eventProperty(String)
     @JvmStatic
     fun eventProperty(property: String) {
         synchronized(observers) {
@@ -120,7 +128,6 @@ object MPVLib {
         }
     }
 
-    // Called from native: event(int)
     @JvmStatic
     fun event(eventId: Int) {
         synchronized(observers) {
@@ -130,31 +137,52 @@ object MPVLib {
     }
 
     // Log observers
-    private val log_observers = mutableListOf<LogObserver>()
+    private val logObservers = mutableListOf<LogObserver>()
 
     @JvmStatic
     fun addLogObserver(o: LogObserver) {
-        synchronized(log_observers) {
-            log_observers.add(o)
+        synchronized(logObservers) {
+            logObservers.add(o)
         }
     }
 
     @JvmStatic
     fun removeLogObserver(o: LogObserver) {
-        synchronized(log_observers) {
-            log_observers.remove(o)
+        synchronized(logObservers) {
+            logObservers.remove(o)
         }
     }
 
-    // Called from native: logMessage(String, int, String)
+    /**
+     * Called from native code to log messages.
+     * This method signature must match what libplayer.so expects.
+     */
     @JvmStatic
     fun logMessage(prefix: String, level: Int, text: String) {
-        synchronized(log_observers) {
-            for (o in log_observers)
+        synchronized(logObservers) {
+            for (o in logObservers)
                 o.logMessage(prefix, level, text)
+        }
+        // Also log to Android's logcat
+        when (level) {
+            MpvLogLevel.MPV_LOG_LEVEL_FATAL, MpvLogLevel.MPV_LOG_LEVEL_ERROR -> 
+                Log.e(TAG, "$prefix: $text")
+            MpvLogLevel.MPV_LOG_LEVEL_WARN -> 
+                Log.w(TAG, "$prefix: $text")
+            MpvLogLevel.MPV_LOG_LEVEL_INFO -> 
+                Log.i(TAG, "$prefix: $text")
+            MpvLogLevel.MPV_LOG_LEVEL_V -> 
+                Log.v(TAG, "$prefix: $text")
+            MpvLogLevel.MPV_LOG_LEVEL_DEBUG, MpvLogLevel.MPV_LOG_LEVEL_TRACE -> 
+                Log.d(TAG, "$prefix: $text")
+            else -> 
+                Log.d(TAG, "$prefix: $text")
         }
     }
 
+    /**
+     * Event observer interface for MPV property changes and events.
+     */
     interface EventObserver {
         fun eventProperty(property: String)
         fun eventProperty(property: String, value: Long)
@@ -164,10 +192,14 @@ object MPVLib {
         fun event(eventId: Int)
     }
 
+    /**
+     * Log observer interface for MPV log messages.
+     */
     interface LogObserver {
         fun logMessage(prefix: String, level: Int, text: String)
     }
 
+    // MPV format constants
     object MpvFormat {
         const val MPV_FORMAT_NONE: Int = 0
         const val MPV_FORMAT_STRING: Int = 1
@@ -181,6 +213,7 @@ object MPVLib {
         const val MPV_FORMAT_BYTE_ARRAY: Int = 9
     }
 
+    // MPV event constants
     object MpvEvent {
         const val MPV_EVENT_NONE: Int = 0
         const val MPV_EVENT_SHUTDOWN: Int = 1
@@ -191,9 +224,9 @@ object MPVLib {
         const val MPV_EVENT_START_FILE: Int = 6
         const val MPV_EVENT_END_FILE: Int = 7
         const val MPV_EVENT_FILE_LOADED: Int = 8
-        @Deprecated("")
+        @Deprecated("Deprecated in mpv")
         const val MPV_EVENT_IDLE: Int = 11
-        @Deprecated("")
+        @Deprecated("Deprecated in mpv")
         const val MPV_EVENT_TICK: Int = 14
         const val MPV_EVENT_CLIENT_MESSAGE: Int = 16
         const val MPV_EVENT_VIDEO_RECONFIG: Int = 17
@@ -205,6 +238,7 @@ object MPVLib {
         const val MPV_EVENT_HOOK: Int = 25
     }
 
+    // MPV log level constants
     object MpvLogLevel {
         const val MPV_LOG_LEVEL_NONE: Int = 0
         const val MPV_LOG_LEVEL_FATAL: Int = 10
@@ -216,3 +250,4 @@ object MPVLib {
         const val MPV_LOG_LEVEL_TRACE: Int = 70
     }
 }
+
