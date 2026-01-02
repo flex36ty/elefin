@@ -9,6 +9,7 @@ Elefin is a modern Android TV Jellyfin client built from the ground up using Jet
 ## Features
 
 - Plex inspired home screen navigation
+- Play trailer for Movie or Show
 - Auto play next episode
 - Download subtitles via the app from open Subtitles
 - Jellyseer integration to request movies and tv shows directly from the app itself
