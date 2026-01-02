@@ -164,9 +164,26 @@ fun SeriesDetailsScreen(
     
     // FocusRequester for first season button (used when no initial episode is provided)
     val firstSeasonFocusRequester = remember { FocusRequester() }
+    
+    // Lifecycle observer to trigger refresh when returning from player
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var refreshTrigger by remember { mutableStateOf(0) }
+    
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                // Increment trigger to reload data
+                refreshTrigger++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     // Fetch full series details - load in parallel for faster loading
-    LaunchedEffect(item.Id, apiService) {
+    LaunchedEffect(item.Id, apiService, refreshTrigger) {
         if (apiService != null) {
             withContext(Dispatchers.IO) {
                 try {
@@ -203,7 +220,7 @@ fun SeriesDetailsScreen(
     }
     
     // Fetch episodes when selected season changes
-    LaunchedEffect(selectedSeasonIndex, seasons, apiService) {
+    LaunchedEffect(selectedSeasonIndex, seasons, apiService, refreshTrigger) {
         if (apiService != null && seasons.isNotEmpty() && selectedSeasonIndex < seasons.size) {
             withContext(Dispatchers.IO) {
                 try {
@@ -224,6 +241,17 @@ fun SeriesDetailsScreen(
     
     // Track if we've already done the initial focus to prevent refocusing when seasons change
     var hasPerformedInitialFocus by remember { mutableStateOf(false) }
+
+    // Sync focusedEpisode with updated episodes list (to get fresh UserData/streams after refresh)
+    LaunchedEffect(episodes) {
+        if (focusedEpisode != null) {
+            val freshEpisode = episodes.find { it.Id == focusedEpisode?.Id }
+            if (freshEpisode != null && freshEpisode != focusedEpisode) {
+                Log.d("SeriesDetailsScreen", "Updating focusedEpisode with fresh data from new episodes list")
+                focusedEpisode = freshEpisode
+            }
+        }
+    }
     
     // Handle initial episode focus - find the season containing the episode and switch to it
     // The actual focus is handled by SeriesBottomContainer once the correct episodes are loaded
@@ -1884,6 +1912,15 @@ fun EpisodeActionButtonsRow(
             ?.count { it.Type == "Audio" } ?: 0
     }
     val hasMultiAudio = audioStreamCount > 1
+    
+    // Calculate default subtitle/audio indices if none selected
+    val defaultSubtitleIndex = null
+    
+    val defaultAudioIndex = remember(episodeDetails?.MediaSources) {
+        episodeDetails?.MediaSources?.firstOrNull()?.MediaStreams?.let { streams ->
+             streams.firstOrNull { it.Type == "Audio" && it.IsDefault == true }?.Index
+        }
+    }
 
     // Trailer state
     var trailerKey by remember { mutableStateOf<String?>(null) }
@@ -1899,13 +1936,34 @@ fun EpisodeActionButtonsRow(
              if (tmdbId != null) {
                   try {
                       withContext(Dispatchers.IO) {
+                          // Determine audio language from the current episode to request localized trailers for the series
+                          val audioLang = displayEpisode.MediaSources?.firstOrNull()?.MediaStreams
+                              ?.firstOrNull { it.Type == "Audio" && it.IsDefault == true }?.Language
+                              ?: displayEpisode.MediaSources?.firstOrNull()?.MediaStreams
+                                  ?.firstOrNull { it.Type == "Audio" }?.Language
+                          
+                          var iso639Code: String? = null
+                          if (audioLang != null) {
+                              try {
+                                  iso639Code = java.util.Locale(audioLang).language
+                                  if (iso639Code == audioLang && audioLang.length == 3) {
+                                      iso639Code = java.util.Locale.getAvailableLocales()
+                                          .find { try { it.getISO3Language() == audioLang } catch (e: Exception) { false } }?.language ?: audioLang.take(2)
+                                  }
+                              } catch (e: Exception) {
+                                  Log.w("EpisodeActionButtons", "Could not parse language: $audioLang")
+                              }
+                          }
+
                           val videos = TmdbApiService.getVideos(
                               tmdbId = tmdbId.toInt(),
                               type = "tv",
-                              apiKey = settings.tmdbApiKey
+                              apiKey = settings.tmdbApiKey,
+                              language = iso639Code
                           )
-                          // Prefer official trailers
-                          val trailer = videos.firstOrNull { it.site == "YouTube" && it.type == "Trailer" && it.official }
+                          // Prefer official trailers, matching language
+                          val trailer = videos.firstOrNull { it.site == "YouTube" && it.type == "Trailer" && it.official && (iso639Code == null || it.iso6391 == iso639Code) }
+                              ?: videos.firstOrNull { it.site == "YouTube" && it.type == "Trailer" && it.official }
                               ?: videos.firstOrNull { it.site == "YouTube" && it.type == "Trailer" }
                               ?: videos.firstOrNull { it.site == "YouTube" }
                           
@@ -1945,8 +2003,8 @@ fun EpisodeActionButtonsRow(
                                 context = context,
                                 itemId = displayEpisode.Id,
                                 resumePositionMs = resumePositionMs,
-                                subtitleStreamIndex = storedSubtitleIndex,
-                                audioStreamIndex = storedAudioIndex
+                                subtitleStreamIndex = storedSubtitleIndex ?: defaultSubtitleIndex,
+                                audioStreamIndex = storedAudioIndex ?: defaultAudioIndex
                             )
                             context.startActivity(intent)
                         },
@@ -1963,8 +2021,8 @@ fun EpisodeActionButtonsRow(
                                 context = context,
                                 itemId = displayEpisode.Id,
                                 resumePositionMs = resumePositionMs,
-                                subtitleStreamIndex = storedSubtitleIndex,
-                                audioStreamIndex = storedAudioIndex
+                                subtitleStreamIndex = storedSubtitleIndex ?: defaultSubtitleIndex,
+                                audioStreamIndex = storedAudioIndex ?: defaultAudioIndex
                             )
                             context.startActivity(intent)
                         },
@@ -2019,7 +2077,8 @@ fun EpisodeActionButtonsRow(
                                 context = context,
                                 itemId = displayEpisode.Id,
                                 resumePositionMs = 0L,
-                                subtitleStreamIndex = storedSubtitleIndex
+                                subtitleStreamIndex = storedSubtitleIndex ?: defaultSubtitleIndex,
+                                audioStreamIndex = storedAudioIndex ?: defaultAudioIndex
                             )
                             context.startActivity(intent)
                         },
@@ -2036,7 +2095,8 @@ fun EpisodeActionButtonsRow(
                             context = context,
                             itemId = displayEpisode.Id,
                             resumePositionMs = 0L,
-                            subtitleStreamIndex = storedSubtitleIndex
+                            subtitleStreamIndex = storedSubtitleIndex ?: defaultSubtitleIndex,
+                            audioStreamIndex = storedAudioIndex ?: defaultAudioIndex
                         )
                         context.startActivity(intent)
                     },

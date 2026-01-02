@@ -276,26 +276,26 @@ fun JellyfinVideoPlayerScreen(
     val player = remember {
         // Configure LoadControl to prevent OOM on high-bitrate content (especially HLS H.265)
         val loadControl = if (settings.minimalBuffer4K) {
-            // Minimal buffering for instant playback start
+            // "Minimal" but robust buffering
             DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
-                    500,   // minBufferMs - minimum buffered duration (0.5 seconds)
-                    50000, // maxBufferMs - maximum buffered duration (50 seconds)
-                    250,   // bufferForPlaybackMs - start playback after just 250ms buffered
-                    500    // bufferForPlaybackAfterRebufferMs - resume after 500ms buffered
+                    2000,   // minBufferMs - 2 seconds
+                    50000,  // maxBufferMs - 50 seconds
+                    1000,   // bufferForPlaybackMs - 1 second
+                    2000    // bufferForPlaybackAfterRebufferMs - 2 seconds
                 )
-                .setTargetBufferBytes(50 * 1024 * 1024) // 50MB max buffer to prevent OOM
+                .setTargetBufferBytes(50 * 1024 * 1024) // 50MB max buffer (reduced from 100MB to prevent OOM)
                 .build()
         } else {
-            // Default buffering with memory limit to prevent OOM on HLS/high-bitrate content
+            // Robust buffering for high bitrate content
             DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
-                    2500,   // minBufferMs - 2.5 seconds minimum
-                    60000,  // maxBufferMs - 60 seconds maximum
-                    1000,   // bufferForPlaybackMs - start after 1 second
-                    2000    // bufferForPlaybackAfterRebufferMs - resume after 2 seconds
+                    5000,   // minBufferMs - 5 seconds (reduced to start faster)
+                    120000, // maxBufferMs - 120 seconds
+                    2500,   // bufferForPlaybackMs - 2.5 seconds
+                    5000    // bufferForPlaybackAfterRebufferMs - 5 seconds
                 )
-                .setTargetBufferBytes(100 * 1024 * 1024) // 100MB max buffer to prevent OOM
+                .setTargetBufferBytes(250 * 1024 * 1024) // 250MB max buffer (increased for high bitrate 4K)
                 .build()
         }
             
@@ -308,7 +308,7 @@ fun JellyfinVideoPlayerScreen(
                 if (settings.minimalBuffer4K) {
                     Log.d("JellyfinPlayer", "Created player with minimal buffering (50MB limit) for 4K content")
         } else {
-                    Log.d("JellyfinPlayer", "Created player with standard buffering (100MB limit)")
+                    Log.d("JellyfinPlayer", "Created player with standard buffering (250MB limit)")
                 }
                     Log.d("JellyfinPlayer", "Extension renderer mode: PREFER, Decoder fallback: enabled")
         }
@@ -549,9 +549,7 @@ fun JellyfinVideoPlayerScreen(
                         details?.MediaSources?.firstOrNull()?.MediaStreams
                             ?.find { it.Type == "Subtitle" && it.Index == subtitleStreamIndex }
                     } else {
-                        // Check if Jellyfin marked a subtitle as default/selected
-                        details?.MediaSources?.firstOrNull()?.MediaStreams
-                            ?.find { it.Type == "Subtitle" && (it.IsDefault == true) }
+                        null
                     }
                     
                     // HLS (master.m3u8) does NOT support external subtitles via SubtitleConfiguration!
@@ -1191,29 +1189,26 @@ fun JellyfinVideoPlayerScreen(
                                             try {
                                                 val subtitleStream = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
                                                     ?.find { it.Type == "Subtitle" && it.Index == subtitleStreamIndex }
-                                                val subtitleUrl = apiService.buildJellyfinSubtitleUrl(
-                                                    itemId = item.Id,
-                                                    mediaSourceId = mediaSourceId,
-                                                    streamIndex = subtitleStreamIndex!!,
-                                                    isExternal = subtitleStream?.IsExternal == true,
-                                                    codec = subtitleStream?.Codec,
-                                                    path = subtitleStream?.Path
-                                                )
-                                                val subtitleLanguage = subtitleStream?.Language
-                                                val subtitleMimeType = MimeTypes.TEXT_VTT
                                                 
-                                                MediaItem.Builder()
-                                                    .setUri(Uri.parse(mp4Url))
-                                                    .setSubtitleConfigurations(
-                                                        listOf(
-                                                            MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitleUrl))
-                                                                .setMimeType(subtitleMimeType)
-                                                                .setLanguage(subtitleLanguage)
-                                                                .build()
-                                                        )
+                                                val subtitleConfig = if (subtitleStream != null) {
+                                                    Log.d("JellyfinPlayer", "🔄 Fallback: Adding subtitle ${subtitleStream.DisplayTitle}")
+                                                    com.flex.elefin.player.SubtitleMapper.buildSubtitleConfiguration(
+                                                        context = context,
+                                                        apiService = apiService,
+                                                        itemId = item.Id,
+                                                        mediaSourceId = mediaSourceId, // Use the ID resolved above
+                                                        stream = subtitleStream,
+                                                        positionIndex = subtitleStream.Index ?: 0
                                                     )
-                                                    .build()
+                                                } else null
+                                                
+                                                val builder = MediaItem.Builder().setUri(Uri.parse(mp4Url))
+                                                if (subtitleConfig != null) {
+                                                    builder.setSubtitleConfigurations(listOf(subtitleConfig))
+                                                }
+                                                builder.build()
                                             } catch (e: Exception) {
+                                                Log.e("JellyfinPlayer", "Error adding subtitle to fallback media item", e)
                                                 MediaItem.fromUri(Uri.parse(mp4Url))
                                             }
                                         } else {
@@ -1953,7 +1948,12 @@ fun JellyfinVideoPlayerScreen(
                                                 val isComplete = durationMs > 0 && player.currentPosition >= durationMs * 0.90
                                                 
                                                 withContext(Dispatchers.IO) {
-                                                    apiService.reportPlaybackStopped(item.Id, positionTicks)
+                                                    apiService.reportPlaybackStopped(
+                                                        itemId = item.Id, 
+                                                        positionTicks = positionTicks,
+                                                        audioStreamIndex = currentAudioIndex,
+                                                        subtitleStreamIndex = currentSubtitleIndex
+                                                    )
                                                     if (isComplete) {
                                                         apiService.markAsWatched(item.Id)
                                                     }
@@ -1987,7 +1987,12 @@ fun JellyfinVideoPlayerScreen(
                         val actualStartPosition = if (freshPositionMs > 0) freshPositionMs else resumePositionMs
                         val startPositionTicks = actualStartPosition * 10_000L
                         Log.d("JellyfinPlayer", "🎬 Reporting playback START for item ${item.Id} at ${actualStartPosition}ms (fresh: ${freshPositionMs}ms)")
-                        val success = apiService.reportPlaybackStart(item.Id, startPositionTicks)
+                        val success = apiService.reportPlaybackStart(
+                            itemId = item.Id, 
+                            positionTicks = startPositionTicks,
+                            audioStreamIndex = currentAudioIndex,
+                            subtitleStreamIndex = currentSubtitleIndex
+                        )
                         if (success) {
                             Log.d("JellyfinPlayer", "✅ Playback start reported successfully")
                         } else {
@@ -2152,10 +2157,12 @@ fun JellyfinVideoPlayerScreen(
                                 val success = apiService.reportPlaybackProgress(
                                     itemId = item.Id,
                                     positionTicks = positionTicks,
-                                    isPaused = isPaused
+                                    isPaused = isPaused,
+                                    audioStreamIndex = currentAudioIndex,
+                                    subtitleStreamIndex = currentSubtitleIndex
                                 )
                                 if (success) {
-                                    Log.d("JellyfinPlayer", "✅ Progress reported successfully")
+                                    Log.d("JellyfinPlayer", "✅ Progress reported successfully (A:$currentAudioIndex, S:$currentSubtitleIndex)")
                                 } else {
                                     Log.w("JellyfinPlayer", "❌ Progress report failed")
                                 }
@@ -2479,8 +2486,17 @@ fun JellyfinVideoPlayerScreen(
                                         // This fixes the issue where getCodecSurface() returns null
                                         // because onSurfaceCreated hasn't been called yet
                                         setOnSurfaceReadyListener { surface ->
-                                            player.setVideoSurface(surface)
-                                            Log.d("JellyfinPlayer", "🎬 GL surface attached to player via callback")
+                                            // Fix race condition: Ensure view hasn't been disposed
+                                            if (glSurfaceViewRef.value != null) {
+                                                try {
+                                                    player.setVideoSurface(surface)
+                                                    Log.d("JellyfinPlayer", "🎬 GL surface attached to player via callback")
+                                                } catch (e: Exception) {
+                                                    Log.w("JellyfinPlayer", "⚠️ Failed to attach GL surface: ${e.message}")
+                                                }
+                                            } else {
+                                                Log.d("JellyfinPlayer", "🛑 Ignoring GL surface callback - view disposed")
+                                            }
                                         }
                                     }
                                     addView(glSurface)

@@ -195,6 +195,7 @@ fun MoviesLibraryScreen(
     
     // Sort state for library grid
     var sortType by remember { mutableStateOf(SortType.Alphabetically) }
+    var selectedGenreFilter by remember { mutableStateOf<String?>(null) }
     var showSortDialog by remember { mutableStateOf(false) }
     
     // Data states for recommendations
@@ -426,12 +427,18 @@ fun MoviesLibraryScreen(
         }
     }
     
-    // Sort library items
-    val sortedLibraryItems = remember(libraryItems, sortType) {
+    // Sort and Filter library items
+    val sortedLibraryItems = remember(libraryItems, sortType, selectedGenreFilter) {
+        val filteredItems = if (selectedGenreFilter != null) {
+            libraryItems.filter { it.Genres?.contains(selectedGenreFilter) == true }
+        } else {
+            libraryItems
+        }
+
         when (sortType) {
-            SortType.Alphabetically -> libraryItems.sortedBy { it.Name?.lowercase() }
+            SortType.Alphabetically -> filteredItems.sortedBy { it.Name?.lowercase() }
             SortType.DateAdded -> {
-                libraryItems.sortedByDescending { 
+                filteredItems.sortedByDescending { 
                     it.DateCreated?.let { dateStr ->
                         try {
                             val formats = listOf(
@@ -447,7 +454,7 @@ fun MoviesLibraryScreen(
                 }
             }
             SortType.DateReleased -> {
-                libraryItems.sortedByDescending { 
+                filteredItems.sortedByDescending { 
                     it.PremiereDate?.let { dateStr ->
                         try {
                             val formats = listOf(
@@ -1958,7 +1965,13 @@ fun MoviesLibraryScreen(
                     sortType = newSortType
                     showSortDialog = false
                 },
-                onDismiss = { showSortDialog = false }
+                onDismiss = { showSortDialog = false },
+                availableGenres = availableGenres,
+                selectedGenre = selectedGenreFilter,
+                onGenreSelected = { genre ->
+                    selectedGenreFilter = genre
+                    showSortDialog = false
+                }
             )
         }
         

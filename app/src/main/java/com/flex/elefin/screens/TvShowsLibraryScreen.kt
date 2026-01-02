@@ -194,6 +194,7 @@ fun TvShowsLibraryScreen(
     
     // Sort state for library grid
     var sortType by remember { mutableStateOf(SortType.Alphabetically) }
+    var selectedGenreFilter by remember { mutableStateOf<String?>(null) }
     var showSortDialog by remember { mutableStateOf(false) }
     
     // Data states for recommendations
@@ -436,11 +437,18 @@ fun TvShowsLibraryScreen(
     }
     
     // Sort and filter library items
-    val sortedLibraryItems = remember(libraryItems, sortType, hideShowsWithZeroEpisodes) {
+    val sortedLibraryItems = remember(libraryItems, sortType, hideShowsWithZeroEpisodes, selectedGenreFilter) {
+        // First filter by genre if selected
+        val genreFilteredItems = if (selectedGenreFilter != null) {
+            libraryItems.filter { it.Genres?.contains(selectedGenreFilter) == true }
+        } else {
+            libraryItems
+        }
+
         val sortedItems = when (sortType) {
-            SortType.Alphabetically -> libraryItems.sortedBy { it.Name?.lowercase() }
+            SortType.Alphabetically -> genreFilteredItems.sortedBy { it.Name?.lowercase() }
             SortType.DateAdded -> {
-                libraryItems.sortedByDescending { 
+                genreFilteredItems.sortedByDescending { 
                     it.DateCreated?.let { dateStr ->
                         try {
                             val formats = listOf(
@@ -456,7 +464,7 @@ fun TvShowsLibraryScreen(
                 }
             }
             SortType.DateReleased -> {
-                libraryItems.sortedByDescending { 
+                genreFilteredItems.sortedByDescending { 
                     it.PremiereDate?.let { dateStr ->
                         try {
                             val formats = listOf(
@@ -2097,7 +2105,13 @@ fun TvShowsLibraryScreen(
                     sortType = newSortType
                     showSortDialog = false
                 },
-                onDismiss = { showSortDialog = false }
+                onDismiss = { showSortDialog = false },
+                availableGenres = availableGenres,
+                selectedGenre = selectedGenreFilter,
+                onGenreSelected = { genre ->
+                    selectedGenreFilter = genre
+                    showSortDialog = false
+                }
             )
         }
     }

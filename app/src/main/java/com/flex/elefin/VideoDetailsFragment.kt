@@ -51,8 +51,11 @@ class VideoDetailsFragment : DetailsSupportFragment() {
 
         mDetailsBackground = DetailsSupportFragmentBackgroundController(this)
 
-        @Suppress("DEPRECATION")
-        mSelectedMovie = activity!!.intent.getSerializableExtra(DetailsActivity.MOVIE) as? Movie
+        mSelectedMovie = androidx.core.content.IntentCompat.getSerializableExtra(
+            activity!!.intent, 
+            DetailsActivity.MOVIE, 
+            Movie::class.java
+        )
         if (mSelectedMovie != null) {
             mPresenterSelector = ClassPresenterSelector()
             mAdapter = ArrayObjectAdapter(mPresenterSelector)

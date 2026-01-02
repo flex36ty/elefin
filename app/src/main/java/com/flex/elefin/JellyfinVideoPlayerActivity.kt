@@ -11,6 +11,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.media3.common.util.UnstableApi
 import com.flex.elefin.jellyfin.JellyfinApiService
 import com.flex.elefin.jellyfin.JellyfinConfig
@@ -135,61 +137,101 @@ class JellyfinVideoPlayerActivity : ComponentActivity() {
             val serverUrl = config.serverUrl.removeSuffix("/")
             val accessToken = config.accessToken ?: ""
             
-            // Check for mpv-elefin first (TV-optimized controls), then mpv-android
-            val mpvPackage = when {
-                isPackageInstalled("com.flex.mpvelefin") -> "com.flex.mpvelefin"
-                isPackageInstalled("is.xyz.mpv") -> "is.xyz.mpv"
-                else -> null
-            }
+            android.util.Log.d("VideoPlayer", "MPV player enabled - launching embedded MpvTvPlayerActivity")
             
-            if (mpvPackage != null) {
-                android.util.Log.d("VideoPlayer", "MPV player enabled - launching $mpvPackage")
-                
-                // Build direct stream URL (static=true for direct play)
-                val url = MpvUrlBuilder.buildStreamUrl(
-                    serverUrl = serverUrl,
+            lifecycleScope.launch {
+                var finalUrl: String
+                var extraSubtitleUrl: String? = null
+                val headers = "X-Emby-Token: $accessToken" // Basic header needed
+
+                // Fetch PlaybackInfo to check for transcoding needs and subtitle details
+                val playbackInfo = apiService.getPlaybackInfo(
                     itemId = itemId,
-                    accessToken = accessToken
+                    mediaSourceId = itemId, // Assuming 1:1 for initial lookup
+                    subtitleStreamIndex = subtitleStreamIndex
                 )
                 
-                android.util.Log.d("VideoPlayer", "MPV URL: $url")
+                val mediaSource = playbackInfo?.MediaSources?.firstOrNull()
+                val videoStream = mediaSource?.MediaStreams?.firstOrNull { it.Type == "Video" }
+                val videoCodec = videoStream?.Codec?.lowercase() ?: ""
                 
-                // Try to get cached subtitle if one was selected
-                val subtitlePath = subtitleStreamIndex?.let { streamIndex ->
+                // Check user transcoding settings
+                val enforceTranscoding = settings.serverTranscodingEnabled && (
+                    (settings.transcodeAV1 && (videoCodec.contains("av1") || videoCodec.contains("av01"))) ||
+                    (settings.transcodeHEVC && (videoCodec.contains("hevc") || videoCodec.contains("h265")))
+                )
+
+                if (enforceTranscoding) {
+                    android.util.Log.d("VideoPlayer", "🔄 Enforcing Transcoding (Codec: $videoCodec)")
+                    // Use the TranscodingUrl from PlaybackInfo (includes burned subs if requested)
+                    val transcodeUrl = mediaSource?.TranscodingUrl
+                    if (transcodeUrl != null) {
+                         finalUrl = if (transcodeUrl.startsWith("http")) transcodeUrl else "$serverUrl$transcodeUrl"
+                         android.util.Log.d("VideoPlayer", "🔥 Using Transcoding URL (Burn-in active): $finalUrl")
+                    } else {
+                         android.util.Log.w("VideoPlayer", "⚠️ Transcoding enforced but no URL. Fallback to Direct.")
+                         finalUrl = MpvUrlBuilder.buildStreamUrl(serverUrl, itemId, accessToken)
+                    }
+                } else {
+                    // Direct Play Mode (Soft Subs)
+                    finalUrl = MpvUrlBuilder.buildStreamUrl(serverUrl, itemId, accessToken)
+                    android.util.Log.d("VideoPlayer", "▶️ Direct Play (Video Copy)")
+
+                    // If subtitles selected, handle as Soft Subs (copy/extract)
+                    if (subtitleStreamIndex != null) {
+                        // Find the selected stream to get details (Codec, etc)
+                        val subStream = mediaSource?.MediaStreams?.find { it.Type == "Subtitle" && it.Index == subtitleStreamIndex }
+                        if (subStream != null) {
+                             // Build soft subtitle URL
+                             // Use standard extraction URL which MPV can stream
+                             extraSubtitleUrl = apiService.buildJellyfinSubtitleUrl(
+                                 itemId = itemId,
+                                 mediaSourceId = itemId,
+                                 streamIndex = subtitleStreamIndex,
+                                 isExternal = subStream.IsExternal == true,
+                                 codec = subStream.Codec,
+                                 path = subStream.Path
+                             )
+                             android.util.Log.d("VideoPlayer", "📝 Soft Subtitle URL: $extraSubtitleUrl")
+                        }
+                    }
+                }
+
+                android.util.Log.d("VideoPlayer", "MPV Final URL: $finalUrl")
+                
+                // Prioritize local cached subtitle (if any), otherwise use remote soft-sub URL
+                val cachedSubtitlePath = subtitleStreamIndex?.let { streamIndex ->
                     com.flex.elefin.player.SubtitleDownloader.getCachedSubtitle(itemId, streamIndex)
                 }
-                if (subtitlePath != null) {
-                    android.util.Log.d("VideoPlayer", "Found cached subtitle for MPV: $subtitlePath")
-                } else {
-                    android.util.Log.d("VideoPlayer", "No cached subtitle for MPV (subtitleStreamIndex=$subtitleStreamIndex)")
+                
+                // Final subtitle source: Cached Local > Remote Soft Sub > None
+                val subtitleSource = cachedSubtitlePath ?: extraSubtitleUrl
+                if (subtitleSource != null) {
+                    android.util.Log.d("VideoPlayer", "Using Subtitle Source: $subtitleSource")
                 }
                 
-                try {
-                    // Launch exactly like mpv-android expects: ACTION_VIEW with URL as data
-                    val mpvIntent = Intent(Intent.ACTION_VIEW).apply {
-                        setDataAndType(android.net.Uri.parse(url), "video/*")
-                        setPackage(mpvPackage)
-                        putExtra("title", itemName)
-                        // Position in milliseconds
-                        if (resumePositionMs > 0) {
-                            putExtra("position", resumePositionMs.toInt())
-                        }
-                        putExtra("decode_mode", 2) // Hardware decoding
-                        putExtra("subs_enable", true)
-                        // Pass external subtitle file if available
-                        subtitlePath?.let { putExtra("subtitle_file", it) }
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    startActivity(mpvIntent)
-                    finish()
-                    return
-                } catch (e: Exception) {
-                    android.util.Log.e("VideoPlayer", "Failed to launch $mpvPackage", e)
-                    // Fall through to ExoPlayer
+                val intent = MpvTvPlayerActivity.createIntent(
+                    context = this@JellyfinVideoPlayerActivity,
+                    url = finalUrl,
+                    headers = headers,
+                    title = itemName,
+                    itemId = itemId,
+                    resumePositionMs = resumePositionMs
+                )
+                
+                // Pass selected streams
+                subtitleStreamIndex?.let { intent.putExtra("subtitle_stream_index", it) }
+                audioStreamIndex?.let { intent.putExtra("audio_stream_index", it) }
+                
+                // Pass the subtitle file/URL
+                if (subtitleSource != null) {
+                    intent.putExtra("subtitle_file", subtitleSource)
                 }
-            } else {
-                android.util.Log.w("VideoPlayer", "No MPV player installed, falling back to ExoPlayer")
+
+                startActivity(intent)
+                finish()
             }
+            return
         }
 
         // Create a minimal item object (details will be fetched in the screen)

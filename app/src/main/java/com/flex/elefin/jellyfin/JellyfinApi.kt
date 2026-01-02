@@ -156,6 +156,7 @@ data class MediaSource(
     val Id: String? = null,
     val Protocol: String? = null,
     val Container: String? = null,
+    val TranscodingUrl: String? = null,
     val MediaStreams: List<MediaStream>? = null
 )
 
@@ -1058,27 +1059,53 @@ class JellyfinApiService(
      * This is how official Jellyfin clients resolve subtitle stream indices
      * Note: Simplified version - just re-fetch the item details which should have updated DeliveryUrl
      */
+    /**
+     * Get PlaybackInfo to retrieve correct subtitle DeliveryUrl mapping and burner URLs
+     * API request: GET /Items/{ItemId}/PlaybackInfo?UserId={userId}&StartTimeTicks=0&IsPlayback=true&AutoOpenLiveStream=true&SubtitleMethod=Burn
+     */
     suspend fun getPlaybackInfo(
         itemId: String,
         mediaSourceId: String,
         subtitleStreamIndex: Int? = null
     ): JellyfinPlaybackInfo? {
         return try {
-            android.util.Log.d("JellyfinAPI", "Fetching PlaybackInfo (re-requesting item details for updated DeliveryUrl)...")
-            android.util.Log.d("JellyfinAPI", "  ItemId: $itemId")
-            android.util.Log.d("JellyfinAPI", "  MediaSourceId: $mediaSourceId")
-            android.util.Log.d("JellyfinAPI", "  SubtitleStreamIndex: $subtitleStreamIndex")
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Items/$itemId/PlaybackInfo").apply {
+                parameters.append("UserId", userId)
+                parameters.append("StartTimeTicks", "0")
+                parameters.append("IsPlayback", "true")
+                parameters.append("AutoOpenLiveStream", "true")
+                parameters.append("MediaSourceId", mediaSourceId)
+                
+                // Request server-side subtitle burning if index is provided
+                if (subtitleStreamIndex != null) {
+                    parameters.append("SubtitleStreamIndex", subtitleStreamIndex.toString())
+                    parameters.append("SubtitleMethod", "Burn")
+                }
+            }.buildString()
             
-            // Re-fetch item details which should contain updated MediaStreams with DeliveryUrl
-            val itemDetails = getItemDetails(itemId)
+            android.util.Log.d("JellyfinAPI", "Fetching PlaybackInfo: $url")
             
-            if (itemDetails?.MediaSources != null) {
-                android.util.Log.d("JellyfinAPI", "✅ PlaybackInfo (ItemDetails) received with ${itemDetails.MediaSources.size} MediaSource(s)")
-                JellyfinPlaybackInfo(MediaSources = itemDetails.MediaSources)
+            // Allow POST as well, but GET is sufficient and easier for this
+            val response: JellyfinPlaybackInfo = client.post(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\"")
+                // Empty body for POST
+                setBody("{}")
+                contentType(ContentType.Application.Json)
+            }.body()
+            
+            if (response.MediaSources != null) {
+                val source = response.MediaSources.firstOrNull()
+                android.util.Log.d("JellyfinAPI", "✅ PlaybackInfo received. TranscodingUrl present: ${source?.TranscodingUrl != null}")
+                if (source?.TranscodingUrl != null) {
+                    android.util.Log.d("JellyfinAPI", "🔥 Burn-in URL: ${source.TranscodingUrl}")
+                }
             } else {
-                android.util.Log.w("JellyfinAPI", "⚠️ No MediaSources in ItemDetails")
-                null
+                android.util.Log.w("JellyfinAPI", "⚠️ PlaybackInfo returned no MediaSources")
             }
+            
+            response
         } catch (e: Exception) {
             android.util.Log.e("JellyfinAPI", "❌ Failed to get PlaybackInfo: ${e.message}", e)
             null
@@ -1191,7 +1218,7 @@ class JellyfinApiService(
                 parameters.append("IncludeItemTypes", "Movie,Series,Episode")
                 parameters.append("Limit", limit.toString())
                 parameters.append("StartIndex", startIndex.toString())
-                parameters.append("Fields", "DateCreated,PremiereDate,Overview,UserData,ImageTags,ChildCount,RecursiveItemCount") // Include DateCreated, ChildCount and RecursiveItemCount for filtering empty shows
+                parameters.append("Fields", "DateCreated,PremiereDate,Overview,UserData,ImageTags,ChildCount,RecursiveItemCount,Genres") // Include DateCreated, ChildCount and RecursiveItemCount for filtering empty shows
             }.buildString()
             
             val response: ItemsResponse = client.get(url) {
@@ -2010,19 +2037,32 @@ class JellyfinApiService(
             val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
             val url = "${base}Users/$userId/PlayedItems/$itemId"
             
-            val deviceId = config?.deviceId ?: ""
-            val authHeader = if (deviceId.isNotEmpty()) {
-                "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"$deviceId\", Token=\"$accessToken\", Version=\"1.1.5\""
-            } else {
-                "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\""
-            }
+            // The original code used X-Emby-Authorization with device info.
+            // The instruction suggests using X-Emby-Token directly for this call.
+            // We will use the X-Emby-Token as per the instruction.
             
-            client.post(url) {
-                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", authHeader)
+            val response = client.post(url) {
+                header("X-Emby-Token", accessToken) // Changed from original HttpHeaders.Authorization and X-Emby-Authorization
+                // Jellyfin API for PlayedItems POST expects an empty body or a specific PlaybackReportingPostRequest
+                // For simply marking as played, an empty POST body is sufficient.
             }
-            android.util.Log.d("JellyfinAPI", "Marked item $itemId as watched")
-            true
+
+            val isSuccessful = response.status.value in 200..299
+            android.util.Log.d("JellyfinAPI", "Mark watched response: ${response.status.value}")
+            
+            if (isSuccessful) {
+                // Invalidate caches to ensure UI refreshes correctly
+                // We need to invalidate both the specific item and potentially its season/series containers
+                // Since we don't have the season ID handy here easily without looking it up,
+                // we'll clear the entire episode cache to be safe and ensure freshness
+                android.util.Log.d("JellyfinAPI", "Invalidating episode caches after marking as watched")
+                episodeCache.clear()
+                // itemDetailsCache.remove(itemId)
+                android.util.Log.d("JellyfinAPI", "Marked item $itemId as watched")
+            } else {
+                android.util.Log.e("JellyfinAPI", "Failed to mark item $itemId as watched. Status: ${response.status.value}")
+            }
+            isSuccessful
         } catch (e: Exception) {
             android.util.Log.e("JellyfinAPI", "Error marking item as watched", e)
             e.printStackTrace()
@@ -2035,27 +2075,34 @@ class JellyfinApiService(
      * DELETE /Users/{UserId}/PlayedItems/{ItemId}
      * Reference: https://api.jellyfin.org/
      */
+    /**
+     * Mark an item as unwatched
+     * DELETE /Users/{UserId}/PlayedItems/{ItemId}
+     * Reference: https://api.jellyfin.org/
+     */
     suspend fun markAsUnwatched(itemId: String): Boolean {
         return try {
             val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
             val url = "${base}Users/$userId/PlayedItems/$itemId"
             
-            val deviceId = config?.deviceId ?: ""
-            val authHeader = if (deviceId.isNotEmpty()) {
-                "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"$deviceId\", Token=\"$accessToken\", Version=\"1.1.5\""
-            } else {
-                "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"1.1.5\""
+            android.util.Log.d("JellyfinAPI", "Marking item as unwatched: $url")
+            
+            val response = client.delete(url) {
+                header("X-Emby-Token", accessToken)
+            }
+
+            val isSuccessful = response.status.value in 200..299
+            android.util.Log.d("JellyfinAPI", "Mark unwatched response: ${response.status.value}")
+            
+            if (isSuccessful) {
+                // Invalidate caches to ensure UI refreshes correctly
+                android.util.Log.d("JellyfinAPI", "Invalidating episode caches after marking as unwatched")
+                episodeCache.clear()
             }
             
-            client.delete(url) {
-                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                header("X-Emby-Authorization", authHeader)
-            }
-            android.util.Log.d("JellyfinAPI", "Marked item $itemId as unwatched")
-            true
+            isSuccessful
         } catch (e: Exception) {
             android.util.Log.e("JellyfinAPI", "Error marking item as unwatched", e)
-            e.printStackTrace()
             false
         }
     }
@@ -2071,7 +2118,9 @@ class JellyfinApiService(
      */
     suspend fun reportPlaybackStart(
         itemId: String,
-        positionTicks: Long = 0
+        positionTicks: Long = 0,
+        audioStreamIndex: Int? = null,
+        subtitleStreamIndex: Int? = null
     ): Boolean {
         return try {
             val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
@@ -2090,6 +2139,8 @@ class JellyfinApiService(
                 append("\"ItemId\":\"$itemId\",")
                 append("\"PositionTicks\":$positionTicks,")
                 append("\"PlayMethod\":\"DirectStream\",")
+                if (audioStreamIndex != null) append("\"AudioStreamIndex\":$audioStreamIndex,")
+                if (subtitleStreamIndex != null) append("\"SubtitleStreamIndex\":$subtitleStreamIndex,")
                 append("\"CanSeek\":true")
                 append("}")
             }
@@ -2127,7 +2178,9 @@ class JellyfinApiService(
         isPaused: Boolean = false,
         isMuted: Boolean = false,
         volumeLevel: Int = 100,
-        playbackRate: Double = 1.0
+        playbackRate: Double = 1.0,
+        audioStreamIndex: Int? = null,
+        subtitleStreamIndex: Int? = null
     ): Boolean {
         return try {
             val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
@@ -2149,6 +2202,8 @@ class JellyfinApiService(
                 append("\"IsMuted\":$isMuted,")
                 append("\"VolumeLevel\":$volumeLevel,")
                 append("\"PlayMethod\":\"DirectStream\",")
+                if (audioStreamIndex != null) append("\"AudioStreamIndex\":$audioStreamIndex,")
+                if (subtitleStreamIndex != null) append("\"SubtitleStreamIndex\":$subtitleStreamIndex,")
                 append("\"PlaybackRate\":$playbackRate")
                 append("}")
             }
@@ -2175,7 +2230,9 @@ class JellyfinApiService(
      */
     suspend fun reportPlaybackStopped(
         itemId: String,
-        positionTicks: Long
+        positionTicks: Long,
+        audioStreamIndex: Int? = null,
+        subtitleStreamIndex: Int? = null
     ): Boolean {
         return try {
             val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
@@ -2192,7 +2249,9 @@ class JellyfinApiService(
             val requestBody = buildString {
                 append("{")
                 append("\"ItemId\":\"$itemId\",")
-                append("\"PositionTicks\":$positionTicks")
+                append("\"PositionTicks\":$positionTicks,")
+                if (audioStreamIndex != null) append("\"AudioStreamIndex\":$audioStreamIndex,")
+                if (subtitleStreamIndex != null) append("\"SubtitleStreamIndex\":$subtitleStreamIndex")
                 append("}")
             }
             

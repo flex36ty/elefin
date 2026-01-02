@@ -21,8 +21,11 @@ class PlaybackVideoFragment : VideoSupportFragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        @Suppress("DEPRECATION")
-        val movie = activity?.intent?.getSerializableExtra(DetailsActivity.MOVIE) as? Movie
+        val movie = androidx.core.content.IntentCompat.getSerializableExtra(
+            activity?.intent ?: return, 
+            DetailsActivity.MOVIE, 
+            Movie::class.java
+        )
         val (_, title, description, _, _, videoUrl) = movie ?: return
 
         if (videoUrl == null) return

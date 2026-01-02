@@ -7,44 +7,34 @@ import android.util.Log
 import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusTarget
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.flex.elefin.JellyfinAppTheme
+import com.flex.elefin.jellyfin.AppSettings
 import com.flex.elefin.jellyfin.JellyfinApiService
 import com.flex.elefin.jellyfin.JellyfinConfig
 import `is`.xyz.mpv.MPVLib
 import `is`.xyz.mpv.MPVView
+import `is`.xyz.mpv.MPVView.Track
 import kotlinx.coroutines.*
 import java.io.File
 
@@ -52,7 +42,8 @@ import java.io.File
  * Android TV optimized MPV player activity.
  * 
  * Features:
- *   ✔ YouTube TV-style controls
+ *   ✔ Native MPV playback
+ *   ✔ Compose-based UI Controls (ported from ExoPlayer)
  *   ✔ Resume position support
  *   ✔ Jellyfin progress reporting
  *   ✔ D-pad navigation
@@ -71,6 +62,8 @@ class MpvTvPlayerActivity : ComponentActivity() {
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_ITEM_ID = "item_id"
         private const val EXTRA_RESUME_MS = "resume_ms"
+        private const val EXTRA_AUDIO_URL = "audio_url"
+        private const val EXTRA_IS_TRAILER = "is_trailer"
 
         fun createIntent(
             context: Context,
@@ -107,10 +100,17 @@ class MpvTvPlayerActivity : ComponentActivity() {
         val resumePositionMs = intent.getLongExtra(EXTRA_RESUME_MS, 0L)
         // Check for subtitle file in extras (passed by Launcher or other means)
         val subtitleFile = intent.getStringExtra("subtitle_file")
+        
+        val subtitleStreamIndex = intent.getIntExtra("subtitle_stream_index", -1)
+        val audioStreamIndex = intent.getIntExtra("audio_stream_index", -1)
+        val audioUrl = intent.getStringExtra(EXTRA_AUDIO_URL)
+        val isTrailer = intent.getBooleanExtra(EXTRA_IS_TRAILER, false)
 
-        Log.d(TAG, "Loading: $url")
+        Log.d("MpvTvPlayer", "Loading: $url")
         Log.d(TAG, "Resume position: ${resumePositionMs}ms")
         if (subtitleFile != null) Log.d(TAG, "External subtitle: $subtitleFile")
+        
+        Log.d("MpvTvPlayer", "Received Intent Extras -> IsTrailer: $isTrailer, AudioUrl: $audioUrl")
 
         // Initialize API service for progress reporting
         val config = JellyfinConfig(this)
@@ -132,6 +132,10 @@ class MpvTvPlayerActivity : ComponentActivity() {
                     itemId = itemId,
                     resumePositionMs = resumePositionMs,
                     subtitleFile = subtitleFile,
+                    initialSubtitleStreamIndex = subtitleStreamIndex,
+                    initialAudioStreamIndex = audioStreamIndex,
+                    externalAudioUrl = audioUrl,
+                    isTrailer = isTrailer,
                     apiService = apiService,
                     onMpvViewCreated = { view -> mpvView = view },
                     onBack = { finish() }
@@ -143,6 +147,9 @@ class MpvTvPlayerActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         mpvView?.pause()
+        // Surface lifecycle hardening:
+        // When activity pauses (often before destroy), disable video keys to avoid surface detach crash
+        // mpvView?.onPause() // If MPVAndroidView exposes this
     }
 
     override fun onDestroy() {
@@ -152,30 +159,14 @@ class MpvTvPlayerActivity : ComponentActivity() {
     }
 }
 
-// Picture mode / aspect ratio options
-enum class AspectMode(val label: String) {
-    FIT("Fit"),
-    FILL("Fill"),
-    LETTERBOX("16:9"),
-    CINEMA("Cinema"),
-    STRETCH("Stretch"),
-    ORIGINAL("Original");
-
-    fun next(): AspectMode {
-        val modes = values()
-        return modes[(ordinal + 1) % modes.size]
-    }
+private fun applySuperResolutionScalers() {
+    // AI-style Super Resolution (lightweight)
+    MPVLib.setOptionString("scale", "ewa_lanczossharp")
+    MPVLib.setOptionString("cscale", "ewa_lanczossharp")
+    MPVLib.setOptionString("dscale", "mitchell")
+    MPVLib.setOptionString("linear-downscaling", "no")
+    MPVLib.setOptionString("sigmoid-upscaling", "yes")
 }
-
-// Track info data class
-data class TrackInfo(
-    val id: Int,
-    val type: String,
-    val title: String?,
-    val language: String?,
-    val codec: String?,
-    val isSelected: Boolean
-)
 
 @Composable
 private fun MpvPlayerScreen(
@@ -185,6 +176,10 @@ private fun MpvPlayerScreen(
     itemId: String,
     resumePositionMs: Long,
     subtitleFile: String? = null,
+    initialSubtitleStreamIndex: Int = -1,
+    initialAudioStreamIndex: Int = -1,
+    externalAudioUrl: String? = null,
+    isTrailer: Boolean = false,
     apiService: JellyfinApiService?,
     onMpvViewCreated: (MPVView) -> Unit,
     onBack: () -> Unit
@@ -201,50 +196,150 @@ private fun MpvPlayerScreen(
     // Controls visibility
     var controlsVisible by remember { mutableStateOf(true) }
     var lastInteractionTime by remember { mutableStateOf(System.currentTimeMillis()) }
-    var controlsInteractionKey by remember { mutableStateOf(0) }
     
-    // Settings focus
+    // Settings state
     var showSettingsMenu by remember { mutableStateOf(false) }
+    var settingsInitialLevel by remember { mutableStateOf("main") }
 
-    // Track lists
-    var audioTracks by remember { mutableStateOf<List<TrackInfo>>(emptyList()) }
-    var subtitleTracks by remember { mutableStateOf<List<TrackInfo>>(emptyList()) }
+    // Track data directly from MPV
+    // Using explicit type to avoid import ambiguity if any
+    var tracks by remember { mutableStateOf<Map<String, List<Track>>>(emptyMap()) }
     var currentAudioId by remember { mutableStateOf(-1) }
     var currentSubtitleId by remember { mutableStateOf(-1) }
+    var playbackSpeed by remember { mutableStateOf(1.0) }
     
     // Aspect mode
     var currentAspectMode by remember { mutableStateOf(AspectMode.FIT) }
-    
-    // Focus
-    val playPauseFocusRequester = remember { FocusRequester() }
-    var seekBarFocused by remember { mutableStateOf(false) }
+
+    // Jellyfin Stream Index Tracking
+    // We store the resolved Jellyfin Stream Index (not MPV ID) to report back to server
+    var mediaStreams by remember { mutableStateOf<List<com.flex.elefin.jellyfin.MediaStream>>(emptyList()) }
+    var currentJellyfinAudioIndex by remember { mutableStateOf(initialAudioStreamIndex) }
+    var currentJellyfinSubtitleIndex by remember { mutableStateOf(initialSubtitleStreamIndex) }
     
     // Progress reporting job
     var progressReportingJob by remember { mutableStateOf<Job?>(null) }
 
-    // Update playback state periodically
+    // Focus for the root container to capture keys when controls are hidden
+    val rootFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        rootFocusRequester.requestFocus()
+    }
+
     LaunchedEffect(mpvViewRef) {
-        while (true) {
-            delay(500)
-            mpvViewRef?.let { mpv ->
-                try {
-                    isPlaying = mpv.paused != true
-                    currentPositionMs = ((mpv.timePos ?: 0.0) * 1000).toLong()
-                    durationMs = ((mpv.duration ?: 0.0) * 1000).toLong()
-                    if (durationMs > 0) isBuffering = false
-                } catch (e: Exception) {
-                    // MPV not ready yet
-                }
+        if (mpvViewRef != null) {
+            // once MPVView exists, steal focus back to Compose
+            delay(50)
+            if (!controlsVisible) {
+                rootFocusRequester.requestFocus()
             }
         }
     }
 
-    // Auto-hide controls after 5 seconds
-    LaunchedEffect(lastInteractionTime, controlsVisible) {
-        if (controlsVisible) {
+    // Update playback state periodically
+    LaunchedEffect(mpvViewRef) {
+        withContext(Dispatchers.IO) {
+            var loopCount = 0
+            while (isActive) {
+                delay(1000)
+                val mpv = mpvViewRef
+                if (mpv == null) continue
+
+                try {
+                    // JNI Calls on IO Thread
+                    val paused = mpv.paused == true
+                    val time = ((mpv.timePos ?: 0.0) * 1000).toLong()
+                    val dur = ((mpv.duration ?: 0.0) * 1000).toLong()
+                    val eof = mpv.eofReached == true
+                    
+                     // Track sync (throttled)
+                     var newTracks: Map<String, List<Track>>? = null
+                     var newSpeed = 1.0
+                     var newAid = -1
+                     var newSid = -1
+                     
+                     // Check tracks every 5 seconds
+                     if (loopCount % 5 == 0) {
+                         // Use a lock-like mechanism or just simple check?
+                         // We are on IO thread. Startup also uses IO now.
+                         // But to be safe, we check if tracks are empty or count mismatch.
+                         val currentTrackCount = MPVLib.getPropertyInt("track-list/count") ?: 0
+                         val knownRealTracks = mpv.tracks.values.flatten().count { it.mpvId != -1 }
+                        
+                         // Only reload if count mismatch AND we haven't tried recently
+                         // Or just blindly trust MPV if mismatch?
+                         // If we have 0 tracks but MPV says > 0, definitely load.
+                         // If we have mismatch, maybe reload.
+                         if (currentTrackCount != knownRealTracks) {
+                             Log.d("MpvTvPlayer", "Track count mismatch (MPV: $currentTrackCount, Known: $knownRealTracks). Reloading tracks.")
+                             mpv.loadTracks() // Heavy JNI - safe on IO
+                             newTracks = mpv.tracks.mapValues { it.value.toList() }
+                         } else {
+                             // Just update IDs/Speed if counts match
+                             newTracks = mpv.tracks.mapValues { it.value.toList() }
+                         }
+
+                         if (mpv.tracks.isNotEmpty()) {
+                             newSpeed = mpv.playbackSpeed ?: 1.0
+                             newAid = mpv.aid
+                             newSid = mpv.sid
+                         }
+                     }
+                    
+                    // Update UI State on Main Thread
+                    withContext(Dispatchers.Main) {
+                        if (eof) {
+                            Log.d("MpvTvPlayer", "EOF reached")
+                            onBack()
+                        } else {
+                            isPlaying = !paused
+                            currentPositionMs = time
+                            durationMs = dur
+                            if (dur > 0) isBuffering = false
+                            
+                            // Update tracks info if we checked them
+                            if (loopCount % 5 == 0 && mpv.tracks.isNotEmpty()) {
+                                playbackSpeed = newSpeed
+                                // Only update ID if changed to avoid jitter? 
+                                if (currentAudioId != newAid) currentAudioId = newAid
+                                if (currentSubtitleId != newSid) currentSubtitleId = newSid
+                                
+                                if (newTracks != null) {
+                                    tracks = newTracks
+                                }
+                            }
+                        }
+                    }
+
+                } catch (e: Exception) {
+                    // MPV not ready or other error
+                }
+                loopCount++
+            }
+        }
+    }
+
+    // Auto-hide controls
+    LaunchedEffect(lastInteractionTime, controlsVisible, showSettingsMenu) {
+        if (controlsVisible && !showSettingsMenu) {
             delay(5000)
             if (System.currentTimeMillis() - lastInteractionTime >= 5000) {
                 controlsVisible = false
+            }
+        }
+    }
+
+    // Capture focus when controls are hidden so we can show them again
+    LaunchedEffect(controlsVisible) {
+        if (!controlsVisible) {
+            // Small delay to allow previous focus to be cleared/layout to update
+            delay(100)
+            try {
+                rootFocusRequester.requestFocus()
+                Log.d("MpvTvPlayer", "Requested focus to root container")
+            } catch (e: Exception) {
+                Log.w("MpvTvPlayer", "Failed to request focus: ${e.message}")
             }
         }
     }
@@ -255,7 +350,13 @@ private fun MpvPlayerScreen(
         if (mpvViewRef != null && apiService != null && itemId.isNotEmpty() && !hasReportedStart) {
             withContext(Dispatchers.IO) {
                 val startPositionTicks = resumePositionMs * 10_000L
-                apiService.reportPlaybackStart(itemId, startPositionTicks)
+                // Use initial indices for start report
+                apiService.reportPlaybackStart(
+                    itemId, 
+                    startPositionTicks,
+                    audioStreamIndex = if (initialAudioStreamIndex != -1) initialAudioStreamIndex else null,
+                    subtitleStreamIndex = if (initialSubtitleStreamIndex != -1) initialSubtitleStreamIndex else null
+                )
                 hasReportedStart = true
             }
         }
@@ -275,9 +376,11 @@ private fun MpvPlayerScreen(
                                 apiService.reportPlaybackProgress(
                                     itemId = itemId,
                                     positionTicks = positionTicks,
-                                    isPaused = !isPlaying
+                                    isPaused = !isPlaying,
+                                    audioStreamIndex = if (currentJellyfinAudioIndex != -1) currentJellyfinAudioIndex else null,
+                                    subtitleStreamIndex = if (currentJellyfinSubtitleIndex != -1) currentJellyfinSubtitleIndex else null
                                 )
-                                Log.d("MpvPlayer", "Reported progress: ${currentPositionMs}ms")
+                                Log.d("MpvPlayer", "Reported progress: ${currentPositionMs}ms (A:$currentJellyfinAudioIndex, S:$currentJellyfinSubtitleIndex)")
                             }
                         }
                     } catch (e: Exception) {
@@ -294,14 +397,21 @@ private fun MpvPlayerScreen(
     DisposableEffect(Unit) {
         onDispose {
             progressReportingJob?.cancel()
+            val finalPos = currentPositionMs
+            val finalDur = durationMs
             if (apiService != null && itemId.isNotEmpty()) {
                 scope.launch {
                     try {
-                        val positionTicks = currentPositionMs * 10_000L
+                        val positionTicks = finalPos * 10_000L
                         withContext(Dispatchers.IO) {
-                            apiService.reportPlaybackStopped(itemId, positionTicks)
+                            apiService.reportPlaybackStopped(
+                                itemId, 
+                                positionTicks,
+                                audioStreamIndex = if (currentJellyfinAudioIndex != -1) currentJellyfinAudioIndex else null,
+                                subtitleStreamIndex = if (currentJellyfinSubtitleIndex != -1) currentJellyfinSubtitleIndex else null
+                            )
                             // Mark as watched if completed 90%+
-                            if (durationMs > 0 && currentPositionMs >= durationMs * 0.90) {
+                            if (finalDur > 0 && finalPos >= finalDur * 0.90) {
                                 apiService.markAsWatched(itemId)
                                 Log.d("MpvPlayer", "Marked as watched")
                             }
@@ -311,16 +421,6 @@ private fun MpvPlayerScreen(
                     }
                 }
             }
-        }
-    }
-
-    // Focus on play button when controls become visible
-    LaunchedEffect(controlsVisible) {
-        if (controlsVisible) {
-            delay(100)
-            try {
-                playPauseFocusRequester.requestFocus()
-            } catch (e: Exception) { }
         }
     }
 
@@ -351,7 +451,7 @@ private fun MpvPlayerScreen(
                     MPVLib.setOptionString("video-unscaled", "no")
                 }
                 AspectMode.STRETCH -> {
-                    MPVLib.setOptionString("video-aspect-override", "16:9")
+                    MPVLib.setOptionString("video-aspect-override", "no")
                     MPVLib.setOptionString("keepaspect", "no")
                     MPVLib.setOptionString("panscan", "0.0")
                     MPVLib.setOptionString("video-unscaled", "no")
@@ -373,41 +473,182 @@ private fun MpvPlayerScreen(
     LaunchedEffect(mpvViewRef, durationMs) {
         if (mpvViewRef != null && durationMs > 0) {
             delay(1500)
-            mpvViewRef?.let { mpv ->
+            
+            // Move entire track loading & matching logic to IO thread to avoid Main Thread hang/Race
+            withContext(Dispatchers.IO) {
+                val mpv = mpvViewRef ?: return@withContext
+                
+                // Safe JNI calls
                 MPVLib.setPropertyBoolean("sub-visibility", true)
                 mpv.loadTracks()
-                audioTracks = mpv.tracks["audio"]?.map { track ->
-                    TrackInfo(
-                        id = track.mpvId,
-                        type = "audio",
-                        title = track.name,
-                        language = null,
-                        codec = null,
-                        isSelected = track.mpvId == mpv.aid
-                    )
-                } ?: emptyList()
-                subtitleTracks = mpv.tracks["sub"]?.map { track ->
-                    TrackInfo(
-                        id = track.mpvId,
-                        type = "sub",
-                        title = track.name,
-                        language = null,
-                        codec = null,
-                        isSelected = track.mpvId == mpv.sid
-                    )
-                } ?: emptyList()
-                currentAudioId = mpv.aid
-                currentSubtitleId = mpv.sid
                 
-                // Auto-select first subtitle if none selected and not "Off"
-                if (currentSubtitleId == -1 && subtitleTracks.size > 1) {
-                    val firstSubTrack = subtitleTracks.getOrNull(1)
-                    if (firstSubTrack != null && firstSubTrack.id != -1) {
-                        delay(300)
-                        mpv.sid = firstSubTrack.id
-                        currentSubtitleId = firstSubTrack.id
-                        MPVLib.setPropertyBoolean("sub-visibility", true)
+                // Trigger initial track state update (pass back to UI)
+                val loadedTracks = mpv.tracks.mapValues { it.value.toList() }
+                val loadedAid = mpv.aid
+                val loadedSid = mpv.sid
+                
+                withContext(Dispatchers.Main) {
+                    tracks = loadedTracks
+                    currentAudioId = loadedAid
+                    currentSubtitleId = loadedSid
+                }
+                
+                // Try to sync with selected Jellyfin streams if provided, OR find defaults
+                if (apiService != null) {
+                     try {
+                         // valid check
+                         if (mpv.tracks.isEmpty()) return@withContext
+                         
+                         // Skip stream matching for trailers (custom ID structure causes API errors)
+                         if (isTrailer) {
+                             Log.d("MpvTvPlayer", "Skipping stream matching for trailer playback")
+                             return@withContext
+                         }
+                         
+                         Log.d("MpvTvPlayer", "Fetching item details to match streams. Initial: Sub=$initialSubtitleStreamIndex, Audio=$initialAudioStreamIndex")
+                         val itemDetails = apiService.getItemDetails(itemId)
+                         val streams = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams ?: emptyList()
+                         // Save streams to state for later reverse matching
+                         withContext(Dispatchers.Main) {
+                             mediaStreams = streams
+                         }
+                         
+                         // 1. Match Subtitle
+                         // If external file is provided, skip internal matching as MPV will select the file we added
+                         if (subtitleFile == null) {
+                             var targetSubStream = if (initialSubtitleStreamIndex != -1) {
+                                 mediaStreams.find { it.Index == initialSubtitleStreamIndex && it.Type == "Subtitle" }
+                             } else {
+                                 null
+                             }
+
+                             if (targetSubStream != null) {
+                                 val targetLang = targetSubStream.Language
+                                 val targetTitle = targetSubStream.DisplayTitle ?: targetSubStream.Title
+                                 Log.d("MpvTvPlayer", "Target Subtitle: Lang=$targetLang, Title=$targetTitle, Index=${targetSubStream.Index}, Default=${targetSubStream.IsDefault}, Forced=${targetSubStream.IsForced}")
+                                 
+                                 // Find matching MPV track
+                                 val mpvSubTracks = loadedTracks["sub"] ?: emptyList()
+                                 
+                                 // Matching logic:
+                                 // 1. If we have a language, try to match by language (fuzzy)
+                                 // 2. If we have a title, try to match by title
+                                 val bestMatch = mpvSubTracks.find { track -> 
+                                     (targetLang != null && track.lang?.startsWith(targetLang.take(2), ignoreCase = true) == true) ||
+                                     (targetTitle != null && track.name.contains(targetTitle, ignoreCase = true))
+                                 }
+                                 
+                                 if (bestMatch != null && bestMatch.mpvId != -1) {
+                                     withContext(Dispatchers.Main) {
+                                         mpv.sid = bestMatch.mpvId
+                                         currentSubtitleId = bestMatch.mpvId
+                                         Log.d("MpvTvPlayer", "Matched and selected subtitle: ${bestMatch.name} (id=${bestMatch.mpvId})")
+                                     }
+                                 } else {
+                                      Log.w("MpvTvPlayer", "Could not find MPV subtitle track matching: $targetTitle")
+                                 }
+                             } else {
+                                 Log.d("MpvTvPlayer", "No target subtitle found (User selection: ${initialSubtitleStreamIndex}, Auto-detect: true)")
+                             }
+                         } else {
+                             Log.d("MpvTvPlayer", "External subtitle provided ($subtitleFile), skipping internal track matching.")
+                         }
+                         
+                         // 2. Match Audio
+                         var targetAudioStream = if (initialAudioStreamIndex != -1) {
+                             mediaStreams.find { it.Index == initialAudioStreamIndex && it.Type == "Audio" }
+                         } else {
+                             mediaStreams.find { (it.IsDefault == true) && it.Type == "Audio" }
+                         }
+                         
+                          if (targetAudioStream != null) {
+                             val targetLang = targetAudioStream.Language
+                             Log.d("MpvTvPlayer", "Target Audio: Lang=$targetLang")
+                             
+                             val mpvAudioTracks = loadedTracks["audio"] ?: emptyList()
+                             val bestMatch = mpvAudioTracks.find { track -> 
+                                 targetLang != null && track.lang?.startsWith(targetLang.take(2), ignoreCase = true) == true
+                             }
+                             
+                             if (bestMatch != null && bestMatch.mpvId != -1) {
+                                 withContext(Dispatchers.Main) {
+                                     mpv.aid = bestMatch.mpvId
+                                     currentAudioId = bestMatch.mpvId
+                                      Log.d("MpvTvPlayer", "Matched and selected audio: ${bestMatch.name} (id=${bestMatch.mpvId})")
+                                 }
+                             }
+                         }
+                         
+                     } catch (e: Exception) {
+                         Log.e("MpvTvPlayer", "Error matching streams", e)
+                     }
+                }
+            }
+        }
+    }
+    
+    // Reverse Matching Logic: MPV ID -> Jellyfin Index
+    // Runs whenever MPV track selection changes or mediaStreams are loaded
+    LaunchedEffect(currentAudioId, currentSubtitleId, mediaStreams) {
+        if (mediaStreams.isNotEmpty() && (currentAudioId != -1 || currentSubtitleId != -1)) {
+            withContext(Dispatchers.Default) {
+                try {
+                    // Update Audio Index
+                    if (currentAudioId != -1) {
+                         // Find MPV track details
+                         val mpvTrack = tracks["audio"]?.find { it.mpvId == currentAudioId }
+                         if (mpvTrack != null) {
+                             // Match to Jellyfin stream
+                             // Priority: Exact Language match first
+                             val jStream = mediaStreams.filter { it.Type == "Audio" }.find { stream ->
+                                 val langMatch = stream.Language != null && mpvTrack.lang?.startsWith(stream.Language.take(2), ignoreCase = true) == true
+                                 langMatch
+                             } ?: mediaStreams.filter { it.Type == "Audio" }.firstOrNull() // Fallback? Or maybe iterate by index?
+                             
+                             // Ideally we would match by more properties, but language is the main one MPV exposes reliably
+                             if (jStream != null) {
+                                 withContext(Dispatchers.Main) {
+                                     currentJellyfinAudioIndex = jStream.Index ?: -1
+                                     Log.d("MpvTvPlayer", "Updated Jellyfin Audio Index: ${jStream.Index} (from MPV ID $currentAudioId)")
+                                 }
+                             }
+                         }
                     }
+                    
+                    // Update Subtitle Index
+                    if (currentSubtitleId != -1) {
+                        val mpvTrack = tracks["sub"]?.find { it.mpvId == currentSubtitleId }
+                        if (mpvTrack != null) {
+                            // Match to Jellyfin stream
+                            val jStream = mediaStreams.filter { it.Type == "Subtitle" }.find { stream ->
+                                // Match by Name/Title if available, or Language
+                                val titleMatch = stream.Title != null && mpvTrack.name.contains(stream.Title, ignoreCase = true)
+                                val displayTitleMatch = stream.DisplayTitle != null && mpvTrack.name.contains(stream.DisplayTitle, ignoreCase = true)
+                                val langMatch = stream.Language != null && mpvTrack.lang?.startsWith(stream.Language.take(2), ignoreCase = true) == true
+                                
+                                titleMatch || displayTitleMatch || langMatch
+                            }
+                            
+                            if (jStream != null) {
+                                withContext(Dispatchers.Main) {
+                                    currentJellyfinSubtitleIndex = jStream.Index ?: -1
+                                    Log.d("MpvTvPlayer", "Updated Jellyfin Subtitle Index: ${jStream.Index} (from MPV ID $currentSubtitleId)")
+                                }
+                            }
+                        }
+                    } else {
+                        // Subtitles disabled
+                         withContext(Dispatchers.Main) {
+                             // If -1 (disabled), we should probably report null or -1. 
+                             // API expects index optional. If disabled, maybe send null?
+                             // But wait, if we explicitly turned it off, we might want to say "off".
+                             // However, usually turning off just means not sending an index, or sending a specific value.
+                             // Jellyfin stores "null" index as "no subtitle".
+                             currentJellyfinSubtitleIndex = -1 
+                         }
+                    }
+                } catch (e: Exception) {
+                    Log.w("MpvTvPlayer", "Error resolving Jellyfin indices", e)
                 }
             }
         }
@@ -422,125 +663,237 @@ private fun MpvPlayerScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .onKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown) {
-                    // Reset auto-hide timer on any key press
-                    if (controlsVisible) {
-                        lastInteractionTime = System.currentTimeMillis()
+            .focusRequester(rootFocusRequester)
+            .focusTarget()
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                
+                // Helper to update interaction timer
+                fun consumeAndTouch(): Boolean {
+                    lastInteractionTime = System.currentTimeMillis()
+                    return true
+                }
+
+                if (controlsVisible) {
+                    // When controls are visible, we allow standard navigation (Up/Down/Left/Right/Enter)
+                    // to reach the buttons. We ONLY intercept Back to hide controls.
+                    if (event.key == Key.Back) {
+                        if (showSettingsMenu) {
+                            showSettingsMenu = false
+                            return@onPreviewKeyEvent consumeAndTouch()
+                        } else {
+                            controlsVisible = false
+                            return@onPreviewKeyEvent consumeAndTouch()
+                        }
+                    }
+                    // For all other keys (Arrows, Enter), let Compose FocusManager handle them!
+                    return@onPreviewKeyEvent false
+                }
+
+                // --- CONTROLS HIDDEN LOGIC ---
+                // We capture keys to show controls or seek
+                when (event.key) {
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                        // Netflix-style: First click shows controls
+                        showControls()
+                        consumeAndTouch()
+                    }
+
+                    Key.DirectionDown -> {
+                        showControls()
+                        consumeAndTouch()
                     }
                     
-                    when (event.key) {
-                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
-                            if (!controlsVisible && !showSettingsMenu) {
-                                showControls()
-                                true
-                            } else {
-                                false
-                            }
-                        }
-                        Key.Back -> {
-                            if (showSettingsMenu) {
-                                showSettingsMenu = false
-                                true
-                            } else if (controlsVisible) {
-                                controlsVisible = false
-                                true
-                            } else {
-                                onBack()
-                                true
-                            }
-                        }
-                        Key.DirectionLeft -> {
-                            if (!controlsVisible && !showSettingsMenu) {
-                                mpvViewRef?.seek(-10)
-                                showControls()
-                                true
-                            } else if (seekBarFocused) {
-                                mpvViewRef?.seek(-30)
-                                showControls()
-                                true
-                            } else {
-                                showControls()
-                                false
-                            }
-                        }
-                        Key.DirectionRight -> {
-                            if (!controlsVisible && !showSettingsMenu) {
-                                mpvViewRef?.seek(10)
-                                showControls()
-                                true
-                            } else if (seekBarFocused) {
-                                mpvViewRef?.seek(30)
-                                showControls()
-                                true
-                            } else {
-                                showControls()
-                                false
-                            }
-                        }
-                        Key.MediaPlayPause -> {
-                            mpvViewRef?.cyclePause()
-                            showControls()
-                            true
-                        }
-                        Key.MediaPlay -> {
-                            mpvViewRef?.play()
-                            showControls()
-                            true
-                        }
-                        Key.MediaPause -> {
-                            mpvViewRef?.pause()
-                            showControls()
-                            true
-                        }
-                        else -> {
-                            if (!showSettingsMenu) showControls()
-                            false
-                        }
+                    Key.DirectionUp -> {
+                        showControls()
+                        consumeAndTouch()
                     }
-                } else {
-                    false
+
+                    Key.DirectionLeft -> {
+                        // Seek when hidden
+                        mpvViewRef?.seek(-10)
+                        consumeAndTouch()
+                    }
+
+                    Key.DirectionRight -> {
+                        // Seek when hidden
+                        mpvViewRef?.seek(10)
+                        consumeAndTouch()
+                    }
+
+                    Key.MediaPlayPause -> {
+                        // If hidden, show controls. If specific media key, maybe just toggle?
+                        // Let's mirror Netflix: Media Button always acts on media
+                        mpvViewRef?.cyclePause()
+                        showControls()
+                        consumeAndTouch()
+                    }
+                    
+                    Key.Back -> {
+                        onBack()
+                        true
+                    }
+
+                    else -> false
                 }
             }
             .focusable()
     ) {
         // MPV View
         AndroidView(
+            modifier = Modifier
+                .fillMaxSize()
+                .focusable(false),
             factory = { ctx ->
                 MPVView(ctx).apply {
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
-                    
-                    setHttpHeaders(headers)
-                    
+
+                    // Make sure the View can't take focus
+                    isFocusable = false
+                    isFocusableInTouchMode = false
+
                     val configDir = File(ctx.filesDir, "mpv")
                     configDir.mkdirs()
+
+                    // ✅ Write TV-hard config files BEFORE initialize()
+                    writeMpvTvConfig(configDir)
+                    
+                    // ✅ Install Shaders
+                    MpvShaderManager.installShaders(ctx)
+
                     initialize(configDir.absolutePath, ctx.cacheDir.absolutePath)
                     
-                    playFile(url)
+                    // ✅ Apply Shader Profile
+                    val settings = AppSettings(ctx)
+                    try {
+                        val profileName = settings.mpvShaderProfile
+                        val profile = MpvShaderManager.ShaderProfile.fromString(profileName)
+                        Log.d("MpvTvPlayer", "Applying Shader Profile: ${profile.displayName}")
+                        
+                        // Check for Dynamic Tone Mapping Setting if using relevant profile
+                        // For HdrBoostPlus, we enforce it if the profile is selected, BUT
+                        // we also check the boolean setting to see if user DISABLED it explicitly 
+                        // relative to the profile? 
+                        // Actually, the user's instructions imply the profile "HdrBoostPlus" IS the feature.
+                        // But also asked for a setting.
+                        // Let's assume if the User selected "HDR++ (Dynamic)" in the picker, they want it.
+                        // BUT "implement this and add an option in settings to enable / disable it. set it disable by default"
+                        // This usually means the *feature capability* is gated. 
+                        // If I disable the setting, maybe HdrBoostPlus falls back to HdrBoost? 
+                        // Or maybe I just strictly follow: If setting OFF, and they pick HdrBoostPlus, 
+                        // we filter out the dynamic shader from the list?
+                        
+                        // Let's go with: MpvShaderManager handles the list. 
+                        // I need to filter the list here if I didn't do it in Manager.
+                        // In Manager, I just added it.
+                        // So I should check `settings.enableDynamicToneMapping` here.
+                        
+                        var shaderPaths = MpvShaderManager.getShadersForProfile(ctx, profile).toMutableList()
+                        
+                        // Logic: If Dynamic Tone Mapping setting is disabled, REMOVE the dynamic shader 
+                        // from the list if it was added (e.g. if user selected HdrBoostPlus)
+                        if (!settings.enableDynamicToneMapping) {
+                            val dynShaderPath = MpvShaderManager.getShaderPath(ctx, MpvShaderManager.SHADER_DYN_TONEMAP)
+                            shaderPaths.remove(dynShaderPath)
+                            Log.d("MpvTvPlayer", "Dynamic Tone Mapping disabled in settings, removing shader.")
+                        }
+
+                        if (shaderPaths.isNotEmpty()) {
+                            // Join with standard path separator (:)
+                            val shaderList = shaderPaths.joinToString(File.pathSeparator)
+                            Log.d("MpvTvPlayer", "Setting glsl-shaders: $shaderList")
+                            MPVLib.setOptionString("glsl-shaders", shaderList)
+                        } else {
+                            // If None, clear shaders just in case (though init should be clean)
+                            MPVLib.setOptionString("glsl-shaders", "")
+                        }
+
+                        // Profile-specific extra settings
+                        when (profile) {
+                            MpvShaderManager.ShaderProfile.Cinema -> {
+                                MPVLib.setOptionString("deband", "yes")
+                                MPVLib.setOptionString("deband-iterations", "2")
+                                MPVLib.setOptionString("deband-threshold", "48")
+                            }
+                            MpvShaderManager.ShaderProfile.Sports -> {
+                                applySuperResolutionScalers()
+                            }
+                            MpvShaderManager.ShaderProfile.Sharp -> {
+                                applySuperResolutionScalers()
+                            }
+                            MpvShaderManager.ShaderProfile.HdrBoostPlus -> {
+                                // Smart HDR logic is mostly in shader, but we can enable scaler too if desired?
+                                // User didn't explicitly ask for SR on HDR++, only on Sports/Sharp.
+                                // "HdrBoostPlus = “smart HDR” for mixed content"
+                                // "Sharp/Sports = enable the SR scalers"
+                                // So leave default scaling for HdrBoostPlus unless user adds it manually.
+                                MPVLib.setOptionString("scale", "bilinear")
+                                MPVLib.setOptionString("deband", "no")
+                            }
+                            else -> {
+                                // Default safer scaling
+                                MPVLib.setOptionString("scale", "bilinear")
+                                MPVLib.setOptionString("deband", "no")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("MpvTvPlayer", "Error applying shader profile", e)
+                    }
                     
+                    // 🔥 Force-enable subtitle renderer at runtime
+                    MPVLib.setPropertyBoolean("sub-ass", true)
+                    MPVLib.setPropertyBoolean("sub-visibility", true)
+                    MPVLib.setPropertyString("sub-ass-override", "scale")
+                    MPVLib.setPropertyString("sub-auto", "fuzzy")
+                    MPVLib.setPropertyString("sub-fix-timing", "yes")
+                    MPVLib.setPropertyBoolean("embeddedfonts", true)
+
+                    // Still keep these as reinforcement
+                    MPVLib.setOptionString("osc", "no")
+                    MPVLib.setOptionString("input-touch", "no")
+                    MPVLib.setOptionString("input-default-bindings", "no")
+                    MPVLib.setOptionString("input-builtin-bindings", "no")
+
                     if (resumePositionMs > 0) {
-                        postDelayed({
-                            seekTo(resumePositionMs / 1000.0)
-                        }, 1000)
+                        val startSeconds = resumePositionMs / 1000.0
+                        MPVLib.setOptionString("start", startSeconds.toString())
                     }
-                    
+
+                    setHttpHeaders(headers)
+
+                    // TRAILER OPTIMIZATION
+                    if (isTrailer) {
+                        MPVLib.command(arrayOf("apply-profile", "trailer"))
+                    }
+
+                    playFile(url)
+
+                    // AUDIO TRACK
+                    if (externalAudioUrl != null) {
+                        // Use Handler to ensure the main file load has initialized the player core
+                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                             Log.d("MpvTvPlayer", "Executing delayed audio-add: $externalAudioUrl")
+                             MPVLib.command(arrayOf("audio-add", externalAudioUrl, "select"))
+                        }, 500)
+                    }
+
                     if (subtitleFile != null) {
-                         postDelayed({
-                             MPVLib.command(arrayOf("sub-add", subtitleFile, "auto"))
-                         }, 1500)
+                        postDelayed({
+                            Log.d("MpvTvPlayer", "Adding external subtitle: $subtitleFile")
+                            MPVLib.command(arrayOf("sub-add", subtitleFile, "select"))
+                        }, 1000) // Load slightly earlier than track matcher
                     }
-                    
+
                     mpvViewRef = this
                     onMpvViewCreated(this)
                 }
-            },
-            modifier = Modifier.fillMaxSize()
+            }
         )
 
-        // Title overlay
+        // Title overlay (always show when controls visible)
         AnimatedVisibility(
             visible = controlsVisible && title.isNotEmpty(),
             enter = fadeIn(),
@@ -566,7 +919,7 @@ private fun MpvPlayerScreen(
             }
         }
 
-        // Loading indicator
+        // Buffering indicator
         if (isBuffering) {
             CircularProgressIndicator(
                 modifier = Modifier.align(Alignment.Center),
@@ -574,180 +927,55 @@ private fun MpvPlayerScreen(
             )
         }
 
-        // Controls overlay
-        AnimatedVisibility(
-            visible = controlsVisible,
-            enter = fadeIn(),
-            exit = fadeOut(),
+        // NEW Controls Overlay
+        MpvControls(
+            isVisible = controlsVisible,
+            isPlaying = isPlaying,
+            currentPosition = currentPositionMs,
+            duration = durationMs,
+            currentAspectMode = currentAspectMode,
+            onPlayPause = { mpvViewRef?.cyclePause() },
+            onSeek = { pos -> 
+                mpvViewRef?.timePos = pos / 1000.0 
+                lastInteractionTime = System.currentTimeMillis()
+            },
+            onFastRewind = { 
+                mpvViewRef?.seek(-15) 
+                lastInteractionTime = System.currentTimeMillis()
+            },
+            onFastForward = { 
+                mpvViewRef?.seek(15)
+                lastInteractionTime = System.currentTimeMillis()
+            },
+            onAspectModeChange = {
+                currentAspectMode = currentAspectMode.next()
+                lastInteractionTime = System.currentTimeMillis()
+            },
+            onOpenSettings = { level ->
+                if (level == "subtitles") {
+                     settingsInitialLevel = "subtitles"
+                } else {
+                     settingsInitialLevel = "main"
+                }
+                showSettingsMenu = true
+                controlsVisible = false 
+            },
+            onHide = { controlsVisible = false },
+            onResetHideTimer = { lastInteractionTime = System.currentTimeMillis() },
             modifier = Modifier.align(Alignment.BottomCenter)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
-                        )
-                    )
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Progress bar
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = formatTime(currentPositionMs),
-                        color = Color.White,
-                        fontSize = 14.sp
-                    )
-                    
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 16.dp)
-                            .height(8.dp)
-                            .background(Color.Gray.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                            .onFocusChanged { seekBarFocused = it.isFocused }
-                            .focusable()
-                            .then(
-                                if (seekBarFocused) {
-                                    Modifier.border(2.dp, Color.White, RoundedCornerShape(4.dp))
-                                } else {
-                                    Modifier
-                                }
-                            )
-                    ) {
-                        val progress = if (durationMs > 0) {
-                            (currentPositionMs.toFloat() / durationMs).coerceIn(0f, 1f)
-                        } else 0f
-                        
-                        Box(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .fillMaxWidth(progress)
-                                .background(Color.Red, RoundedCornerShape(4.dp))
-                        )
-                    }
-                    
-                    Text(
-                        text = formatTime(durationMs),
-                        color = Color.White,
-                        fontSize = 14.sp
-                    )
-                }
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                // Control buttons
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(24.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Rewind 10s
-                    IconButton(
-                        onClick = {
-                            mpvViewRef?.seek(-10)
-                            showControls()
-                        },
-                        modifier = Modifier
-                            .size(56.dp)
-                            .background(Color.White.copy(alpha = 0.2f), CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Replay10,
-                            contentDescription = "Rewind 10 seconds",
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
-                    
-                    // Play/Pause
-                    IconButton(
-                        onClick = {
-                            mpvViewRef?.cyclePause()
-                            showControls()
-                        },
-                        modifier = Modifier
-                            .size(72.dp)
-                            .background(Color.White, CircleShape)
-                            .focusRequester(playPauseFocusRequester)
-                    ) {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = if (isPlaying) "Pause" else "Play",
-                            tint = Color.Black,
-                            modifier = Modifier.size(48.dp)
-                        )
-                    }
-                    
-                    // Forward 10s
-                    IconButton(
-                        onClick = {
-                            mpvViewRef?.seek(10)
-                            showControls()
-                        },
-                        modifier = Modifier
-                            .size(56.dp)
-                            .background(Color.White.copy(alpha = 0.2f), CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Forward10,
-                            contentDescription = "Forward 10 seconds",
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
-                    
-                    Spacer(modifier = Modifier.width(16.dp))
-                    
-                    // Aspect Ratio Button
-                    IconButton(
-                        onClick = {
-                            currentAspectMode = currentAspectMode.next()
-                            showControls()
-                        },
-                        modifier = Modifier
-                            .size(56.dp)
-                            .background(Color.White.copy(alpha = 0.2f), CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.AspectRatio,
-                            contentDescription = "Aspect Ratio",
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    
-                    // Settings Button
-                    IconButton(
-                        onClick = {
-                            showControls()
-                            showSettingsMenu = true
-                        },
-                        modifier = Modifier
-                            .size(56.dp)
-                            .background(Color.White.copy(alpha = 0.2f), CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Settings,
-                            contentDescription = "Settings",
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-            }
-        }
+        )
         
-        // Settings Menu Overlay
+        // Settings Menu
         if (showSettingsMenu) {
             MpvSettingsMenu(
-                audioTracks = audioTracks,
-                subtitleTracks = subtitleTracks,
-                currentAudioId = currentAudioId,
-                currentSubtitleId = currentSubtitleId,
+                tracks = tracks,
+                selectedAudio = currentAudioId,
+                selectedSub = currentSubtitleId,
+                playbackSpeed = playbackSpeed,
+                onDismiss = { 
+                    showSettingsMenu = false 
+                    showControls()
+                },
                 onAudioSelected = { trackId ->
                     mpvViewRef?.aid = trackId
                     currentAudioId = trackId
@@ -755,179 +983,71 @@ private fun MpvPlayerScreen(
                 onSubtitleSelected = { trackId ->
                     mpvViewRef?.sid = trackId
                     currentSubtitleId = trackId
-                    if (trackId != -1) MPVLib.setPropertyBoolean("sub-visibility", true)
+                    if (trackId != -1) {
+                         MPVLib.setPropertyBoolean("sub-visibility", true)
+                         // Force redraw/rescan
+                         MPVLib.command(arrayOf("rescan-external-files"))
+                    }
                 },
-                onDismiss = { showSettingsMenu = false }
+                onPlaybackSpeedChange = { playbackSpeed ->
+                    mpvViewRef?.playbackSpeed = playbackSpeed
+                },
+                initialMenuLevel = settingsInitialLevel
             )
         }
     }
 }
 
-@Composable
-private fun MpvSettingsMenu(
-    audioTracks: List<TrackInfo>,
-    subtitleTracks: List<TrackInfo>,
-    currentAudioId: Int,
-    currentSubtitleId: Int,
-    onAudioSelected: (Int) -> Unit,
-    onSubtitleSelected: (Int) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var currentMenuLevel by remember { mutableStateOf("main") }
-    val focusRequester = remember { FocusRequester() }
-    
-    LaunchedEffect(currentMenuLevel) {
-        focusRequester.requestFocus()
-    }
-    
-    Dialog(
-        onDismissRequest = { onDismiss() },
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.8f))
-                .padding(48.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Card(
-                modifier = Modifier
-                    .width(400.dp)
-                    .heightIn(max = 500.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Text(
-                        text = when (currentMenuLevel) {
-                            "subtitles" -> "Subtitles"
-                            "audio" -> "Audio"
-                            else -> "Settings"
-                        },
-                        color = Color.White,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-                    
-                    LazyColumn(
-                        modifier = Modifier.weight(1f, fill = false)
-                    ) {
-                        if (currentMenuLevel == "main") {
-                             item {
-                                 MenuItem(
-                                     title = "Subtitles",
-                                     subtitle = subtitleTracks.find { it.id == currentSubtitleId }?.title ?: "Off",
-                                     icon = Icons.Filled.Subtitles,
-                                     onClick = { currentMenuLevel = "subtitles" },
-                                     modifier = Modifier.focusRequester(focusRequester)
-                                 )
-                             }
-                             item {Spacer(modifier = Modifier.height(8.dp))}
-                             item {
-                                 MenuItem(
-                                     title = "Audio",
-                                     subtitle = audioTracks.find { it.id == currentAudioId }?.title ?: "Default",
-                                     icon = Icons.Filled.VolumeUp,
-                                     onClick = { currentMenuLevel = "audio" }
-                                 )
-                             }
-                        } else if (currentMenuLevel == "subtitles") {
-                            itemsIndexed(subtitleTracks) { index, track ->
-                                MenuItem(
-                                    title = track.title ?: "Track ${track.id}",
-                                    icon = if (track.id == currentSubtitleId) Icons.Filled.Check else null,
-                                    onClick = {
-                                        onSubtitleSelected(track.id)
-                                        currentMenuLevel = "main"
-                                    },
-                                    modifier = if (index == 0) Modifier.focusRequester(focusRequester) else Modifier
-                                )
-                            }
-                        } else if (currentMenuLevel == "audio") {
-                            itemsIndexed(audioTracks) { index, track ->
-                                MenuItem(
-                                    title = track.title ?: "Track ${track.id}",
-                                    icon = if (track.id == currentAudioId) Icons.Filled.Check else null,
-                                    onClick = {
-                                        onAudioSelected(track.id)
-                                        currentMenuLevel = "main"
-                                    },
-                                    modifier = if (index == 0) Modifier.focusRequester(focusRequester) else Modifier
-                                )
-                            }
-                        }
-                    }
-                    
-                    if (currentMenuLevel != "main") {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = { currentMenuLevel = "main" },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Back")
-                        }
-                    } else {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = onDismiss,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Close")
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
+private fun writeMpvTvConfig(dir: File) {
+    val mpvConf = File(dir, "mpv.conf")
+    val inputConf = File(dir, "input.conf")
 
-@Composable
-private fun MenuItem(
-    title: String,
-    subtitle: String? = null,
-    icon: ImageVector? = null,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (icon != null) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-        }
+    val mpvText = """
+        # Elefin Android TV config
+        osc=no
+        input-touch=no
+        input-default-bindings=no
+        input-builtin-bindings=no
+        load-scripts=no
+        cursor-autohide=no
+        terminal=no
+        msg-level=all=error
         
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, color = Color.White, fontSize = 16.sp)
-            if (subtitle != null) {
-                Text(text = subtitle, color = Color.Gray, fontSize = 14.sp)
-            }
-        }
-    }
-}
+        # Instant Start Optimization
+        cache-pause=no
 
-private fun formatTime(ms: Long): String {
-    val totalSeconds = ms / 1000
-    val hours = totalSeconds / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val seconds = totalSeconds % 60
-    
-    return if (hours > 0) {
-        String.format("%d:%02d:%02d", hours, minutes, seconds)
-    } else {
-        String.format("%d:%02d", minutes, seconds)
+        # --- Subtitle rendering (CRITICAL FIX) ---
+        sub-ass=yes
+        sub-visibility=yes
+        sub-auto=fuzzy
+        sub-fix-timing=yes
+        sub-ass-override=scale
+        sub-font-size=48
+        sub-border-size=2
+        sub-shadow-offset=2
+        sub-use-margins=no
+        embeddedfonts=yes
+        embeddedfonts=yes
+        sub-font="Roboto"
+        
+        [trailer]
+        profile=default
+        hwdec=mediacodec-copy
+        vo=gpu
+        scale=bilinear
+        dither=no
+        interpolation=no
+        deband=no
+        video-sync=display-resample
+    """.trimIndent() + "\n"
+
+    val inputText = "# empty on purpose\n"
+
+    if (!mpvConf.exists() || mpvConf.readText() != mpvText) {
+        mpvConf.writeText(mpvText)
+    }
+
+    if (!inputConf.exists() || inputConf.readText() != inputText) {
+        inputConf.writeText(inputText)
     }
 }

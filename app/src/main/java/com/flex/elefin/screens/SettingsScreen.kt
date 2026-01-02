@@ -234,6 +234,9 @@ fun SettingsScreen(
     var loginError by remember { mutableStateOf<String?>(null) }
     var jellyseerrEnabled by remember { mutableStateOf(settings.jellyseerrEnabled) }
     var jellyseerrSearchEnabled by remember { mutableStateOf(settings.jellyseerrSearchEnabled) }
+    
+    // MPV Shader Profile
+    var mpvShaderProfile by remember { mutableStateOf(settings.mpvShaderProfile) }
 
     // OpenSubtitles state variables
     var openSubtitlesApiKey by remember { mutableStateOf(settings.openSubtitlesApiKey) }
@@ -504,10 +507,10 @@ fun SettingsScreen(
                         }
                         
                         SettingsCategory.VIDEO -> {
-                            // Enable GL Enhancements
+                            // ExoPlayer GL Enhancements
                             SettingToggle(
-                                title = "GL Video Processing",
-                                description = "Use OpenGL for advanced video effects (HDR simulation, sharpening)",
+                                title = "ExoPlayer GL Processing",
+                                description = "Use OpenGL for advanced video effects in ExoPlayer (HDR simulation, sharpening)",
                                 isEnabled = useGLEnhancements,
                                 onToggle = {
                                     useGLEnhancements = !useGLEnhancements
@@ -520,6 +523,36 @@ fun SettingsScreen(
                                         settings.enableSharpening = false
                                         settings.enableFrameBlending = false
                                     }
+                                }
+                            )
+
+                            // MPV Post-Processing
+                            // Show Dynamic Tone Mapping toggle if relevant, or just keep it independent
+                            
+                            // Dynamic Tone Mapping Toggle
+                            var enableDynamicToneMapping by remember { mutableStateOf(settings.enableDynamicToneMapping) }
+                            SettingToggle(
+                                title = "Enable Dynamic Tone Mapping",
+                                description = "Enable scene-aware HDR simulation (for HDR++ profile). Enhances contrast dynamically.",
+                                isEnabled = enableDynamicToneMapping,
+                                onToggle = {
+                                    enableDynamicToneMapping = !enableDynamicToneMapping
+                                    settings.enableDynamicToneMapping = enableDynamicToneMapping
+                                }
+                            )
+
+                            SettingCycle(
+                                title = "MPV Post-Processing",
+                                description = "Apply shader profiles for MPV player (HDR-like effects, sharpening, etc.)",
+                                currentValue = com.flex.elefin.player.mpv.MpvShaderManager.ShaderProfile.fromString(mpvShaderProfile).displayName,
+                                onCycle = {
+                                    val currentProfile = com.flex.elefin.player.mpv.MpvShaderManager.ShaderProfile.fromString(mpvShaderProfile)
+                                    val allProfiles = com.flex.elefin.player.mpv.MpvShaderManager.ShaderProfile.entries
+                                    val nextIndex = (allProfiles.indexOf(currentProfile) + 1) % allProfiles.size
+                                    val nextProfile = allProfiles[nextIndex]
+                                    
+                                    mpvShaderProfile = nextProfile.name
+                                    settings.mpvShaderProfile = nextProfile.name
                                 }
                             )
                             

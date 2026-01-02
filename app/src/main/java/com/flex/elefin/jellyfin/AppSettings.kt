@@ -44,7 +44,13 @@ class AppSettings(context: Context) {
         private const val KEY_EXO_SUBTITLE_TEXT_SIZE = "exo_subtitle_text_size"
         
         // Video enhancement settings
+        // ExoPlayer GL enhancements
         private const val KEY_USE_GL_ENHANCEMENTS = "use_gl_enhancements"
+        
+        // MPV Shader support
+        private const val KEY_MPV_SHADER_PROFILE = "mpv_shader_profile"
+        
+        // Legacy/ExoPlayer settings
         private const val KEY_ENABLE_FAKE_HDR = "enable_fake_hdr"
         private const val KEY_ENABLE_SHARPENING = "enable_sharpening"
         private const val KEY_HDR_STRENGTH = "hdr_strength"
@@ -277,6 +283,16 @@ class AppSettings(context: Context) {
     var useGLEnhancements: Boolean
         get() = prefs.getBoolean(KEY_USE_GL_ENHANCEMENTS, false) // Disabled by default
         set(value) = prefs.edit().putBoolean(KEY_USE_GL_ENHANCEMENTS, value).apply()
+
+    // MPV Shader Profile: None, Cinema, HdrBoost, Sports, Sharp
+    var mpvShaderProfile: String
+        get() = prefs.getString(KEY_MPV_SHADER_PROFILE, "None") ?: "None"
+        set(value) = prefs.edit().putString(KEY_MPV_SHADER_PROFILE, value).apply()
+
+    // Enable Dynamic Tone Mapping (Pseudo-HDR++) - default false
+    var enableDynamicToneMapping: Boolean
+        get() = prefs.getBoolean("enable_dynamic_tone_mapping", false)
+        set(value) = prefs.edit().putBoolean("enable_dynamic_tone_mapping", value).apply()
     
     var enableFakeHDR: Boolean
         get() = prefs.getBoolean(KEY_ENABLE_FAKE_HDR, false) // Disabled by default

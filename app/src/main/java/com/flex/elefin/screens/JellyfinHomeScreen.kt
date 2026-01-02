@@ -2217,13 +2217,27 @@ fun JellyfinHomeScreen(
                     )
                 ) {
                     // Create Jellyseerr API service if enabled
-                    val jellyseerrApiService = remember(settings.jellyseerrUrl, settings.jellyseerrApiKey, settings.jellyseerrEnabled) {
-                        if (settings.jellyseerrEnabled && settings.jellyseerrUrl.isNotBlank() && settings.jellyseerrApiKey.isNotBlank()) {
+                    // Create Jellyseerr API service if enabled
+                    val jellyseerrApiService = remember(
+                        settings.jellyseerrUrl, 
+                        settings.jellyseerrApiKey, 
+                        settings.jellyseerrSessionCookie,
+                        settings.jellyseerrAuthType,
+                        settings.jellyseerrEnabled
+                    ) {
+                        if (settings.isJellyseerrConfigured) {
                             try {
-                                com.flex.elefin.jellyseerr.JellyseerrApiService.withApiKey(
-                                    baseUrl = settings.jellyseerrUrl,
-                                    apiKey = settings.jellyseerrApiKey
-                                )
+                                if (settings.jellyseerrAuthType == "credentials" && settings.jellyseerrSessionCookie.isNotBlank()) {
+                                    com.flex.elefin.jellyseerr.JellyseerrApiService.withCookie(
+                                        baseUrl = settings.jellyseerrUrl,
+                                        cookie = settings.jellyseerrSessionCookie
+                                    )
+                                } else {
+                                    com.flex.elefin.jellyseerr.JellyseerrApiService.withApiKey(
+                                        baseUrl = settings.jellyseerrUrl,
+                                        apiKey = settings.jellyseerrApiKey
+                                    )
+                                }
                             } catch (e: Exception) {
                                 android.util.Log.e("JellyfinHomeScreen", "Error creating Jellyseerr API service", e)
                                 null
@@ -2272,7 +2286,10 @@ fun JellyfinHomeScreen(
 fun SortDialog(
     currentSortType: SortType,
     onDismiss: () -> Unit,
-    onSortSelected: (SortType) -> Unit
+    onSortSelected: (SortType) -> Unit,
+    availableGenres: List<String> = emptyList(),
+    selectedGenre: String? = null,
+    onGenreSelected: ((String?) -> Unit)? = null
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -2287,8 +2304,8 @@ fun SortDialog(
             androidx.tv.material3.Surface(
                 modifier = Modifier
                     .fillMaxWidth(0.3f)
-                    .heightIn(max = (LocalContext.current.resources.displayMetrics.heightPixels * 0.5f).dp)
-                    .padding(top = 80.dp, end = 54.dp), // Align with sort button position
+                    .fillMaxHeight() // Fill height to allow full scrolling
+                    .padding(top = 20.dp, bottom = 20.dp, end = 54.dp), // Adjusted padding
                 shape = RoundedCornerShape(16.dp),
                 colors = androidx.tv.material3.SurfaceDefaults.colors(
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -2296,77 +2313,122 @@ fun SortDialog(
                 )
             ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp)
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    // Dialog title
+                    // Title Area
                     Text(
-                        text = "Sort By",
+                        text = "Sort & Filter",
                         style = MaterialTheme.typography.headlineMedium.copy(
                             fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.7f
                         ),
                         color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(bottom = 12.dp)
+                        modifier = Modifier.padding(start = 24.dp, top = 24.dp, bottom = 12.dp)
                     )
-                    
-                    // Sort options
+
+                    // Scrollable Content
                     LazyColumn(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp)
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        modifier = Modifier.fillMaxSize()
                     ) {
+                        // SECTION: Sort By
+                        item {
+                             Text(
+                                text = "Sort By",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
+                            )
+                        }
+
                         item {
                             ListItem(
                                 selected = currentSortType == SortType.Alphabetically,
-                                onClick = {
-                                    onSortSelected(SortType.Alphabetically)
-                                },
+                                onClick = { onSortSelected(SortType.Alphabetically) },
                                 headlineContent = {
                                     Text(
                                         text = "Alphabetically",
                                         style = MaterialTheme.typography.bodyLarge.copy(
-                                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.7f
+                                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
                                         )
                                     )
-                                },
-                                modifier = Modifier.fillMaxWidth()
+                                }
                             )
                         }
                         
                         item {
                             ListItem(
                                 selected = currentSortType == SortType.DateAdded,
-                                onClick = {
-                                    onSortSelected(SortType.DateAdded)
-                                },
+                                onClick = { onSortSelected(SortType.DateAdded) },
                                 headlineContent = {
                                     Text(
                                         text = "Date Added",
                                         style = MaterialTheme.typography.bodyLarge.copy(
-                                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.7f
+                                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
                                         )
                                     )
-                                },
-                                modifier = Modifier.fillMaxWidth()
+                                }
                             )
                         }
                         
                         item {
                             ListItem(
                                 selected = currentSortType == SortType.DateReleased,
-                                onClick = {
-                                    onSortSelected(SortType.DateReleased)
-                                },
+                                onClick = { onSortSelected(SortType.DateReleased) },
                                 headlineContent = {
                                     Text(
                                         text = "Date Released",
                                         style = MaterialTheme.typography.bodyLarge.copy(
-                                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.7f
+                                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
                                         )
                                     )
-                                },
-                                modifier = Modifier.fillMaxWidth()
+                                }
                             )
+                        }
+
+                        // SECTION: FILTER GENRES (Optional)
+                        if (availableGenres.isNotEmpty() && onGenreSelected != null) {
+                            item {
+                                Spacer(modifier = Modifier.height(24.dp))
+                                Text(
+                                    text = "Filter Genre",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
+                                )
+                            }
+                            
+                            // All Genres Option
+                            item {
+                                ListItem(
+                                    selected = selectedGenre == null,
+                                    onClick = { onGenreSelected(null) },
+                                    headlineContent = {
+                                        Text(
+                                            text = "All Genres",
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
+                                            )
+                                        )
+                                    }
+                                )
+                            }
+                            
+                            // Individual Genres
+                            items(availableGenres) { genre ->
+                                ListItem(
+                                    selected = selectedGenre == genre,
+                                    onClick = { onGenreSelected(genre) },
+                                    headlineContent = {
+                                        Text(
+                                            text = genre,
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f
+                                            )
+                                        )
+                                    }
+                                )
+                            }
                         }
                     }
                 }

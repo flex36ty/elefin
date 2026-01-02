@@ -133,15 +133,32 @@ fun MovieDetailsScreen(
         BackHandler(onBack = onBackPressed)
     }
     
+    // Lifecycle observer to trigger refresh when returning from player
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var refreshTrigger by remember { mutableStateOf(0) }
+    
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                // Increment trigger to reload data
+                refreshTrigger++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     var isLoading by remember { mutableStateOf(true) }
 
     // Fetch full item details
-    LaunchedEffect(item.Id, apiService) {
+    LaunchedEffect(item.Id, apiService, refreshTrigger) {
         if (apiService != null) {
             withContext(Dispatchers.IO) {
                 try {
-                    Log.d("MovieDetailsScreen", "Fetching item details for: ${item.Id} (${item.Name})")
+                    Log.d("MovieDetailsScreen", "Fetching item details for: ${item.Id} (${item.Name}) [refresh=$refreshTrigger]")
                     Log.d("MovieDetailsScreen", "Initial item UserData: ${item.UserData}")
                     val details = apiService.getItemDetails(item.Id)
                     itemDetails = details
@@ -363,26 +380,17 @@ fun TopContainer(
                 verticalArrangement = Arrangement.spacedBy(8.dp) // Space items evenly
             ) {
                 // Title, Metadata, and Synopsis - using home screen style for uniformity
-                // Fetch item details for metadata
+                // Fetch item details for metadata (handled by parent now)
                 val context = LocalContext.current
                 val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
-                var itemDetailsForMetadata by remember { mutableStateOf<JellyfinItem?>(null) }
+                // Use the passed item directly as it contains the fresh details from parent
+                val displayItemForMetadata = item
                 var selectedSubtitleIndexForMetadata by remember { mutableStateOf<Int?>(settings.getSubtitlePreference(item.Id)) }
                 
-                LaunchedEffect(item.Id, apiService) {
-                    if (apiService != null) {
-                        withContext(Dispatchers.IO) {
-                            try {
-                                itemDetailsForMetadata = apiService.getItemDetails(item.Id)
-                                selectedSubtitleIndexForMetadata = settings.getSubtitlePreference(item.Id)
-                            } catch (e: Exception) {
-                                android.util.Log.e("TopContainer", "Error fetching item details", e)
-                            }
-                        }
-                    }
+                // Update subtitle preference when item updates (e.g. after returning from playback)
+                LaunchedEffect(item) {
+                     selectedSubtitleIndexForMetadata = settings.getSubtitlePreference(item.Id)
                 }
-                
-                val displayItemForMetadata = itemDetailsForMetadata ?: item
                 
                 ItemDetailsSection(
                     item = item,
@@ -608,13 +616,23 @@ fun BottomContainer(
                                 itemId = item.Id,
                                 apiService = apiService,
                                 onClick = {
+                                    // Resolve subtitle/audio preferences
+                                    val settings = com.flex.elefin.jellyfin.AppSettings(context)
+                                    val subPref = settings.getSubtitlePreference(item.Id)
+                                    val audioPref = settings.getAudioPreference(item.Id)
+                                    
+                                    // Calculate defaults
+                                    val streams = item.MediaSources?.firstOrNull()?.MediaStreams
+                                    val defaultSub = null
+                                    val defaultAudio = streams?.firstOrNull { it.Type == "Audio" && it.IsDefault == true }?.Index
+
                                     // Launch video player at chapter start position
                                     val intent = JellyfinVideoPlayerActivity.createIntent(
                                         context = context,
                                         itemId = item.Id,
                                         resumePositionMs = chapter.startMs,
-                                        subtitleStreamIndex = null,
-                                        audioStreamIndex = null,
+                                        subtitleStreamIndex = subPref ?: defaultSub,
+                                        audioStreamIndex = audioPref ?: defaultAudio,
                                         itemName = item.Name
                                     )
                                     context.startActivity(intent)
@@ -1533,22 +1551,15 @@ fun ActionButtonsRow(
     val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
     val useAnimatedButton = settings.useAnimatedPlayButton
     
-    // Fetch full item details to get MediaSources
-    var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
+    // Internal state to handle local updates (like Mark as Watched)
+    var internalItem by remember { mutableStateOf<JellyfinItem?>(null) }
     
-    LaunchedEffect(item.Id, apiService) {
-        if (apiService != null) {
-            withContext(Dispatchers.IO) {
-                try {
-                    itemDetails = apiService.getItemDetails(item.Id)
-                } catch (e: Exception) {
-                    Log.e("ActionButtonsRow", "Error fetching item details", e)
-                }
-            }
-        }
+    // Reset internal state when parent item updates (e.g. returning from playback)
+    LaunchedEffect(item) {
+        internalItem = null
     }
     
-    val displayItem = itemDetails ?: item
+    val displayItem = internalItem ?: item
 
     // Trailer state
     var trailerKey by remember { mutableStateOf<String?>(null) }
@@ -1559,27 +1570,53 @@ fun ActionButtonsRow(
         
         // Fallback to TMDB directly if key configured
         if (settings.tmdbApiKey.isNotBlank()) {
-             val tmdbId = displayItem.ProviderIds?.get("Tmdb") ?: displayItem.ProviderIds?.get("tmdb")
+             val tmdbId = displayItem.ProviderIds?.get("Tmdb") ?: displayItem.ProviderIds?.get("tmdb") ?: displayItem.ProviderIds?.get("TMDB")
              Log.d("ActionButtonsRow", "Checking TMDB Trailer for ${displayItem.Name}. API Key present: ${settings.tmdbApiKey.isNotBlank()}, TMDB ID: $tmdbId")
              
              if (tmdbId != null) {
                  try {
                      withContext(Dispatchers.IO) {
-                         Log.d("ActionButtonsRow", "Fetching videos for ID: $tmdbId")
+                         // Determine audio language to request localized trailers
+                         val audioLang = displayItem.MediaSources?.firstOrNull()?.MediaStreams
+                             ?.firstOrNull { it.Type == "Audio" && it.IsDefault == true }?.Language
+                             ?: displayItem.MediaSources?.firstOrNull()?.MediaStreams
+                                 ?.firstOrNull { it.Type == "Audio" }?.Language
+                         
+                         var iso639Code: String? = null
+                         if (audioLang != null) {
+                             try {
+                                 // Convert 3-letter code (eng) to 2-letter (en) if needed
+                                 iso639Code = java.util.Locale(audioLang).language
+                                 // Handle edge cases where Locale doesn't convert 3-letter properly (though usually it does if valid)
+                                 if (iso639Code == audioLang && audioLang.length == 3) {
+                                     // Fallback for some codes if Locale constructor didn't parse it as iso3
+                                     iso639Code = java.util.Locale.getAvailableLocales()
+                                         .find { try { it.getISO3Language() == audioLang } catch (e: Exception) { false } }?.language ?: audioLang.take(2)
+                                 }
+                                 Log.d("ActionButtonsRow", "Detected audio language: $audioLang -> ISO-639-1: $iso639Code")
+                             } catch (e: Exception) {
+                                  Log.w("ActionButtonsRow", "Could not parse language: $audioLang")
+                             }
+                         }
+
+                         Log.d("ActionButtonsRow", "Fetching videos for ID: $tmdbId (Language: $iso639Code)")
                          val videos = TmdbApiService.getVideos(
                              tmdbId = tmdbId.toInt(),
                              type = if (displayItem.Type == "Series" || displayItem.Type == "Season" || displayItem.Type == "Episode") "tv" else "movie",
-                             apiKey = settings.tmdbApiKey
+                             apiKey = settings.tmdbApiKey,
+                             language = iso639Code
                          )
                          Log.d("ActionButtonsRow", "Fetched ${videos.size} videos from TMDB")
-                         // Prefer official trailers
-                         val trailer = videos.firstOrNull { it.site == "YouTube" && it.type == "Trailer" && it.official }
+                         // Prefer official trailers, then any trailer, then any video
+                         // Also prefer matching language if multiple returned
+                         val trailer = videos.firstOrNull { it.site == "YouTube" && it.type == "Trailer" && it.official && (iso639Code == null || it.iso6391 == iso639Code) }
+                             ?: videos.firstOrNull { it.site == "YouTube" && it.type == "Trailer" && it.official }
                              ?: videos.firstOrNull { it.site == "YouTube" && it.type == "Trailer" }
                              ?: videos.firstOrNull { it.site == "YouTube" }
                          
                          if (trailer != null) {
                              trailerKey = trailer.key
-                             Log.d("ActionButtonsRow", "Found trailer via TMDB: ${trailer.key}")
+                             Log.d("ActionButtonsRow", "Found trailer via TMDB: ${trailer.key} (Lang: ${trailer.iso6391})")
                          } else {
                              Log.d("ActionButtonsRow", "No suitable trailer found in video list")
                          }
@@ -1624,6 +1661,15 @@ fun ActionButtonsRow(
     }
     
     // Change label to "Play From Start" when there's a resume button
+    // Calculate default subtitle/audio indices if none selected
+    val defaultSubtitleIndex = null
+    
+    val defaultAudioIndex = remember(displayItem.MediaSources) {
+        displayItem.MediaSources?.firstOrNull()?.MediaStreams?.let { streams ->
+             streams.firstOrNull { it.Type == "Audio" && it.IsDefault == true }?.Index
+        }
+    }
+    
     val playButtonLabel = if (isResumable) "Play From Start" else "Play"
     
     Row(
@@ -1659,8 +1705,8 @@ fun ActionButtonsRow(
                             context = context,
                             itemId = displayItem.Id,
                             resumePositionMs = resumePositionMs,
-                            subtitleStreamIndex = selectedSubtitleIndex,
-                            audioStreamIndex = selectedAudioIndex
+                            subtitleStreamIndex = selectedSubtitleIndex ?: defaultSubtitleIndex,
+                            audioStreamIndex = selectedAudioIndex ?: defaultAudioIndex
                         )
                         context.startActivity(intent)
                         // Don't finish - let back button return to movie details screen
@@ -1680,8 +1726,8 @@ fun ActionButtonsRow(
                             context = context,
                             itemId = displayItem.Id,
                             resumePositionMs = resumePositionMs,
-                            subtitleStreamIndex = selectedSubtitleIndex,
-                            audioStreamIndex = selectedAudioIndex
+                            subtitleStreamIndex = selectedSubtitleIndex ?: defaultSubtitleIndex,
+                            audioStreamIndex = selectedAudioIndex ?: defaultAudioIndex
                         )
                         context.startActivity(intent)
                         // Don't finish - let back button return to movie details screen
@@ -1706,8 +1752,10 @@ fun ActionButtonsRow(
                         .onFocusChanged { resumeFocused = it.isFocused }
                         .clip(CircleShape),
                     colors = ButtonDefaults.colors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = MaterialTheme.colorScheme.onSurface
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                        focusedContentColor = androidx.compose.ui.graphics.Color.Black
                     ),
                     contentPadding = PaddingValues(8.dp)
                 ) {
@@ -1739,7 +1787,8 @@ fun ActionButtonsRow(
                             context = context,
                             itemId = displayItem.Id,
                             resumePositionMs = 0L,
-                            subtitleStreamIndex = selectedSubtitleIndex
+                            subtitleStreamIndex = selectedSubtitleIndex ?: defaultSubtitleIndex,
+                            audioStreamIndex = selectedAudioIndex ?: defaultAudioIndex
                         )
                     context.startActivity(intent)
                     // Don't finish - let back button return to movie details screen
@@ -1758,7 +1807,8 @@ fun ActionButtonsRow(
                             context = context,
                             itemId = displayItem.Id,
                             resumePositionMs = 0L,
-                            subtitleStreamIndex = selectedSubtitleIndex
+                            subtitleStreamIndex = selectedSubtitleIndex ?: defaultSubtitleIndex,
+                            audioStreamIndex = selectedAudioIndex ?: defaultAudioIndex
                         )
                     context.startActivity(intent)
                     // Don't finish - let back button return to movie details screen
@@ -1782,8 +1832,10 @@ fun ActionButtonsRow(
                     .onFocusChanged { playFocused = it.isFocused }
                     .clip(CircleShape),
                 colors = ButtonDefaults.colors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.onSurface
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
                 contentPadding = PaddingValues(8.dp)
             ) {
@@ -1835,8 +1887,10 @@ fun ActionButtonsRow(
                 .onFocusChanged { audioFocused = it.isFocused }
                 .clip(CircleShape),
             colors = ButtonDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.onSurface
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                focusedContentColor = androidx.compose.ui.graphics.Color.Black
             ),
             contentPadding = PaddingValues(8.dp)
         ) {
@@ -1884,8 +1938,10 @@ fun ActionButtonsRow(
                 .onFocusChanged { subtitleFocused = it.isFocused }
                 .clip(CircleShape),
             colors = ButtonDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.onSurface
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                focusedContentColor = androidx.compose.ui.graphics.Color.Black
             ),
             contentPadding = PaddingValues(8.dp)
         ) {
@@ -1935,8 +1991,10 @@ fun ActionButtonsRow(
                     .onFocusChanged { trailerFocused = it.isFocused }
                     .clip(CircleShape),
                 colors = ButtonDefaults.colors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.onSurface
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
                 contentPadding = PaddingValues(8.dp)
             ) {
@@ -1982,11 +2040,10 @@ fun ActionButtonsRow(
                                 android.util.Log.d("MovieDetails", "Item ${displayItem.Id} marked as $action")
                                 // Add a small delay to let the server process the status change
                                 delay(800)
-                                // Refresh item details to update UserData
                                 val refreshedDetails = service.getItemDetails(displayItem.Id)
                                 if (refreshedDetails != null) {
                                     withContext(Dispatchers.Main) {
-                                        itemDetails = refreshedDetails
+                                        internalItem = refreshedDetails
                                     }
                                     android.util.Log.d("MovieDetails", "Item details refreshed, Played=${refreshedDetails.UserData?.Played}, PlayedPercentage: ${refreshedDetails.UserData?.PlayedPercentage}")
                                 }
@@ -2020,8 +2077,10 @@ fun ActionButtonsRow(
                 .onFocusChanged { watchedFocused = it.isFocused }
                 .clip(CircleShape),
             colors = ButtonDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.onSurface
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                focusedContentColor = androidx.compose.ui.graphics.Color.Black
             ),
             contentPadding = PaddingValues(8.dp)
         ) {
@@ -2050,8 +2109,8 @@ fun ActionButtonsRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Applied subtitle display
-            if (selectedSubtitleIndex != null && itemDetails != null) {
-                val subtitleStream = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
+            if (selectedSubtitleIndex != null) {
+                val subtitleStream = displayItem.MediaSources?.firstOrNull()?.MediaStreams
                     ?.find { it.Type == "Subtitle" && it.Index == selectedSubtitleIndex }
                 subtitleStream?.let { stream ->
                     val subtitleName = stream.DisplayTitle ?: stream.Language ?: "Unknown"

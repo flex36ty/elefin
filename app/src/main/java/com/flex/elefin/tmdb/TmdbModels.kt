@@ -145,6 +145,35 @@ sealed class DiscoverItem {
 }
 
 /**
+ * TMDB Video model (Trailers, Teasers, etc.)
+ */
+@Serializable
+data class TmdbVideo(
+    val id: String,
+    @SerialName("iso_639_1")
+    val iso6391: String? = null,
+    @SerialName("iso_3166_1")
+    val iso31661: String? = null,
+    val key: String,
+    val name: String,
+    val site: String,
+    val size: Int,
+    val type: String, // "Trailer", "Teaser", "Clip", "Featurette", "Behind the Scenes", "Bloopers"
+    val official: Boolean,
+    @SerialName("published_at")
+    val publishedAt: String? = null
+)
+
+/**
+ * TMDB Video list response
+ */
+@Serializable
+data class TmdbVideoResponse(
+    val id: Int,
+    val results: List<TmdbVideo>
+)
+
+/**
  * Extension to convert TmdbMovie to DiscoverItem
  */
 fun TmdbMovie.toDiscoverItem(): DiscoverItem.Movie = DiscoverItem.Movie(

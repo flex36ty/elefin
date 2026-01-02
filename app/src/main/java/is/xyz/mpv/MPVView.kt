@@ -109,8 +109,9 @@ class MPVView(context: Context, attrs: AttributeSet? = null) : SurfaceView(conte
         // Use fast profile for mobile
         MPVLib.setOptionString("profile", "fast")
 
-        // Video output
-        MPVLib.setOptionString("vo", voInUse)
+        // Video output - Initialize as null to prevent "Missing surface pointer" error
+        // We will enable it in surfaceCreated
+        MPVLib.setOptionString("vo", "null")
 
         // Hardware decoding
         MPVLib.setOptionString("hwdec", HWDECS)
@@ -247,12 +248,13 @@ class MPVView(context: Context, attrs: AttributeSet? = null) : SurfaceView(conte
         Log.d(TAG, "Surface created, attaching to MPV")
         MPVLib.attachSurface(holder.surface)
         MPVLib.setOptionString("force-window", "yes")
+        
+        // Enable VO now that surface is ready
+        MPVLib.setPropertyString("vo", voInUse)
 
         if (filePath != null) {
             MPVLib.command(arrayOf("loadfile", filePath as String))
             filePath = null
-        } else {
-            MPVLib.setPropertyString("vo", voInUse)
         }
     }
 
@@ -331,7 +333,7 @@ class MPVView(context: Context, attrs: AttributeSet? = null) : SurfaceView(conte
 
     // Track information
 
-    data class Track(val mpvId: Int, val name: String)
+    data class Track(val mpvId: Int, val name: String, val lang: String? = null)
     
     var tracks = mapOf<String, MutableList<Track>>(
         "audio" to arrayListOf(),
@@ -364,7 +366,7 @@ class MPVView(context: Context, attrs: AttributeSet? = null) : SurfaceView(conte
                 else -> "Track $mpvId"
             }
             
-            tracks.getValue(type).add(Track(mpvId = mpvId, name = trackName))
+            tracks.getValue(type).add(Track(mpvId = mpvId, name = trackName, lang = lang))
             
             // Log subtitle codec info for debugging
             if (type == "sub") {

@@ -245,29 +245,6 @@ object UpdateService {
                     }
                 }
                 
-                // If ACTION_VIEW doesn't work, try ACTION_INSTALL_PACKAGE (API 14+)
-                try {
-                    val installPackageIntent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-                        data = apkUri
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        addFlags(flags)
-                        putExtra(Intent.EXTRA_RETURN_RESULT, true)
-                    }
-                    
-                    val resolveInfo2 = context.packageManager.queryIntentActivities(installPackageIntent, 0)
-                    if (resolveInfo2.isNotEmpty()) {
-                        try {
-                            context.startActivity(installPackageIntent)
-                            Log.d(TAG, "Installer launched via ACTION_INSTALL_PACKAGE")
-                            return@withContext true
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed to start installer via ACTION_INSTALL_PACKAGE", e)
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "ACTION_INSTALL_PACKAGE not available", e)
-                }
-                
                 Log.e(TAG, "No installer activity found")
                 false
             } catch (e: Exception) {

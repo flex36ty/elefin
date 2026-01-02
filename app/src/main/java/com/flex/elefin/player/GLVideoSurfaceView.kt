@@ -638,6 +638,9 @@ class GLVideoSurfaceView @JvmOverloads constructor(
      * Clean up GL resources
      */
     fun release() {
+        // Clear callback to prevent memory leaks or late invocations
+        onSurfaceReadyCallback = null
+        
         queueEvent {
             codecSurface?.release()
             codecSurface = null

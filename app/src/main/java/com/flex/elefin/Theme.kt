@@ -87,6 +87,7 @@ fun JellyfinAppTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         shapes = shapes,
+        typography = AppTypography,
         content = content
     )
 }

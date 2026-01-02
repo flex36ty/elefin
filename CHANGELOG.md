@@ -4,6 +4,102 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2025-12-31
+
+### Added
+
+- **AI Super Resolution (MPV)**
+  - Integrated `ewa_lanczossharp` scaling chain for high-quality upscaling.
+  - Automatically enabled when selecting **Sports** or **Sharp** shader profiles.
+  - Significantly improves clarity for 720p/1080p content on 4K displays.
+
+- **Dynamic Tone Mapping (HDR++ based)**
+  - Added new **"HDR++ (Dynamic)"** shader profile.
+  - Features scene-aware auto-exposure, peak protection, and adaptive gamma in a single pass.
+  - Enhances contrast and brightness for SDR content without crushing blacks or blowing out highlights.
+  - Added "Enable Dynamic Tone Mapping" toggle in **Settings > Video** (Default: OFF) to control the dynamic component.
+
+### Changed
+
+- **MpvShaderManager**
+  - Updated shader profile definitions to include new scaling and tone mapping logic.
+
+---
+
+---
+
+## 2025-12-28
+
+### Added
+
+- **Sync Player Subtitle & Audio Selection**
+  - Subtitle and audio track selections made during playback (ExoPlayer or MPV) are now synced back to the Jellyfin server.
+  - Returning to the details screen or resuming playback on another device will remember your last selected tracks.
+  - Supported for both internal ExoPlayer and external MPV Player.
+
+## 2025-12-27
+
+### Added
+
+- **MPV Advanced Post-Processing (Shaders)**
+  - Implemented support for custom GLSL shaders in MPV player to enhance SDR content.
+  - Added new **"MPV Post-Processing"** setting with 5 selectable profiles:
+    - **None**: Standard playback (default).
+    - **Cinema**: Natural look with debanding and subtle vibrance.
+    - **HDR-Boost**: Vivid, high-contrast "fake HDR" effect for SDR screens.
+    - **Sports**: High sharpness and motion clarity.
+    - **Crisp**: Focuses purely on image sharpness (CAS + Adaptive Sharpen).
+  - Shaders are automatically installed and applied based on the selected profile.
+
+### Changed
+
+- **Settings UI Clarification**
+  - Renamed "GL Video Processing" to "**ExoPlayer GL Processing**" to clearly distinguish it from the new MPV shading options.
+  - Reorganized Video settings to group player-specific enhancements logically.
+
+### Fixed
+
+- **MPV Player Stability**
+  - Resolved ANR (Application Not Responding) issues caused by heavy JNI calls on the main thread during playback status updates.
+  - Offloaded playback state polling to background IO threads.
+
+## 2025-12-26
+
+### Added
+
+- **Genre Filtering in Library**
+  - Added "Filter Genres" option to the "Sort By" popup in Movies and TV Shows libraries.
+  - Allows filtering library content by specific genres (e.g., Action, Comedy) while maintaining sort order.
+
+- **MPV Smart Subtitles (Direct Play)**
+  - Implemented "Soft Subtitles" support for MPV.
+  - When a subtitle is selected, MPV now streams the video directly (Direct Play) and loads the subtitle as an external stream (`.srt`, etc.) instead of burning it in.
+  - Significantly reduces server CPU usage and eliminates video quality loss from transcoding.
+  - "Burned-in" subtitles (transcoding) are still used if enforced by server settings (e.g., AV1/HEVC transcoding enabled) or manually requested.
+
+- **MPV Instant Start**
+  - Optimized MPV buffering settings (`cache-pause=no`) for significantly faster playback start.
+  - Tuned `DefaultLoadControl` for ExoPlayer to also reduce startup latency.
+
+### Fixed
+
+- **Series Watched Status Refresh**
+  - Fixed an issue where the watched status indicator (checkmark) on the series info page would not update immediately after marking an episode as watched/unwatched.
+  - Implemented cache invalidation (`episodeCache`) to ensure fresh data is displayed.
+
+- **MPV Subtitle Selection**
+  - Fixed a race condition where MPV's internal track matching logic would override the selected external subtitle.
+  - The player now explicitly prioritizes the external subtitle file (`sub-add ... select`) over internal metadata matching.
+
+- **MPV Transcoding Settings**
+  - MPV now correctly respects global "Server Transcoding" settings (e.g., "Transcode AV1", "Transcode HEVC").
+  - If transcoding is required by settings, MPV will use the burned-in stream (`TranscodingUrl`) as expected.
+
+- **Genre Filtering**
+  - Fixed an issue where the grid would blank out when a genre was selected due to missing API data fields (`Genres`).
+
+---
+
 ## 2025-12-23
 
 ### Added
