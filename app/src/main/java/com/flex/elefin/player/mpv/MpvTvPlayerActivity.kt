@@ -146,6 +146,9 @@ class MpvTvPlayerActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
+        Log.d(TAG, "onPause called - Stopping playback")
+        // Force pause via property to ensure it sticks at the core level
+        MPVLib.setPropertyBoolean("pause", true)
         mpvView?.pause()
         // Surface lifecycle hardening:
         // When activity pauses (often before destroy), disable video keys to avoid surface detach crash

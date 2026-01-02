@@ -313,6 +313,21 @@ fun JellyfinVideoPlayerScreen(
                     Log.d("JellyfinPlayer", "Extension renderer mode: PREFER, Decoder fallback: enabled")
         }
     }
+    
+    // Lifecycle Observer to pause playback when app goes to background (Home button)
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE || event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                Log.d("JellyfinPlayer", "Lifecycle PAUSE/STOP detected. Pausing player.")
+                player.pause()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
     val playerViewRef = remember { mutableStateOf<PlayerView?>(null) }
     val glSurfaceViewRef = remember { mutableStateOf<GLVideoSurfaceView?>(null) }
     var mediaUrl by remember { mutableStateOf<String?>(null) }
