@@ -116,7 +116,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.flex.elefin.TrailerActivity
+import com.flex.elefin.TrailerLauncher
 import com.flex.elefin.tmdb.TmdbApiService
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.activity.compose.BackHandler
@@ -2247,7 +2247,7 @@ fun EpisodeActionButtonsRow(
                 Button(
                     onClick = {
                         trailerKey?.let { key ->
-                            TrailerActivity.launchTmdbTrailer(context, key, seriesItem.Name ?: "")
+                            TrailerLauncher.launchTmdbTrailer(context, key, seriesItem.Name ?: "")
                         }
                     },
                     modifier = Modifier

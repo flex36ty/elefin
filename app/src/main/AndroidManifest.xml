@@ -94,12 +94,7 @@
             android:name=".JellyseerrDetailsActivity"
             android:exported="false"
             android:screenOrientation="landscape" />
-        <activity
-            android:name=".TrailerActivity"
-            android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation"
-            android:exported="false"
-            android:theme="@style/Theme.Elefin"
-            android:screenOrientation="landscape" />
+
         <activity
             android:name=".player.mpv.MpvTvPlayerActivity"
             android:exported="false"

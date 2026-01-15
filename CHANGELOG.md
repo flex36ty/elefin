@@ -4,6 +4,26 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2026-01-15
+
+### Added
+
+- **TMDB API Key Verification**
+  - Reimplemented robust verification logic for the TMDB API Key.
+  - Verification now checks credentials against TMDB servers (`/configuration` endpoint) before saving.
+  - Added specific error handling for SSL issues (e.g., incorrect device date/time) and network errors.
+  - Interactive "Verifying..." state with visual feedback in settings.
+
+### Fixed
+
+- **Screensaver Interruption (Google TV)**
+  - Fixed an issue where the screensaver would interrupt video playback on some Google TV devices.
+  - Added `FLAG_KEEP_SCREEN_ON` to `JellyfinVideoPlayerActivity` window flags.
+  - Enforced `keepScreenOn = true` in ExoPlayer view logic for redundant safety.
+  - Ensures uninterrupted playback session.
+
+---
+
 ## 2025-12-31
 
 ### Added

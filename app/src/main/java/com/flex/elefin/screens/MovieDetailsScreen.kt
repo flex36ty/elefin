@@ -109,7 +109,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.rememberCoroutineScope
-import com.flex.elefin.TrailerActivity
+import com.flex.elefin.TrailerLauncher
 import com.flex.elefin.tmdb.TmdbApiService
 
 @Composable
@@ -1969,7 +1969,7 @@ fun ActionButtonsRow(
             Button(
                 onClick = {
                     trailerKey?.let { key ->
-                        TrailerActivity.launchTmdbTrailer(context, key, displayItem.Name ?: "")
+                        TrailerLauncher.launchTmdbTrailer(context, key, displayItem.Name ?: "")
                     }
                 },
                 modifier = Modifier
