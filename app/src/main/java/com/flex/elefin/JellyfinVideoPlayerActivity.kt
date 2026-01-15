@@ -64,6 +64,8 @@ class JellyfinVideoPlayerActivity : ComponentActivity() {
     private fun enableHdrMode() {
         // Enable hardware acceleration for HDR output (CRITICAL - must be first)
         window.addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED)
+        // Keep screen on during playback
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         android.util.Log.d("VideoPlayer", "✅ Hardware acceleration enabled for HDR support")
         
         // Request HDR mode on the window (Android 13+)

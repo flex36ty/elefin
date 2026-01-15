@@ -2520,6 +2520,8 @@ fun JellyfinVideoPlayerScreen(
                                     // Create PlayerView WITHOUT video surface (just for subtitles only - controls handled by Compose)
                                     val playerView = PlayerView(ctx).apply {
                                         this.player = player
+                                        // Keep screen on during playback
+                                        keepScreenOn = true
                                         // DISABLE built-in controller - Compose handles controls
                                         useController = false
                                         // Block focus from going to PlayerView children
@@ -2701,6 +2703,8 @@ fun JellyfinVideoPlayerScreen(
                                 // Standard mode: Regular PlayerView (subtitles only - controls handled by Compose)
                                 PlayerView(ctx).apply {
                                     this.player = player
+                                    // Keep screen on during playback
+                                    keepScreenOn = true
                                 // DISABLE built-in controller - Compose handles controls
                                 useController = false
                                 // Block focus from going to PlayerView children
