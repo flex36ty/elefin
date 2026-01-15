@@ -1,0 +1,27 @@
+package org.schabi.newpipe.extractor.services.soundcloud;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import org.junit.jupiter.api.Test;
+import org.schabi.newpipe.extractor.InitNewPipeTest;
+
+class SoundcloudParsingHelperTest implements InitNewPipeTest {
+    @Test
+    void resolveUrlWithEmbedPlayerTest() throws Exception {
+        assertEquals("https://soundcloud.com/trapcity", SoundcloudParsingHelper.resolveUrlWithEmbedPlayer("https://api.soundcloud.com/users/26057743"));
+        assertEquals("https://soundcloud.com/nocopyrightsounds", SoundcloudParsingHelper.resolveUrlWithEmbedPlayer("https://api.soundcloud.com/users/16069159"));
+        assertEquals("https://soundcloud.com/trapcity", SoundcloudParsingHelper.resolveUrlWithEmbedPlayer("https://api-v2.soundcloud.com/users/26057743"));
+        assertEquals("https://soundcloud.com/nocopyrightsounds", SoundcloudParsingHelper.resolveUrlWithEmbedPlayer("https://api-v2.soundcloud.com/users/16069159"));
+    }
+
+    @Test
+    void resolveIdWithWidgetApiTest() throws Exception {
+        assertEquals("26057743", SoundcloudParsingHelper.resolveIdWithWidgetApi("https://soundcloud.com/trapcity"));
+        assertEquals("16069159", SoundcloudParsingHelper.resolveIdWithWidgetApi("https://soundcloud.com/nocopyrightsounds"));
+
+        assertEquals("26057743", SoundcloudParsingHelper.resolveIdWithWidgetApi("https://on.soundcloud.com/Rr2JyfFcYwbawpw49"));
+        assertEquals("1818813498", SoundcloudParsingHelper.resolveIdWithWidgetApi("https://on.soundcloud.com/a8QmYdMnmxnsSTEp9"));
+        assertEquals("1468401502", SoundcloudParsingHelper.resolveIdWithWidgetApi("https://on.soundcloud.com/rdt7e"));
+    }
+
+}
