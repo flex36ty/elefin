@@ -290,12 +290,13 @@ fun JellyfinVideoPlayerScreen(
             // Robust buffering for high bitrate content
             DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
-                    5000,   // minBufferMs - 5 seconds (reduced to start faster)
+                    10000,  // minBufferMs - 10 seconds
                     120000, // maxBufferMs - 120 seconds
-                    2500,   // bufferForPlaybackMs - 2.5 seconds
-                    5000    // bufferForPlaybackAfterRebufferMs - 5 seconds
+                    5000,   // bufferForPlaybackMs - 5 seconds
+                    10000   // bufferForPlaybackAfterRebufferMs - 10 seconds
                 )
-                .setTargetBufferBytes(250 * 1024 * 1024) // 250MB max buffer (increased for high bitrate 4K)
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .setTargetBufferBytes(128 * 1024 * 1024) // 128MB max buffer (reduced to prevent OOM)
                 .build()
         }
             

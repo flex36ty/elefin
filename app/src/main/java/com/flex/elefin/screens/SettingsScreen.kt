@@ -1400,85 +1400,145 @@ fun SettingsScreen(
                                     onClick = { showTmdbKeyDialog = true }
                                 )
                                 
-                                if (showTmdbKeyDialog) {
-                                    var apiKeyInput by remember { mutableStateOf(tmdbApiKey) }
-                                    Dialog(
-                                        onDismissRequest = { showTmdbKeyDialog = false },
-                                        properties = DialogProperties(usePlatformDefaultWidth = false)
+                            if (showTmdbKeyDialog) {
+                                var apiKeyInput by remember { mutableStateOf(tmdbApiKey) }
+                                var isVerifying by remember { mutableStateOf(false) }
+                                var verificationError by remember { mutableStateOf<String?>(null) }
+                                
+                                Dialog(
+                                    onDismissRequest = { 
+                                        if (!isVerifying) showTmdbKeyDialog = false 
+                                    },
+                                    properties = DialogProperties(usePlatformDefaultWidth = false)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color.Black.copy(alpha = 0.7f)),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .background(Color.Black.copy(alpha = 0.7f)),
-                                            contentAlignment = Alignment.Center
+                                        Surface(
+                                            modifier = Modifier.width(500.dp),
+                                            shape = RoundedCornerShape(16.dp),
+                                            colors = SurfaceDefaults.colors(
+                                                containerColor = MaterialTheme.colorScheme.surface,
+                                                contentColor = MaterialTheme.colorScheme.onSurface
+                                            )
                                         ) {
-                                            Surface(
-                                                modifier = Modifier.width(500.dp),
-                                                shape = RoundedCornerShape(16.dp),
-                                                colors = SurfaceDefaults.colors(
-                                                    containerColor = MaterialTheme.colorScheme.surface,
-                                                    contentColor = MaterialTheme.colorScheme.onSurface
-                                                )
+                                            Column(
+                                                modifier = Modifier.padding(32.dp),
+                                                verticalArrangement = Arrangement.spacedBy(24.dp)
                                             ) {
-                                                Column(
-                                                    modifier = Modifier.padding(32.dp),
-                                                    verticalArrangement = Arrangement.spacedBy(24.dp)
-                                                ) {
+                                                Text(
+                                                    text = "TMDB API Key",
+                                                    style = MaterialTheme.typography.headlineSmall
+                                                )
+                                                
+                                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                                     Text(
-                                                        text = "TMDB API Key",
-                                                        style = MaterialTheme.typography.headlineSmall
+                                                        text = "Enter your TMDB API Key to fetch trailers directly from The Movie Database.",
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                                     )
                                                     
-                                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    OutlinedTextField(
+                                                         value = apiKeyInput,
+                                                         onValueChange = { 
+                                                             apiKeyInput = it 
+                                                             verificationError = null
+                                                         },
+                                                         enabled = !isVerifying,
+                                                         label = { Text("TMDB API Key") },
+                                                         singleLine = true,
+                                                         modifier = Modifier.fillMaxWidth(),
+                                                         colors = TextFieldDefaults.colors(
+                                                             focusedTextColor = Color.White,
+                                                             unfocusedTextColor = Color.White,
+                                                             focusedContainerColor = Color.Transparent,
+                                                             unfocusedContainerColor = Color.Transparent,
+                                                             cursorColor = MaterialTheme.colorScheme.primary,
+                                                             focusedLabelColor = MaterialTheme.colorScheme.primary,
+                                                             unfocusedLabelColor = Color.White.copy(alpha = 0.7f),
+                                                             focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                                                             unfocusedIndicatorColor = Color.White.copy(alpha = 0.3f),
+                                                             errorContainerColor = Color.Transparent,
+                                                             errorLabelColor = MaterialTheme.colorScheme.error,
+                                                             errorIndicatorColor = MaterialTheme.colorScheme.error
+                                                         ),
+                                                         isError = verificationError != null
+                                                     )
+                                                     
+                                                    if (isVerifying) {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            CircularProgressIndicator(
+                                                                modifier = Modifier.size(16.dp),
+                                                                strokeWidth = 2.dp,
+                                                                color = MaterialTheme.colorScheme.primary
+                                                            )
+                                                            Spacer(modifier = Modifier.width(8.dp))
+                                                            Text(
+                                                                "Verifying key...", 
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                color = MaterialTheme.colorScheme.primary
+                                                            )
+                                                        }
+                                                    }
+                                                     
+                                                    verificationError?.let {
                                                         Text(
-                                                            text = "Enter your TMDB API Key to fetch trailers directly from The Movie Database.",
-                                                            style = MaterialTheme.typography.bodyMedium,
-                                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                                            text = it,
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.error
                                                         )
-                                                        
-                                                        OutlinedTextField(
-                                                             value = apiKeyInput,
-                                                             onValueChange = { apiKeyInput = it },
-                                                             label = { Text("TMDB API Key") },
-                                                             singleLine = true,
-                                                             modifier = Modifier.fillMaxWidth(),
-                                                             colors = TextFieldDefaults.colors(
-                                                                 focusedTextColor = Color.White,
-                                                                 unfocusedTextColor = Color.White,
-                                                                 focusedContainerColor = Color.Transparent,
-                                                                 unfocusedContainerColor = Color.Transparent,
-                                                                 cursorColor = MaterialTheme.colorScheme.primary,
-                                                                 focusedLabelColor = MaterialTheme.colorScheme.primary,
-                                                                 unfocusedLabelColor = Color.White.copy(alpha = 0.7f),
-                                                                 focusedIndicatorColor = MaterialTheme.colorScheme.primary,
-                                                                 unfocusedIndicatorColor = Color.White.copy(alpha = 0.3f)
-                                                             )
-                                                         )
+                                                    }
+                                                }
+                                                
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                                ) {
+                                                    Button(
+                                                        onClick = { showTmdbKeyDialog = false },
+                                                        enabled = !isVerifying,
+                                                        modifier = Modifier.weight(1f),
+                                                        colors = ButtonDefaults.colors(
+                                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                                        )
+                                                    ) {
+                                                        Text("Cancel")
                                                     }
                                                     
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                                    Button(
+                                                        onClick = {
+                                                            if (apiKeyInput.isBlank()) {
+                                                                verificationError = "Key cannot be empty"
+                                                                return@Button
+                                                            }
+                                                            
+                                                            isVerifying = true
+                                                            verificationError = null
+                                                            
+                                                            scope.launch(Dispatchers.IO) {
+                                                                val result = com.flex.elefin.tmdb.TmdbApiService.verifyKey(apiKeyInput)
+                                                                withContext(Dispatchers.Main) {
+                                                                    isVerifying = false
+                                                                    when (result) {
+                                                                        is com.flex.elefin.tmdb.TmdbApiService.VerificationResult.Success -> {
+                                                                            settings.tmdbApiKey = apiKeyInput
+                                                                            showTmdbKeyDialog = false
+                                                                            Toast.makeText(context, "TMDB Key Verified ✓", Toast.LENGTH_SHORT).show()
+                                                                        }
+                                                                        is com.flex.elefin.tmdb.TmdbApiService.VerificationResult.Error -> {
+                                                                            verificationError = result.message
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        },
+                                                        enabled = !isVerifying,
+                                                        modifier = Modifier.weight(1f)
                                                     ) {
-                                                        Button(
-                                                            onClick = { showTmdbKeyDialog = false },
-                                                            modifier = Modifier.weight(1f),
-                                                            colors = ButtonDefaults.colors(
-                                                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                                            )
-                                                        ) {
-                                                            Text("Cancel")
-                                                        }
-                                                        
-                                                        Button(
-                                                            onClick = {
-                                                                settings.tmdbApiKey = apiKeyInput
-                                                                showTmdbKeyDialog = false
-                                                            },
-                                                            modifier = Modifier.weight(1f)
-                                                        ) {
-                                                            Text("Save")
-                                                        }
+                                                        Text(if (isVerifying) "Verifying..." else "Save")
                                                     }
                                                 }
                                             }
@@ -1486,6 +1546,8 @@ fun SettingsScreen(
                                     }
                                 }
                             }
+                        }
+                            
                         }
 
                         
