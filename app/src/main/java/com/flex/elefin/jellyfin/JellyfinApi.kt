@@ -278,7 +278,7 @@ class JellyfinApiService(
         }
     }
 
-    suspend fun getContinueWatching(): List<JellyfinItem> {
+    suspend fun getContinueWatching(limit: Int = 20): List<JellyfinItem> {
         return try {
             val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
             val url = URLBuilder().takeFrom("${base}Users/$userId/Items/Resume").apply {
@@ -286,6 +286,7 @@ class JellyfinApiService(
                 parameters.append("Fields", "ImageTags,UserData,SeriesName,SeriesId,Type")
                 parameters.append("SortBy", "DatePlayed")
                 parameters.append("SortOrder", "Descending")
+                parameters.append("Limit", limit.toString())
             }.buildString()
             
             val response: ItemsResponse = client.get(url) {
@@ -1481,10 +1482,6 @@ class JellyfinApiService(
         }
     }
     
-    /**
-     * Get the count of unwatched episodes for a TV series
-     * Returns the number of unwatched episodes across all seasons
-     */
     suspend fun getUnwatchedEpisodeCount(seriesId: String): Int {
         return try {
             val seasons = getSeasons(seriesId)

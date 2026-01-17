@@ -127,7 +127,7 @@ fun MoviesLibraryScreen(
     
     // Repository for refresh functionality
     val repository = remember(apiService) {
-        apiService?.let { JellyfinRepository(it) }
+        apiService?.let { JellyfinRepository(it, settings) }
     }
     
     // Settings states (same as home screen)
@@ -152,6 +152,7 @@ fun MoviesLibraryScreen(
     var useSimpleCardsWhenSettingsOpened by remember { mutableStateOf(false) }
     var useGoogleTvCardsWhenSettingsOpened by remember { mutableStateOf(false) }
     var use24HourTimeWhenSettingsOpened by remember { mutableStateOf(false) }
+    var rowCardCountWhenSettingsOpened by remember { mutableStateOf(25) }
     
     // Tab state: "recommendations", "library", or "discover"
     var selectedTab by remember { mutableStateOf("recommendations") }
@@ -209,8 +210,14 @@ fun MoviesLibraryScreen(
     // Genre-based movie rows
     var genreMovies1 by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
     var genreMovies2 by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
+    var genreMovies3 by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
+    var genreMovies4 by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
+    var genreMovies5 by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
     var selectedGenre1 by remember { mutableStateOf("") }
     var selectedGenre2 by remember { mutableStateOf("") }
+    var selectedGenre3 by remember { mutableStateOf("") }
+    var selectedGenre4 by remember { mutableStateOf("") }
+    var selectedGenre5 by remember { mutableStateOf("") }
     var availableGenres by remember { mutableStateOf<List<String>>(emptyList()) }
     
     // Common movie genres to prefer
@@ -255,32 +262,41 @@ fun MoviesLibraryScreen(
                     val genres = apiService.getMovieGenresFromLibrary(libraryId)
                     availableGenres = genres
                     
-                    // Pick 2 random unique genres from available genres
+                    // Pick 5 random unique genres from available genres
                     val shuffledGenres = if (genres.isNotEmpty()) {
-                        genres.filter { it in movieGenres }.shuffled().take(2).ifEmpty { 
-                            genres.shuffled().take(2)
+                        genres.filter { it in movieGenres }.shuffled().take(5).ifEmpty { 
+                            genres.shuffled().take(5)
                         }
                     } else {
-                        movieGenres.shuffled().take(2)
+                        movieGenres.shuffled().take(5)
                     }
                     
                     val genre1 = shuffledGenres.getOrNull(0) ?: movieGenres.random()
                     val genre2 = shuffledGenres.getOrNull(1) ?: movieGenres.random()
+                    val genre3 = shuffledGenres.getOrNull(2) ?: movieGenres.random()
+                    val genre4 = shuffledGenres.getOrNull(3) ?: movieGenres.random()
+                    val genre5 = shuffledGenres.getOrNull(4) ?: movieGenres.random()
                     
                     selectedGenre1 = genre1
                     selectedGenre2 = genre2
+                    selectedGenre3 = genre3
+                    selectedGenre4 = genre4
+                    selectedGenre5 = genre5
                     
                     // Fetch all movie data in parallel using coroutineScope
                     // Using library-specific methods with ParentId filter
                     coroutineScope {
-                        val continueWatchingDeferred = async { apiService.getContinueWatchingMoviesFromLibrary(libraryId, 20) }
-                        val recentlyReleasedDeferred = async { apiService.getRecentlyReleasedMoviesFromLibrary(libraryId, 20) }
-                        val recentlyAddedDeferred = async { apiService.getRecentlyAddedMoviesFromLibrary(libraryId, 20) }
-                        val topUnwatchedDeferred = async { apiService.getTopUnwatchedMoviesFromLibrary(libraryId, 20) }
-                        val recentlyWatchedDeferred = async { apiService.getRecentlyWatchedMoviesFromLibrary(libraryId, 20) }
-                        val favoritesDeferred = async { apiService.getFavoriteMoviesFromLibrary(libraryId, 20) }
-                        val genre1Deferred = async { apiService.getMoviesByGenreFromLibrary(libraryId, genre1, 20) }
-                        val genre2Deferred = async { apiService.getMoviesByGenreFromLibrary(libraryId, genre2, 20) }
+                        val continueWatchingDeferred = async { apiService.getContinueWatchingMoviesFromLibrary(libraryId, settings.rowCardCount) }
+                        val recentlyReleasedDeferred = async { apiService.getRecentlyReleasedMoviesFromLibrary(libraryId, settings.rowCardCount) }
+                        val recentlyAddedDeferred = async { apiService.getRecentlyAddedMoviesFromLibrary(libraryId, settings.rowCardCount) }
+                        val topUnwatchedDeferred = async { apiService.getTopUnwatchedMoviesFromLibrary(libraryId, settings.rowCardCount) }
+                        val recentlyWatchedDeferred = async { apiService.getRecentlyWatchedMoviesFromLibrary(libraryId, settings.rowCardCount) }
+                        val favoritesDeferred = async { apiService.getFavoriteMoviesFromLibrary(libraryId, settings.rowCardCount) }
+                        val genre1Deferred = async { apiService.getMoviesByGenreFromLibrary(libraryId, genre1, settings.rowCardCount) }
+                        val genre2Deferred = async { apiService.getMoviesByGenreFromLibrary(libraryId, genre2, settings.rowCardCount) }
+                        val genre3Deferred = async { apiService.getMoviesByGenreFromLibrary(libraryId, genre3, settings.rowCardCount) }
+                        val genre4Deferred = async { apiService.getMoviesByGenreFromLibrary(libraryId, genre4, settings.rowCardCount) }
+                        val genre5Deferred = async { apiService.getMoviesByGenreFromLibrary(libraryId, genre5, settings.rowCardCount) }
                         val libraryDeferred = async { apiService.getAllLibraryItems(libraryId) }
                         
                         continueWatchingMovies = continueWatchingDeferred.await()
@@ -291,6 +307,9 @@ fun MoviesLibraryScreen(
                         favoriteMovies = favoritesDeferred.await()
                         genreMovies1 = genre1Deferred.await()
                         genreMovies2 = genre2Deferred.await()
+                        genreMovies3 = genre3Deferred.await()
+                        genreMovies4 = genre4Deferred.await()
+                        genreMovies5 = genre5Deferred.await()
                         libraryItems = libraryDeferred.await()
                     }
                     
@@ -645,6 +664,7 @@ fun MoviesLibraryScreen(
                             useSimpleCardsWhenSettingsOpened = settings.useSimpleCards
                             useGoogleTvCardsWhenSettingsOpened = settings.useGoogleTvCards
                             use24HourTimeWhenSettingsOpened = settings.use24HourTime
+                            rowCardCountWhenSettingsOpened = settings.rowCardCount
                             showSettings = true
                         },
                         colors = IconButtonDefaults.colors(
@@ -712,33 +732,42 @@ fun MoviesLibraryScreen(
                                                 imageLoader.memoryCache?.clear()
                                             }
                                             
-                                            // Pick 2 new random unique genres
+                                            // Pick 5 new random unique genres
                                             val shuffledGenres = if (availableGenres.isNotEmpty()) {
-                                                availableGenres.filter { it in movieGenres }.shuffled().take(2).ifEmpty { 
-                                                    availableGenres.shuffled().take(2)
+                                                availableGenres.filter { it in movieGenres }.shuffled().take(5).ifEmpty { 
+                                                    availableGenres.shuffled().take(5)
                                                 }
                                             } else {
-                                                movieGenres.shuffled().take(2)
+                                                movieGenres.shuffled().take(5)
                                             }
                                             
                                             val genre1 = shuffledGenres.getOrNull(0) ?: movieGenres.random()
                                             val genre2 = shuffledGenres.getOrNull(1) ?: movieGenres.random()
+                                            val genre3 = shuffledGenres.getOrNull(2) ?: movieGenres.random()
+                                            val genre4 = shuffledGenres.getOrNull(3) ?: movieGenres.random()
+                                            val genre5 = shuffledGenres.getOrNull(4) ?: movieGenres.random()
                                             
                                             selectedGenre1 = genre1
                                             selectedGenre2 = genre2
+                                            selectedGenre3 = genre3
+                                            selectedGenre4 = genre4
+                                            selectedGenre5 = genre5
                                             
                                             // Refresh data - using library-specific methods
                                             withContext(Dispatchers.IO) {
                                                 coroutineScope {
-                                                    val continueWatchingDeferred = async { apiService.getContinueWatchingMoviesFromLibrary(libraryId, 20) }
-                                                    val recentlyReleasedDeferred = async { apiService.getRecentlyReleasedMoviesFromLibrary(libraryId, 20) }
-                                                    val recentlyAddedDeferred = async { apiService.getRecentlyAddedMoviesFromLibrary(libraryId, 20) }
-                                                    val topUnwatchedDeferred = async { apiService.getTopUnwatchedMoviesFromLibrary(libraryId, 20) }
-                                                    val recentlyWatchedDeferred = async { apiService.getRecentlyWatchedMoviesFromLibrary(libraryId, 20) }
-                                                    val favoritesDeferred = async { apiService.getFavoriteMoviesFromLibrary(libraryId, 20) }
-                                                    val genre1Deferred = async { apiService.getMoviesByGenreFromLibrary(libraryId, genre1, 20) }
-                                                    val genre2Deferred = async { apiService.getMoviesByGenreFromLibrary(libraryId, genre2, 20) }
-                                                    val libraryDeferred = async { apiService.getAllLibraryItems(libraryId) }
+                                                    val continueWatchingDeferred = async { apiService?.getContinueWatchingMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
+                                                    val recentlyReleasedDeferred = async { apiService?.getRecentlyReleasedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
+                                                    val recentlyAddedDeferred = async { apiService?.getRecentlyAddedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
+                                                    val topUnwatchedDeferred = async { apiService?.getTopUnwatchedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
+                                                    val recentlyWatchedDeferred = async { apiService?.getRecentlyWatchedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
+                                                    val favoritesDeferred = async { apiService?.getFavoriteMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
+                                                    val genre1Deferred = async { apiService?.getMoviesByGenreFromLibrary(libraryId, genre1, settings.rowCardCount) ?: emptyList() }
+                                                    val genre2Deferred = async { apiService?.getMoviesByGenreFromLibrary(libraryId, genre2, settings.rowCardCount) ?: emptyList() }
+                                                    val genre3Deferred = async { apiService?.getMoviesByGenreFromLibrary(libraryId, genre3, settings.rowCardCount) ?: emptyList() }
+                                                    val genre4Deferred = async { apiService?.getMoviesByGenreFromLibrary(libraryId, genre4, settings.rowCardCount) ?: emptyList() }
+                                                    val genre5Deferred = async { apiService?.getMoviesByGenreFromLibrary(libraryId, genre5, settings.rowCardCount) ?: emptyList() }
+                                                    val libraryDeferred = async { apiService?.getAllLibraryItems(libraryId) ?: emptyList() }
                                                     
                                                     continueWatchingMovies = continueWatchingDeferred.await()
                                                     recentlyReleasedMovies = recentlyReleasedDeferred.await()
@@ -748,6 +777,9 @@ fun MoviesLibraryScreen(
                                                     favoriteMovies = favoritesDeferred.await()
                                                     genreMovies1 = genre1Deferred.await()
                                                     genreMovies2 = genre2Deferred.await()
+                                                    genreMovies3 = genre3Deferred.await()
+                                                    genreMovies4 = genre4Deferred.await()
+                                                    genreMovies5 = genre5Deferred.await()
                                                     libraryItems = libraryDeferred.await()
                                                 }
                                             }
@@ -1404,6 +1436,135 @@ fun MoviesLibraryScreen(
                                     }
                                 }
                             }
+                            
+                            // Top Movies in Genre 3 row
+                            if (genreMovies3.isNotEmpty() && selectedGenre3.isNotEmpty()) {
+                                Text(
+                                    text = "Top Movies in $selectedGenre3",
+                                    style = MaterialTheme.typography.headlineMedium.copy(
+                                        fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+                                    ),
+                                    modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
+                                )
+                                
+                                LazyRow(
+                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
+                                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                    flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
+                                    modifier = if (debugOutlinesEnabled) {
+                                        Modifier.border(2.dp, Color.Magenta)
+                                    } else {
+                                        Modifier
+                                    }
+                                ) {
+                                    items(genreMovies3) { item ->
+                                        JellyfinHorizontalCard(
+                                            item = item,
+                                            apiService = apiService,
+                                            onClick = { onItemClick(item, 0L) },
+                                            onFocusChanged = { isFocused ->
+                                                if (isFocused) {
+                                                    instantHighlightedItem = item
+                                                    backgroundChangeJob?.cancel()
+                                                    backgroundChangeJob = scope.launch {
+                                                        delay(1000)
+                                                        highlightedItem = item
+                                                    }
+                                                }
+                                            },
+                                            useSimpleCards = useSimpleCards.value,
+                                            useGoogleTvCards = useGoogleTvCards.value,
+                                            lowPowerMode = lowPowerMode.value
+                                        )
+                                    }
+                                }
+                            }
+                            
+                            // Top Movies in Genre 4 row
+                            if (genreMovies4.isNotEmpty() && selectedGenre4.isNotEmpty()) {
+                                Text(
+                                    text = "Top Movies in $selectedGenre4",
+                                    style = MaterialTheme.typography.headlineMedium.copy(
+                                        fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+                                    ),
+                                    modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
+                                )
+                                
+                                LazyRow(
+                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
+                                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                    flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
+                                    modifier = if (debugOutlinesEnabled) {
+                                        Modifier.border(2.dp, Color.Magenta)
+                                    } else {
+                                        Modifier
+                                    }
+                                ) {
+                                    items(genreMovies4) { item ->
+                                        JellyfinHorizontalCard(
+                                            item = item,
+                                            apiService = apiService,
+                                            onClick = { onItemClick(item, 0L) },
+                                            onFocusChanged = { isFocused ->
+                                                if (isFocused) {
+                                                    instantHighlightedItem = item
+                                                    backgroundChangeJob?.cancel()
+                                                    backgroundChangeJob = scope.launch {
+                                                        delay(1000)
+                                                        highlightedItem = item
+                                                    }
+                                                }
+                                            },
+                                            useSimpleCards = useSimpleCards.value,
+                                            useGoogleTvCards = useGoogleTvCards.value,
+                                            lowPowerMode = lowPowerMode.value
+                                        )
+                                    }
+                                }
+                            }
+                            
+                            // Top Movies in Genre 5 row
+                            if (genreMovies5.isNotEmpty() && selectedGenre5.isNotEmpty()) {
+                                Text(
+                                    text = "Top Movies in $selectedGenre5",
+                                    style = MaterialTheme.typography.headlineMedium.copy(
+                                        fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+                                    ),
+                                    modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
+                                )
+                                
+                                LazyRow(
+                                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
+                                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                    flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
+                                    modifier = if (debugOutlinesEnabled) {
+                                        Modifier.border(2.dp, Color.Magenta)
+                                    } else {
+                                        Modifier
+                                    }
+                                ) {
+                                    items(genreMovies5) { item ->
+                                        JellyfinHorizontalCard(
+                                            item = item,
+                                            apiService = apiService,
+                                            onClick = { onItemClick(item, 0L) },
+                                            onFocusChanged = { isFocused ->
+                                                if (isFocused) {
+                                                    instantHighlightedItem = item
+                                                    backgroundChangeJob?.cancel()
+                                                    backgroundChangeJob = scope.launch {
+                                                        delay(1000)
+                                                        highlightedItem = item
+                                                    }
+                                                }
+                                            },
+                                            useSimpleCards = useSimpleCards.value,
+                                            useGoogleTvCards = useGoogleTvCards.value,
+                                            lowPowerMode = lowPowerMode.value
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1859,6 +2020,33 @@ fun MoviesLibraryScreen(
                     if (use24HourTimeChanged) {
                         use24HourTime = settings.use24HourTime
                     }
+                    
+                    // Check if row card count changed and refresh data if needed
+                    val rowCardCountChanged = settings.rowCardCount != rowCardCountWhenSettingsOpened
+                    if (rowCardCountChanged) {
+                        scope.launch {
+                            // Refresh recommendations using library-specific methods
+                            continueWatchingMovies = apiService?.getContinueWatchingMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                            recentlyReleasedMovies = apiService?.getRecentlyReleasedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                            recentlyAddedMovies = apiService?.getRecentlyAddedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                            topUnwatchedMovies = apiService?.getTopUnwatchedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                            recentlyWatchedMovies = apiService?.getRecentlyWatchedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                            favoriteMovies = apiService?.getFavoriteMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                            
+                            // Also refresh genre-based rows
+                            genreMovies1 = apiService?.getMoviesByGenreFromLibrary(libraryId, selectedGenre1, settings.rowCardCount) ?: emptyList()
+                            genreMovies2 = apiService?.getMoviesByGenreFromLibrary(libraryId, selectedGenre2, settings.rowCardCount) ?: emptyList()
+                            genreMovies3 = apiService?.getMoviesByGenreFromLibrary(libraryId, selectedGenre3, settings.rowCardCount) ?: emptyList()
+                            genreMovies4 = apiService?.getMoviesByGenreFromLibrary(libraryId, selectedGenre4, settings.rowCardCount) ?: emptyList()
+                            genreMovies5 = apiService?.getMoviesByGenreFromLibrary(libraryId, selectedGenre5, settings.rowCardCount) ?: emptyList()
+                            
+                            // Refresh library grid if in library tab
+                            if (selectedTab == "library") {
+                                libraryItems = apiService?.getAllLibraryItems(libraryId) ?: emptyList()
+                            }
+                        }
+                    }
+                    
                     showSettings = false 
                 },
                 properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -1906,13 +2094,33 @@ fun MoviesLibraryScreen(
                                 if (use24HourTimeChanged) {
                                     use24HourTime = settings.use24HourTime
                                 }
-                                // Check if simple cards or Google TV cards settings changed and refresh UI if needed
-                                val simpleCardsChanged = settings.useSimpleCards != useSimpleCardsWhenSettingsOpened
-                                val googleTvCardsChanged = settings.useGoogleTvCards != useGoogleTvCardsWhenSettingsOpened
-                                if (simpleCardsChanged || googleTvCardsChanged || lowPowerModeChanged) {
-                                    useSimpleCards.value = settings.useSimpleCards
-                                    useGoogleTvCards.value = settings.useGoogleTvCards
+                                
+                                // Check if row card count changed and refresh data if needed
+                                val rowCardCountChanged = settings.rowCardCount != rowCardCountWhenSettingsOpened
+                                if (rowCardCountChanged) {
+                                    scope.launch {
+                                        // Refresh recommendations using library-specific methods
+                                        continueWatchingMovies = repository?.apiService?.getContinueWatchingMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                                        recentlyReleasedMovies = repository?.apiService?.getRecentlyReleasedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                                        recentlyAddedMovies = repository?.apiService?.getRecentlyAddedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                                        topUnwatchedMovies = repository?.apiService?.getTopUnwatchedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                                        recentlyWatchedMovies = repository?.apiService?.getRecentlyWatchedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                                        favoriteMovies = repository?.apiService?.getFavoriteMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                                        
+                                        // Also refresh genre-based rows
+                                        genreMovies1 = repository?.apiService?.getMoviesByGenreFromLibrary(libraryId, selectedGenre1, settings.rowCardCount) ?: emptyList()
+                                        genreMovies2 = repository?.apiService?.getMoviesByGenreFromLibrary(libraryId, selectedGenre2, settings.rowCardCount) ?: emptyList()
+                                        genreMovies3 = repository?.apiService?.getMoviesByGenreFromLibrary(libraryId, selectedGenre3, settings.rowCardCount) ?: emptyList()
+                                        genreMovies4 = repository?.apiService?.getMoviesByGenreFromLibrary(libraryId, selectedGenre4, settings.rowCardCount) ?: emptyList()
+                                        genreMovies5 = repository?.apiService?.getMoviesByGenreFromLibrary(libraryId, selectedGenre5, settings.rowCardCount) ?: emptyList()
+                                        
+                                        // Refresh library grid if in library tab
+                                        if (selectedTab == "library") {
+                                            libraryItems = repository?.apiService?.getAllLibraryItems(libraryId) ?: emptyList()
+                                        }
+                                    }
                                 }
+                                
                                 showSettings = false 
                             }
                         )

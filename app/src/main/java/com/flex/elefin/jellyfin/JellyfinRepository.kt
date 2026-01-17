@@ -7,7 +7,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 class JellyfinRepository(
-    private val apiService: JellyfinApiService
+    val apiService: JellyfinApiService,
+    val settings: AppSettings
 ) {
     private val _continueWatchingItems = MutableStateFlow<List<JellyfinItem>>(emptyList())
     val continueWatchingItems: StateFlow<List<JellyfinItem>> = _continueWatchingItems.asStateFlow()
@@ -61,7 +62,7 @@ class JellyfinRepository(
         _isLoading.value = true
         _error.value = null
         try {
-            val items = apiService.getContinueWatching()
+            val items = apiService.getContinueWatching(limit = settings.rowCardCount)
             _continueWatchingItems.value = items
             if (items.isEmpty()) {
                 _error.value = "No continue watching items found"
@@ -76,7 +77,7 @@ class JellyfinRepository(
 
     suspend fun fetchNextUp() {
         try {
-            val items = apiService.getNextUp()
+            val items = apiService.getNextUp(limit = settings.rowCardCount)
             _nextUpItems.value = items
         } catch (e: Exception) {
             e.printStackTrace()
@@ -111,13 +112,12 @@ class JellyfinRepository(
             libraries.forEach { library ->
                 try {
                     // Fetch recently added items from this specific library
-                    val libraryItems = apiService.getRecentlyAddedMoviesFromLibrary(library.Id)
+                    val libraryItems = apiService.getRecentlyAddedMoviesFromLibrary(library.Id, limit = settings.rowCardCount)
                     if (libraryItems.isNotEmpty()) {
-                        // Only store libraries that have movies
-                        // Sort by DateCreated descending and limit to 20 most recent
+                        // Sort by DateCreated descending and limit to settings.rowCardCount most recent
                         val sortedItems = libraryItems.sortedByDescending { 
                             it.DateCreated ?: ""
-                        }.take(20)
+                        }.take(settings.rowCardCount)
                         moviesByLibrary[library.Id] = sortedItems
                         
                         // Also add to combined list for backward compatibility
@@ -137,10 +137,10 @@ class JellyfinRepository(
             _recentlyAddedMoviesByLibrary.value = moviesByLibrary
             
             // Also store combined list (sorted and limited) for backward compatibility
-            // Sort by DateCreated descending and limit to 20 most recent
+            // Sort by DateCreated descending and limit to settings.rowCardCount most recent
             val sortedItems = allItems.sortedByDescending { 
                 it.DateCreated ?: ""
-            }.take(20)
+            }.take(settings.rowCardCount)
             
             _recentlyAddedMovies.value = sortedItems
         } catch (e: Exception) {
@@ -153,7 +153,7 @@ class JellyfinRepository(
     suspend fun fetchRecentlyReleasedMovies() {
         try {
             // First, get the default list (includes all accessible libraries)
-            val defaultItems = apiService.getRecentlyReleasedMovies()
+            val defaultItems = apiService.getRecentlyReleasedMovies(limit = settings.rowCardCount)
             
             // Also fetch from all libraries individually to ensure we get items from all libraries
             // including "Movies 4K" or any other movie libraries
@@ -187,7 +187,7 @@ class JellyfinRepository(
             libraries.forEach { library ->
                 try {
                     // Fetch recently released items from this specific library
-                    val libraryItems = apiService.getRecentlyReleasedMoviesFromLibrary(library.Id)
+                    val libraryItems = apiService.getRecentlyReleasedMoviesFromLibrary(library.Id, limit = settings.rowCardCount)
                     libraryItems.forEach { item ->
                         if (seenIds.add(item.Id)) {
                             allItems.add(item)
@@ -199,10 +199,10 @@ class JellyfinRepository(
                 }
             }
             
-            // Sort by PremiereDate descending and limit to 20 most recent
+            // Sort by PremiereDate descending and limit to settings.rowCardCount most recent
             val sortedItems = allItems.sortedByDescending { 
                 it.PremiereDate ?: ""
-            }.take(20)
+            }.take(settings.rowCardCount)
             
             _recentlyReleasedMovies.value = sortedItems
         } catch (e: Exception) {
@@ -238,13 +238,12 @@ class JellyfinRepository(
             libraries.forEach { library ->
                 try {
                     // Fetch recently added shows from this specific library
-                    val libraryItems = apiService.getRecentlyAddedShowsFromLibrary(library.Id)
+                    val libraryItems = apiService.getRecentlyAddedShowsFromLibrary(library.Id, limit = settings.rowCardCount)
                     if (libraryItems.isNotEmpty()) {
-                        // Only store libraries that have shows
-                        // Sort by DateCreated descending and limit to 20 most recent
+                        // Sort by DateCreated descending and limit to settings.rowCardCount most recent
                         val sortedItems = libraryItems.sortedByDescending { 
                             it.DateCreated ?: ""
-                        }.take(20)
+                        }.take(settings.rowCardCount)
                         showsByLibrary[library.Id] = sortedItems
                         
                         // Also add to combined list for backward compatibility
@@ -264,7 +263,7 @@ class JellyfinRepository(
             // Also store combined list (sorted and limited) for backward compatibility
             val sortedItems = allItems.sortedByDescending { 
                 it.DateCreated ?: ""
-            }.take(20)
+            }.take(settings.rowCardCount)
             
             _recentlyAddedShows.value = sortedItems
         } catch (e: Exception) {
@@ -299,13 +298,12 @@ class JellyfinRepository(
             libraries.forEach { library ->
                 try {
                     // Fetch recently added episodes from this specific library
-                    val libraryItems = apiService.getRecentlyAddedEpisodesFromLibrary(library.Id)
+                    val libraryItems = apiService.getRecentlyAddedEpisodesFromLibrary(library.Id, limit = settings.rowCardCount)
                     if (libraryItems.isNotEmpty()) {
-                        // Only store libraries that have episodes
-                        // Sort by DateCreated descending and limit to 20 most recent
+                        // Sort by DateCreated descending and limit to settings.rowCardCount most recent
                         val sortedItems = libraryItems.sortedByDescending { 
                             it.DateCreated ?: ""
-                        }.take(20)
+                        }.take(settings.rowCardCount)
                         episodesByLibrary[library.Id] = sortedItems
                         
                         // Also add to combined list for backward compatibility
@@ -325,7 +323,7 @@ class JellyfinRepository(
             // Also store combined list (sorted and limited) for backward compatibility
             val sortedItems = allItems.sortedByDescending { 
                 it.DateCreated ?: ""
-            }.take(20)
+            }.take(settings.rowCardCount)
             
             _recentlyAddedEpisodes.value = sortedItems
         } catch (e: Exception) {
@@ -360,8 +358,8 @@ class JellyfinRepository(
 
     suspend fun fetchLibraryItems(libraryId: String) {
         try {
-            // Fetch all library items using pagination
-            val items = apiService.getAllLibraryItems(libraryId)
+            // Fetch library items with user preference for row card count
+            val items = apiService.getAllLibraryItems(libraryId, limit = settings.rowCardCount)
             _libraryItems.update { currentMap ->
                 currentMap.toMutableMap().apply {
                     put(libraryId, items)

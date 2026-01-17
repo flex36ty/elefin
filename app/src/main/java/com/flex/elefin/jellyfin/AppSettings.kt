@@ -99,6 +99,7 @@ class AppSettings(context: Context) {
         private const val KEY_TRANSCODE_MAX_BITRATE = "transcode_max_bitrate"
         private const val KEY_AUTO_TRANSCODE_ON_ERROR = "auto_transcode_on_error"
         private const val KEY_FALLBACK_TO_MPV = "fallback_to_mpv"
+        private const val KEY_ROW_CARD_COUNT = "row_card_count"
     }
 
     var isMpvEnabled: Boolean
@@ -508,5 +509,10 @@ class AppSettings(context: Context) {
     var fallbackToMpv: Boolean
         get() = prefs.getBoolean(KEY_FALLBACK_TO_MPV, true) // Enabled by default
         set(value) = prefs.edit().putBoolean(KEY_FALLBACK_TO_MPV, value).apply()
+
+    // Number of cards to fetch/display per row (25, 50, 75, 100)
+    var rowCardCount: Int
+        get() = prefs.getInt(KEY_ROW_CARD_COUNT, 25).coerceIn(25, 100) // Default 25
+        set(value) = prefs.edit().putInt(KEY_ROW_CARD_COUNT, value.coerceIn(25, 100)).apply()
 }
 

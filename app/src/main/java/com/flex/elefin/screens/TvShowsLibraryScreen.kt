@@ -126,7 +126,7 @@ fun TvShowsLibraryScreen(
     
     // Repository for refresh functionality
     val repository = remember(apiService) {
-        apiService?.let { JellyfinRepository(it) }
+        apiService?.let { JellyfinRepository(it, settings) }
     }
     
     // Settings states (same as home screen)
@@ -151,6 +151,7 @@ fun TvShowsLibraryScreen(
     var useSimpleCardsWhenSettingsOpened by remember { mutableStateOf(false) }
     var useGoogleTvCardsWhenSettingsOpened by remember { mutableStateOf(false) }
     var use24HourTimeWhenSettingsOpened by remember { mutableStateOf(false) }
+    var rowCardCountWhenSettingsOpened by remember { mutableStateOf(25) }
     
     // Tab state: "recommendations", "library", or "discover"
     var selectedTab by remember { mutableStateOf("recommendations") }
@@ -207,10 +208,12 @@ fun TvShowsLibraryScreen(
     var genreShows2 by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
     var genreShows3 by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
     var genreShows4 by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
+    var genreShows5 by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
     var selectedGenre1 by remember { mutableStateOf("") }
     var selectedGenre2 by remember { mutableStateOf("") }
     var selectedGenre3 by remember { mutableStateOf("") }
     var selectedGenre4 by remember { mutableStateOf("") }
+    var selectedGenre5 by remember { mutableStateOf("") }
     var availableGenres by remember { mutableStateOf<List<String>>(emptyList()) }
     
     // Data states for library grid
@@ -258,36 +261,39 @@ fun TvShowsLibraryScreen(
                     val genres = apiService.getGenresFromLibrary(libraryId)
                     availableGenres = genres
                     
-                    // Pick 4 random unique genres from available genres
+                    // Pick 5 random unique genres from available genres
                     val shuffledGenres = if (genres.isNotEmpty()) {
-                        genres.filter { it in tvGenres }.shuffled().take(4).ifEmpty { 
-                            genres.shuffled().take(4)
+                        genres.filter { it in tvGenres }.shuffled().take(5).ifEmpty { 
+                            genres.shuffled().take(5)
                         }
                     } else {
-                        tvGenres.shuffled().take(4)
+                        tvGenres.shuffled().take(5)
                     }
                     
                     val genre1 = shuffledGenres.getOrNull(0) ?: tvGenres.random()
                     val genre2 = shuffledGenres.getOrNull(1) ?: tvGenres.random()
                     val genre3 = shuffledGenres.getOrNull(2) ?: tvGenres.random()
                     val genre4 = shuffledGenres.getOrNull(3) ?: tvGenres.random()
+                    val genre5 = shuffledGenres.getOrNull(4) ?: tvGenres.random()
                     
                     selectedGenre1 = genre1
                     selectedGenre2 = genre2
                     selectedGenre3 = genre3
                     selectedGenre4 = genre4
+                    selectedGenre5 = genre5
                     
                     // Fetch all TV show data in parallel using coroutineScope
                     coroutineScope {
-                        val continueWatchingDeferred = async { apiService.getContinueWatchingEpisodesFromLibrary(libraryId, 20) }
-                        val recentlyReleasedDeferred = async { apiService.getRecentlyReleasedEpisodesFromLibrary(libraryId, 20) }
-                        val recentlyAddedDeferred = async { apiService.getRecentlyAddedShowsFromLibrary(libraryId, 20) }
-                        val startWatchingDeferred = async { apiService.getRandomUnwatchedShowsFromLibrary(libraryId, 20) }
-                        val topRatedDeferred = async { apiService.getTopRatedShowsFromLibrary(libraryId, 20) }
-                        val genre1Deferred = async { apiService.getShowsByGenreFromLibrary(libraryId, genre1, 20) }
-                        val genre2Deferred = async { apiService.getShowsByGenreFromLibrary(libraryId, genre2, 20) }
-                        val genre3Deferred = async { apiService.getShowsByGenreFromLibrary(libraryId, genre3, 20) }
-                        val genre4Deferred = async { apiService.getShowsByGenreFromLibrary(libraryId, genre4, 20) }
+                        val continueWatchingDeferred = async { apiService.getContinueWatchingEpisodesFromLibrary(libraryId, settings.rowCardCount) }
+                        val recentlyReleasedDeferred = async { apiService.getRecentlyReleasedEpisodesFromLibrary(libraryId, settings.rowCardCount) }
+                        val recentlyAddedDeferred = async { apiService.getRecentlyAddedShowsFromLibrary(libraryId, settings.rowCardCount) }
+                        val startWatchingDeferred = async { apiService.getRandomUnwatchedShowsFromLibrary(libraryId, settings.rowCardCount) }
+                        val topRatedDeferred = async { apiService.getTopRatedShowsFromLibrary(libraryId, settings.rowCardCount) }
+                        val genre1Deferred = async { apiService.getShowsByGenreFromLibrary(libraryId, genre1, settings.rowCardCount) }
+                        val genre2Deferred = async { apiService.getShowsByGenreFromLibrary(libraryId, genre2, settings.rowCardCount) }
+                        val genre3Deferred = async { apiService.getShowsByGenreFromLibrary(libraryId, genre3, settings.rowCardCount) }
+                        val genre4Deferred = async { apiService.getShowsByGenreFromLibrary(libraryId, genre4, settings.rowCardCount) }
+                        val genre5Deferred = async { apiService.getShowsByGenreFromLibrary(libraryId, genre5, settings.rowCardCount) }
                         val libraryDeferred = async { apiService.getAllLibraryItems(libraryId) }
                         
                         continueWatchingEpisodes = continueWatchingDeferred.await()
@@ -299,6 +305,7 @@ fun TvShowsLibraryScreen(
                         genreShows2 = genre2Deferred.await()
                         genreShows3 = genre3Deferred.await()
                         genreShows4 = genre4Deferred.await()
+                        genreShows5 = genre5Deferred.await()
                         libraryItems = libraryDeferred.await().filter { it.Type == "Series" }
                     }
                     
@@ -518,6 +525,7 @@ fun TvShowsLibraryScreen(
     val filteredGenreShows2 = remember(genreShows2, hideShowsWithZeroEpisodes) { genreShows2.filterEmptyShows() }
     val filteredGenreShows3 = remember(genreShows3, hideShowsWithZeroEpisodes) { genreShows3.filterEmptyShows() }
     val filteredGenreShows4 = remember(genreShows4, hideShowsWithZeroEpisodes) { genreShows4.filterEmptyShows() }
+    val filteredGenreShows5 = remember(genreShows5, hideShowsWithZeroEpisodes) { genreShows5.filterEmptyShows() }
     
 
     // Main content (same structure as home screen)
@@ -708,6 +716,7 @@ fun TvShowsLibraryScreen(
                                     useSimpleCardsWhenSettingsOpened = settings.useSimpleCards
                                     useGoogleTvCardsWhenSettingsOpened = settings.useGoogleTvCards
                                     use24HourTimeWhenSettingsOpened = settings.use24HourTime
+                                    rowCardCountWhenSettingsOpened = settings.rowCardCount
                                     showSettings = true
                                 },
                                 colors = IconButtonDefaults.colors(
@@ -775,38 +784,41 @@ fun TvShowsLibraryScreen(
                                                         imageLoader.memoryCache?.clear()
                                                     }
                                                     
-                                                    // Pick 4 new random unique genres
+                                                    // Pick 5 new random unique genres
                                                     val shuffledGenres = if (availableGenres.isNotEmpty()) {
-                                                        availableGenres.filter { it in tvGenres }.shuffled().take(4).ifEmpty { 
-                                                            availableGenres.shuffled().take(4)
+                                                        availableGenres.filter { it in tvGenres }.shuffled().take(5).ifEmpty { 
+                                                            availableGenres.shuffled().take(5)
                                                         }
                                                     } else {
-                                                        tvGenres.shuffled().take(4)
+                                                        tvGenres.shuffled().take(5)
                                                     }
                                                     
                                                     val genre1 = shuffledGenres.getOrNull(0) ?: tvGenres.random()
                                                     val genre2 = shuffledGenres.getOrNull(1) ?: tvGenres.random()
                                                     val genre3 = shuffledGenres.getOrNull(2) ?: tvGenres.random()
                                                     val genre4 = shuffledGenres.getOrNull(3) ?: tvGenres.random()
+                                                    val genre5 = shuffledGenres.getOrNull(4) ?: tvGenres.random()
                                                     
                                                     selectedGenre1 = genre1
                                                     selectedGenre2 = genre2
                                                     selectedGenre3 = genre3
                                                     selectedGenre4 = genre4
+                                                    selectedGenre5 = genre5
                                                     
                                                     // Refresh data - using library-specific methods
                                                     withContext(Dispatchers.IO) {
                                                         coroutineScope {
-                                                            val continueWatchingDeferred = async { apiService.getContinueWatchingEpisodesFromLibrary(libraryId, 20) }
-                                                            val recentlyReleasedDeferred = async { apiService.getRecentlyReleasedEpisodesFromLibrary(libraryId, 20) }
-                                                            val recentlyAddedDeferred = async { apiService.getRecentlyAddedShowsFromLibrary(libraryId, 20) }
-                                                            val startWatchingDeferred = async { apiService.getRandomUnwatchedShowsFromLibrary(libraryId, 20) }
-                                                            val topRatedDeferred = async { apiService.getTopRatedShowsFromLibrary(libraryId, 20) }
-                                                            val genre1Deferred = async { apiService.getShowsByGenreFromLibrary(libraryId, genre1, 20) }
-                                                            val genre2Deferred = async { apiService.getShowsByGenreFromLibrary(libraryId, genre2, 20) }
-                                                            val genre3Deferred = async { apiService.getShowsByGenreFromLibrary(libraryId, genre3, 20) }
-                                                            val genre4Deferred = async { apiService.getShowsByGenreFromLibrary(libraryId, genre4, 20) }
-                                                            val libraryDeferred = async { apiService.getAllLibraryItems(libraryId) }
+                                                            val continueWatchingDeferred = async { apiService?.getContinueWatchingEpisodesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
+                                                            val recentlyReleasedDeferred = async { apiService?.getRecentlyReleasedEpisodesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
+                                                            val recentlyAddedDeferred = async { apiService?.getRecentlyAddedShowsFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
+                                                            val startWatchingDeferred = async { apiService?.getRandomUnwatchedShowsFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
+                                                            val topRatedDeferred = async { apiService?.getTopRatedShowsFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
+                                                            val genre1Deferred = async { apiService?.getShowsByGenreFromLibrary(libraryId, genre1, settings.rowCardCount) ?: emptyList() }
+                                                            val genre2Deferred = async { apiService?.getShowsByGenreFromLibrary(libraryId, genre2, settings.rowCardCount) ?: emptyList() }
+                                                            val genre3Deferred = async { apiService?.getShowsByGenreFromLibrary(libraryId, genre3, settings.rowCardCount) ?: emptyList() }
+                                                            val genre4Deferred = async { apiService?.getShowsByGenreFromLibrary(libraryId, genre4, settings.rowCardCount) ?: emptyList() }
+                                                            val genre5Deferred = async { apiService?.getShowsByGenreFromLibrary(libraryId, genre5, settings.rowCardCount) ?: emptyList() }
+                                                            val libraryDeferred = async { apiService?.getAllLibraryItems(libraryId) ?: emptyList() }
                                                             
                                                             continueWatchingEpisodes = continueWatchingDeferred.await()
                                                             recentlyReleasedEpisodes = recentlyReleasedDeferred.await()
@@ -817,6 +829,7 @@ fun TvShowsLibraryScreen(
                                                             genreShows2 = genre2Deferred.await()
                                                             genreShows3 = genre3Deferred.await()
                                                             genreShows4 = genre4Deferred.await()
+                                                            genreShows5 = genre5Deferred.await()
                                                             libraryItems = libraryDeferred.await().filter { it.Type == "Series" }
                                                         }
                                                     }
@@ -1550,6 +1563,49 @@ fun TvShowsLibraryScreen(
                                             }
                                         }
                                     }
+                                    
+                                    // More in <Genre> row 5 (randomly selected genre)
+                                    if (filteredGenreShows5.isNotEmpty() && selectedGenre5.isNotEmpty()) {
+                                        Text(
+                                            text = "More in $selectedGenre5",
+                                            style = MaterialTheme.typography.headlineMedium.copy(
+                                                fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+                                            ),
+                                            modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
+                                        )
+                                        
+                                        LazyRow(
+                                            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
+                                            horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                            flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
+                                            modifier = if (debugOutlinesEnabled) {
+                                                Modifier.border(2.dp, Color.Magenta)
+                                            } else {
+                                                Modifier
+                                            }
+                                        ) {
+                                            items(filteredGenreShows5) { item ->
+                                                JellyfinHorizontalCard(
+                                                    item = item,
+                                                    apiService = apiService,
+                                                    onClick = { onItemClick(item, 0L) },
+                                                    onFocusChanged = { isFocused ->
+                                                        if (isFocused) {
+                                                            instantHighlightedItem = item
+                                                            backgroundChangeJob?.cancel()
+                                                            backgroundChangeJob = scope.launch {
+                                                                delay(1000)
+                                                                highlightedItem = item
+                                                            }
+                                                        }
+                                                    },
+                                                    useSimpleCards = useSimpleCards.value,
+                                                    useGoogleTvCards = useGoogleTvCards.value,
+                                                    lowPowerMode = lowPowerMode.value
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1998,6 +2054,37 @@ fun TvShowsLibraryScreen(
                                 useSimpleCards.value = settings.useSimpleCards
                                 useGoogleTvCards.value = settings.useGoogleTvCards
                             }
+                            // Check if 24-hour time setting changed
+                            val use24HourTimeChanged = settings.use24HourTime != use24HourTimeWhenSettingsOpened
+                            if (use24HourTimeChanged) {
+                                use24HourTime = settings.use24HourTime
+                            }
+                            
+                            // Check if row card count changed and refresh data if needed
+                            val rowCardCountChanged = settings.rowCardCount != rowCardCountWhenSettingsOpened
+                            if (rowCardCountChanged) {
+                                scope.launch {
+                                    // Refresh recommendations using library-specific methods
+                                    continueWatchingEpisodes = apiService?.getContinueWatchingEpisodesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                                    recentlyReleasedEpisodes = apiService?.getRecentlyReleasedEpisodesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                                    recentlyAddedShows = apiService?.getRecentlyAddedShowsFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                                    startWatchingShows = apiService?.getRandomUnwatchedShowsFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                                    topRatedShows = apiService?.getTopRatedShowsFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                                    
+                                    // Also refresh genre-based rows
+                                    genreShows1 = apiService?.getShowsByGenreFromLibrary(libraryId, selectedGenre1, settings.rowCardCount) ?: emptyList()
+                                    genreShows2 = apiService?.getShowsByGenreFromLibrary(libraryId, selectedGenre2, settings.rowCardCount) ?: emptyList()
+                                    genreShows3 = apiService?.getShowsByGenreFromLibrary(libraryId, selectedGenre3, settings.rowCardCount) ?: emptyList()
+                                    genreShows4 = apiService?.getShowsByGenreFromLibrary(libraryId, selectedGenre4, settings.rowCardCount) ?: emptyList()
+                                    genreShows5 = apiService?.getShowsByGenreFromLibrary(libraryId, selectedGenre5, settings.rowCardCount) ?: emptyList()
+                                    
+                                    // Refresh library grid if in library tab
+                                    if (selectedTab == "library") {
+                                        libraryItems = apiService?.getAllLibraryItems(libraryId) ?: emptyList()
+                                    }
+                                }
+                            }
+                            
                             showSettings = false 
                         },
                         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -2052,6 +2139,32 @@ fun TvShowsLibraryScreen(
                                             useSimpleCards.value = settings.useSimpleCards
                                             useGoogleTvCards.value = settings.useGoogleTvCards
                                         }
+                                        
+                                        // Check if row card count changed and refresh data if needed
+                                        val rowCardCountChanged = settings.rowCardCount != rowCardCountWhenSettingsOpened
+                                        if (rowCardCountChanged) {
+                                            scope.launch {
+                                                // Refresh recommendations using library-specific methods
+                                                continueWatchingEpisodes = apiService?.getContinueWatchingEpisodesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                                                recentlyReleasedEpisodes = apiService?.getRecentlyReleasedEpisodesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                                                recentlyAddedShows = apiService?.getRecentlyAddedShowsFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                                                startWatchingShows = apiService?.getRandomUnwatchedShowsFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                                                topRatedShows = apiService?.getTopRatedShowsFromLibrary(libraryId, settings.rowCardCount) ?: emptyList()
+                                                
+                                                // Also refresh genre-based rows
+                                                genreShows1 = apiService?.getShowsByGenreFromLibrary(libraryId, selectedGenre1, settings.rowCardCount) ?: emptyList()
+                                                genreShows2 = apiService?.getShowsByGenreFromLibrary(libraryId, selectedGenre2, settings.rowCardCount) ?: emptyList()
+                                                genreShows3 = apiService?.getShowsByGenreFromLibrary(libraryId, selectedGenre3, settings.rowCardCount) ?: emptyList()
+                                                genreShows4 = apiService?.getShowsByGenreFromLibrary(libraryId, selectedGenre4, settings.rowCardCount) ?: emptyList()
+                                                genreShows5 = apiService?.getShowsByGenreFromLibrary(libraryId, selectedGenre5, settings.rowCardCount) ?: emptyList()
+                                                
+                                                // Refresh library grid if in library tab
+                                                if (selectedTab == "library") {
+                                                    libraryItems = apiService?.getAllLibraryItems(libraryId) ?: emptyList()
+                                                }
+                                            }
+                                        }
+                                        
                                         showSettings = false 
                                     }
                                 )

@@ -4,6 +4,29 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2026-01-16
+
+### Added
+
+- **Customizable Row Card Count**
+  - Added new "Row Card Count" setting in **Settings > Library**.
+  - Allows users to choose between 25, 50, 75, or 100 items per row for a more personalized browsing experience.
+  - Applies to all major browsing rows:
+    - Recently Added (Movies, Shows, Episodes)
+    - Recently Released Movies
+    - Continue Watching
+    - Next Up
+  - **Dynamic Fetching**: Optimized API requests to only fetch the exact number of items requested, improving performance and reducing network overhead.
+  - Consistent layout and behavior across Home, Movies, and TV Shows library screens.
+
+### Fixed
+
+- **Gradle Build Performance**
+  - Updated build configuration to handle complex module dependencies more reliably.
+  - Cleaned up Gradle daemon state for more stable compilation.
+
+---
+
 ## 2026-01-15
 
 ### Added

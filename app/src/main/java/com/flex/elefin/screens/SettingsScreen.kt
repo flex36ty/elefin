@@ -245,6 +245,7 @@ fun SettingsScreen(
     var openSubtitlesPassword by remember { mutableStateOf(settings.openSubtitlesPassword) }
     var showLoginDialog by remember { mutableStateOf(false) }
     var showClearSubtitlesDialog by remember { mutableStateOf(false) }
+    var rowCardCount by remember { mutableStateOf(settings.rowCardCount) }
     var downloadedSubtitlesCount by remember { mutableStateOf(0) }
 
     Box(
@@ -1710,6 +1711,23 @@ fun SettingsScreen(
                                 onToggle = {
                                     hideShowsWithZeroEpisodesEnabled = !hideShowsWithZeroEpisodesEnabled
                                     settings.hideShowsWithZeroEpisodes = hideShowsWithZeroEpisodesEnabled
+                                }
+                            )
+
+                            // Row Card Count
+                            SettingCycle(
+                                title = "Row Card Count",
+                                description = "Number of items to fetch and display per row",
+                                currentValue = rowCardCount.toString(),
+                                onCycle = {
+                                    rowCardCount = when (rowCardCount) {
+                                        25 -> 50
+                                        50 -> 75
+                                        75 -> 100
+                                        100 -> 25
+                                        else -> 25
+                                    }
+                                    settings.rowCardCount = rowCardCount
                                 }
                             )
                         }

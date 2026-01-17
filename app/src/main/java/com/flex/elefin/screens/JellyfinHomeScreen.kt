@@ -223,7 +223,7 @@ fun JellyfinHomeScreen(
     }
     
     val repository = remember(apiService) {
-        apiService?.let { JellyfinRepository(it) }
+        apiService?.let { JellyfinRepository(it, settings) }
     }
     
     // Show server entry screen if server URL is not configured
@@ -311,6 +311,7 @@ fun JellyfinHomeScreen(
     var debugOutlinesWhenSettingsOpened by remember { mutableStateOf(false) }
     var disableUIAnimationsWhenSettingsOpened by remember { mutableStateOf(false) }
     var lowPowerModeWhenSettingsOpened by remember { mutableStateOf(false) }
+    var rowCardCountWhenSettingsOpened by remember { mutableStateOf(25) }
     var useSimpleCardsWhenSettingsOpened by remember { mutableStateOf(false) }
     var useGoogleTvCardsWhenSettingsOpened by remember { mutableStateOf(false) }
     var use24HourTimeWhenSettingsOpened by remember { mutableStateOf(false) }
@@ -690,6 +691,7 @@ fun JellyfinHomeScreen(
                         useSimpleCardsWhenSettingsOpened = settings.useSimpleCards
                         useGoogleTvCardsWhenSettingsOpened = settings.useGoogleTvCards
                         use24HourTimeWhenSettingsOpened = settings.use24HourTime
+                        rowCardCountWhenSettingsOpened = settings.rowCardCount
                         showSettings = true
                     },
                     colors = IconButtonDefaults.colors(
@@ -2131,6 +2133,27 @@ fun JellyfinHomeScreen(
                     useSimpleCards.value = settings.useSimpleCards
                     useGoogleTvCards.value = settings.useGoogleTvCards
                 }
+                
+                // Check if row card count changed and refresh data if needed
+                val rowCardCountChanged = settings.rowCardCount != rowCardCountWhenSettingsOpened
+                if (rowCardCountChanged) {
+                    scope.launch {
+                        repository?.fetchContinueWatching()
+                        repository?.fetchNextUp()
+                        repository?.fetchRecentlyAddedMovies()
+                        repository?.fetchRecentlyAddedShows()
+                        repository?.fetchRecentlyAddedEpisodes()
+                        
+                        // Also refresh library items if one is selected
+                        if (selectedLibraryId != null) {
+                            val library = libraries.find { it.Id == selectedLibraryId }
+                            if (library != null) {
+                                repository?.fetchLibraryItems(selectedLibraryId!!)
+                            }
+                        }
+                    }
+                }
+                
                 showSettings = false 
             },
             properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -2186,6 +2209,27 @@ fun JellyfinHomeScreen(
                                 useSimpleCards.value = settings.useSimpleCards
                                 useGoogleTvCards.value = settings.useGoogleTvCards
                             }
+                            
+                            // Check if row card count changed and refresh data if needed
+                            val rowCardCountChanged = settings.rowCardCount != rowCardCountWhenSettingsOpened
+                            if (rowCardCountChanged) {
+                                scope.launch {
+                                    repository?.fetchContinueWatching()
+                                    repository?.fetchNextUp()
+                                    repository?.fetchRecentlyAddedMovies()
+                                    repository?.fetchRecentlyAddedShows()
+                                    repository?.fetchRecentlyAddedEpisodes()
+                                    
+                                    // Also refresh library items if one is selected
+                                    if (selectedLibraryId != null) {
+                                        val library = libraries.find { it.Id == selectedLibraryId }
+                                        if (library != null) {
+                                            repository?.fetchLibraryItems(selectedLibraryId!!)
+                                        }
+                                    }
+                                }
+                            }
+                            
                             showSettings = false 
                         }
                     )
