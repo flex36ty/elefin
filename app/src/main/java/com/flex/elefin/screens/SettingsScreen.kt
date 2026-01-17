@@ -217,6 +217,7 @@ fun SettingsScreen(
     var useGoogleTvCards by remember { mutableStateOf(settings.useGoogleTvCards) }
     var lowPowerMode by remember { mutableStateOf(settings.lowPowerMode) }
     var use4KBackgrounds by remember { mutableStateOf(settings.use4KBackgrounds) }
+    var navigationSoundsEnabled by remember { mutableStateOf(settings.navigationSoundsEnabled) }
     
     // Logout confirmation
     var showLogoutConfirmation by remember { mutableStateOf(false) }
@@ -1586,6 +1587,17 @@ fun SettingsScreen(
                                 onToggle = {
                                     use4KBackgrounds = !use4KBackgrounds
                                     settings.use4KBackgrounds = use4KBackgrounds
+                                }
+                            )
+
+                            // Navigation Sounds
+                            SettingToggle(
+                                title = "Navigation Sounds",
+                                description = "Enable default system sounds when navigating and clicking in the app",
+                                isEnabled = navigationSoundsEnabled,
+                                onToggle = {
+                                    navigationSoundsEnabled = !navigationSoundsEnabled
+                                    settings.navigationSoundsEnabled = navigationSoundsEnabled
                                 }
                             )
                         }

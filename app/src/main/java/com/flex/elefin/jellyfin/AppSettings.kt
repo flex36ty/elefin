@@ -100,6 +100,7 @@ class AppSettings(context: Context) {
         private const val KEY_AUTO_TRANSCODE_ON_ERROR = "auto_transcode_on_error"
         private const val KEY_FALLBACK_TO_MPV = "fallback_to_mpv"
         private const val KEY_ROW_CARD_COUNT = "row_card_count"
+        private const val KEY_NAVIGATION_SOUNDS_ENABLED = "navigation_sounds_enabled"
     }
 
     var isMpvEnabled: Boolean
@@ -514,5 +515,9 @@ class AppSettings(context: Context) {
     var rowCardCount: Int
         get() = prefs.getInt(KEY_ROW_CARD_COUNT, 25).coerceIn(25, 100) // Default 25
         set(value) = prefs.edit().putInt(KEY_ROW_CARD_COUNT, value.coerceIn(25, 100)).apply()
+
+    var navigationSoundsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_NAVIGATION_SOUNDS_ENABLED, true) // Enabled by default
+        set(value) = prefs.edit().putBoolean(KEY_NAVIGATION_SOUNDS_ENABLED, value).apply()
 }
 
