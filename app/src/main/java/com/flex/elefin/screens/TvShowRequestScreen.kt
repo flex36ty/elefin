@@ -6,6 +6,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -27,6 +32,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -283,6 +289,7 @@ fun SeasonRequestItem(
     var isRequesting by remember { mutableStateOf(false) }
     var requestSuccess by remember { mutableStateOf(false) }
     var requestError by remember { mutableStateOf<String?>(null) }
+    var buttonFocused by remember { mutableStateOf(false) }
     
     // Status logic would ideally come from API, but for now we track local request success
     // In a real app, we'd check if the season is already available or requested based on show details
@@ -373,16 +380,58 @@ fun SeasonRequestItem(
                 containerColor = if (requestSuccess) Color(0xFF2196F3) else MaterialTheme.colorScheme.surface,
                 contentColor = if (requestSuccess) Color.White else MaterialTheme.colorScheme.onSurface
             ),
-            modifier = Modifier.width(120.dp)
+            modifier = Modifier
+                .then(
+                    if (buttonFocused) {
+                        Modifier
+                            .wrapContentWidth()
+                            .height(28.dp)
+                    } else {
+                        Modifier.size(28.dp)
+                    }
+                )
+                .animateContentSize(
+                    animationSpec = tween(
+                        durationMillis = 300,
+                        easing = FastOutSlowInEasing
+                    )
+                )
+                .onFocusChanged { buttonFocused = it.isFocused }
+                .clip(CircleShape),
+            contentPadding = PaddingValues(8.dp)
         ) {
             if (isRequesting) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
+                    modifier = Modifier.size(14.3.dp),
                     color = MaterialTheme.colorScheme.onSurface,
                     strokeWidth = 2.dp
                 )
+                if (buttonFocused) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Requesting...",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
+                        ),
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
             } else {
-                Text(if (requestSuccess) "Requested" else "Request")
+                Icon(
+                    imageVector = if (requestSuccess) Icons.Filled.Check else Icons.Filled.Add,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.3.dp)
+                )
+                if (buttonFocused) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (requestSuccess) "Requested" else "Request",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
+                        ),
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
             }
         }
     }

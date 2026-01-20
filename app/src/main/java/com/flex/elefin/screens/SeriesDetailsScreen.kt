@@ -168,6 +168,7 @@ fun SeriesDetailsScreen(
     // Lifecycle observer to trigger refresh when returning from player
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     var refreshTrigger by remember { mutableStateOf(0) }
+    var showSettings by remember { mutableStateOf(false) }
     
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
@@ -521,7 +522,8 @@ fun SeriesDetailsScreen(
                     onSeasonSelected = { index ->
                         selectedSeasonIndex = index
                     },
-                    firstSeasonFocusRequester = firstSeasonFocusRequester
+                    firstSeasonFocusRequester = firstSeasonFocusRequester,
+                    onShowSettings = { showSettings = true }
                 )
             }
 
@@ -572,6 +574,14 @@ fun SeriesDetailsScreen(
                 }
             }
         }
+    }
+
+    // Settings dialog (for TMDB key configuration) - moved to top level for full screen
+    if (showSettings) {
+        SettingsScreen(
+            onBack = { showSettings = false },
+            initialCategory = com.flex.elefin.screens.SettingsCategory.JELLYSEERR
+        )
     }
 }
 
@@ -979,7 +989,8 @@ fun SeriesBottomContainer(
     seasons: List<JellyfinItem> = emptyList(),
     selectedSeasonIndex: Int = 0,
     onSeasonSelected: (Int) -> Unit = {},
-    firstSeasonFocusRequester: FocusRequester? = null
+    firstSeasonFocusRequester: FocusRequester? = null,
+    onShowSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
@@ -1374,6 +1385,7 @@ fun SeriesBottomContainer(
                             episode = currentEpisode,
                             seriesItem = item,
                             apiService = apiService,
+                            onShowSettings = onShowSettings,
                             modifier = Modifier.fillMaxWidth(),
                             onEpisodeUpdated = { updatedEpisode ->
                                 // Trigger a full refresh of the episodes list from the API
@@ -1860,6 +1872,7 @@ fun EpisodeActionButtonsRow(
     episode: JellyfinItem,
     seriesItem: JellyfinItem,
     apiService: JellyfinApiService?,
+    onShowSettings: () -> Unit,
     modifier: Modifier = Modifier,
     onEpisodeUpdated: ((JellyfinItem) -> Unit)? = null
 ) {
@@ -2240,55 +2253,63 @@ fun EpisodeActionButtonsRow(
                 }
             }
             
-            // Trailer button (if key found)
-            if (trailerKey != null) {
-                var trailerFocused by remember { mutableStateOf(false) }
-                
-                Button(
-                    onClick = {
+            // Trailer button - always shows
+            var trailerFocused by remember { mutableStateOf(false) }
+            
+            Button(
+                onClick = {
+                    if (trailerKey != null) {
                         trailerKey?.let { key ->
                             TrailerLauncher.launchTmdbTrailer(context, key, seriesItem.Name ?: "")
                         }
-                    },
-                    modifier = Modifier
-                        .then(
-                            if (trailerFocused) {
-                                Modifier
-                                    .wrapContentWidth()
-                                    .height(28.dp)
-                            } else {
-                                Modifier.size(28.dp)
-                            }
-                        )
-                        .animateContentSize(
-                            animationSpec = tween(
-                                durationMillis = 300,
-                                easing = FastOutSlowInEasing
-                            )
-                        )
-                        .onFocusChanged { trailerFocused = it.isFocused }
-                        .clip(CircleShape),
-                    colors = ButtonDefaults.colors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = MaterialTheme.colorScheme.onSurface
-                    ),
-                    contentPadding = PaddingValues(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Movie,
-                        contentDescription = "Watch Trailer",
-                        modifier = Modifier.size(14.3.dp)
-                    )
-                    if (trailerFocused) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Watch Trailer",
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                            ),
-                            modifier = Modifier.padding(horizontal = 12.dp)
-                        )
+                    } else {
+                        // Prompt user to enter TMDB key
+                        android.widget.Toast.makeText(
+                            context,
+                            "Please enter your TMDB API key in settings to enable trailers",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                        onShowSettings()
                     }
+                },
+                modifier = Modifier
+                    .then(
+                        if (trailerFocused) {
+                            Modifier
+                                .wrapContentWidth()
+                                .height(28.dp)
+                        } else {
+                            Modifier.size(28.dp)
+                        }
+                    )
+                    .animateContentSize(
+                        animationSpec = tween(
+                            durationMillis = 300,
+                            easing = FastOutSlowInEasing
+                        )
+                    )
+                    .onFocusChanged { trailerFocused = it.isFocused }
+                    .clip(CircleShape),
+                colors = ButtonDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ),
+                contentPadding = PaddingValues(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Movie,
+                    contentDescription = "Watch Trailer",
+                    modifier = Modifier.size(14.3.dp)
+                )
+                if (trailerFocused) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Watch Trailer",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
+                        ),
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
                 }
             }
 

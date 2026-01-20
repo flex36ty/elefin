@@ -136,6 +136,7 @@ fun MovieDetailsScreen(
     // Lifecycle observer to trigger refresh when returning from player
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     var refreshTrigger by remember { mutableStateOf(0) }
+    var showSettings by remember { mutableStateOf(false) }
     
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
@@ -305,7 +306,8 @@ fun MovieDetailsScreen(
                 TopContainer(
                     item = displayItem,
                     apiService = apiService,
-                    showDebugOutlines = showDebugOutlines
+                    showDebugOutlines = showDebugOutlines,
+                    onShowSettings = { showSettings = true }
                 )
             }
 
@@ -330,13 +332,22 @@ fun MovieDetailsScreen(
             }
         }
     }
+
+    // Settings dialog (for TMDB key configuration) - moved to top level for full screen
+    if (showSettings) {
+        SettingsScreen(
+            onBack = { showSettings = false },
+            initialCategory = com.flex.elefin.screens.SettingsCategory.JELLYSEERR
+        )
+    }
 }
 
 @Composable
 fun TopContainer(
     item: JellyfinItem,
     apiService: JellyfinApiService?,
-    showDebugOutlines: Boolean = false
+    showDebugOutlines: Boolean = false,
+    onShowSettings: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -477,6 +488,7 @@ fun TopContainer(
             ActionButtonsRow(
                 item = item, // item parameter is displayItem from parent
                 apiService = apiService,
+                onShowSettings = onShowSettings,
                 modifier = Modifier
                     .fillMaxWidth()
                     .then(
@@ -1544,6 +1556,7 @@ fun AudioSelectionDialog(
 fun ActionButtonsRow(
     item: JellyfinItem,
     apiService: JellyfinApiService?,
+    onShowSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1962,57 +1975,65 @@ fun ActionButtonsRow(
             }
         }
         
-        // Trailer button (if key found)
-        if (trailerKey != null) {
-            var trailerFocused by remember { mutableStateOf(false) }
-            
-            Button(
-                onClick = {
+        // Trailer button - always shows
+        var trailerFocused by remember { mutableStateOf(false) }
+        
+        Button(
+            onClick = {
+                if (trailerKey != null) {
                     trailerKey?.let { key ->
                         TrailerLauncher.launchTmdbTrailer(context, key, displayItem.Name ?: "")
                     }
-                },
-                modifier = Modifier
-                    .then(
-                        if (trailerFocused) {
-                            Modifier
-                                .wrapContentWidth()
-                                .height(28.dp)
-                        } else {
-                            Modifier.size(28.dp)
-                        }
-                    )
-                    .animateContentSize(
-                        animationSpec = tween(
-                            durationMillis = 300,
-                            easing = FastOutSlowInEasing
-                        )
-                    )
-                    .onFocusChanged { trailerFocused = it.isFocused }
-                    .clip(CircleShape),
-                colors = ButtonDefaults.colors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
-                    focusedContentColor = androidx.compose.ui.graphics.Color.Black
-                ),
-                contentPadding = PaddingValues(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Movie,
-                    contentDescription = "Watch Trailer",
-                    modifier = Modifier.size(14.3.dp)
-                )
-                if (trailerFocused) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Watch Trailer",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                        ),
-                        modifier = Modifier.padding(horizontal = 12.dp)
-                    )
+                } else {
+                    // Prompt user to enter TMDB key
+                    android.widget.Toast.makeText(
+                        context,
+                        "Please enter your TMDB API key in settings to enable trailers",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                    onShowSettings()
                 }
+            },
+            modifier = Modifier
+                .then(
+                    if (trailerFocused) {
+                        Modifier
+                            .wrapContentWidth()
+                            .height(28.dp)
+                    } else {
+                        Modifier.size(28.dp)
+                    }
+                )
+                .animateContentSize(
+                    animationSpec = tween(
+                        durationMillis = 300,
+                        easing = FastOutSlowInEasing
+                    )
+                )
+                .onFocusChanged { trailerFocused = it.isFocused }
+                .clip(CircleShape),
+            colors = ButtonDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                focusedContentColor = androidx.compose.ui.graphics.Color.Black
+            ),
+            contentPadding = PaddingValues(8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Movie,
+                contentDescription = "Watch Trailer",
+                modifier = Modifier.size(14.3.dp)
+            )
+            if (trailerFocused) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Watch Trailer",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
+                    ),
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
             }
         }
 
@@ -2171,7 +2192,6 @@ fun ActionButtonsRow(
             }
         )
     }
-    
 }
 
 // Helper function to format resolution to standard format (1080p, 4K, etc.)

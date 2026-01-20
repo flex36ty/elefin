@@ -57,6 +57,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.Icon
 import androidx.tv.material3.IconButton
 import androidx.tv.material3.IconButtonDefaults
+import androidx.tv.material3.Button
+import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Tab
 import androidx.tv.material3.TabDefaults
@@ -871,9 +873,7 @@ fun MoviesLibraryScreen(
                     val tabs = buildList {
                         add("Recommendations" to "recommendations")
                         add("$libraryName Library" to "library")
-                        if (hasJellyseerr) {
-                            add("Discover" to "discover")
-                        }
+                        add("Discover" to "discover")
                     }
                     val selectedTabIndex = tabs.indexOfFirst { it.second == selectedTab }.takeIf { it >= 0 } ?: 0
                     
@@ -1734,30 +1734,40 @@ fun MoviesLibraryScreen(
             }
         } else if (selectedTab == "discover") {
             // Discover tab content - Jellyseerr trending/popular/upcoming movies
-            if (jellyseerrApiService == null) {
-                // No Jellyseerr configured
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                if (jellyseerrApiService == null) {
+                    // No Jellyseerr configured
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "Jellyseerr Not Configured",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = Color.White
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "Add your Jellyseerr URL and API key in Settings to discover movies",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Color.White.copy(alpha = 0.7f)
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = "Jellyseerr Not Configured",
+                                style = MaterialTheme.typography.headlineMedium,
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "Add your Jellyseerr URL and API key in Settings to discover movies",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = Color.White.copy(alpha = 0.7f)
+                            )
+                            Spacer(modifier = Modifier.height(32.dp))
+                            Button(
+                                onClick = { showSettings = true },
+                                colors = ButtonDefaults.colors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                )
+                            ) {
+                                Text("Go to Settings")
+                            }
+                        }
                     }
-                }
-            } else if (isDiscoverLoading) {
+                } else if (isDiscoverLoading) {
                 // Loading state
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -2122,7 +2132,8 @@ fun MoviesLibraryScreen(
                                 }
                                 
                                 showSettings = false 
-                            }
+                            },
+                            initialCategory = SettingsCategory.JELLYSEERR
                         )
                     }
                 }

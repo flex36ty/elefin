@@ -17,11 +17,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -48,6 +53,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -118,6 +124,7 @@ fun MovieRequestScreen(
     var requestSuccess by remember { mutableStateOf(false) }
     var requestError by remember { mutableStateOf<String?>(null) }
     var requestStatus by remember { mutableStateOf<Int?>(displayMovie.mediaInfo?.status) }
+    var buttonFocused by remember { mutableStateOf(false) }
     
     // Update request status when full details load
     LaunchedEffect(fullMovieDetails) {
@@ -354,21 +361,48 @@ fun MovieRequestScreen(
                             ),
                             modifier = Modifier
                                 .focusRequester(requestButtonFocusRequester)
+                                .then(
+                                    if (buttonFocused) {
+                                        Modifier
+                                            .wrapContentWidth()
+                                            .height(28.dp)
+                                    } else {
+                                        Modifier.size(28.dp)
+                                    }
+                                )
+                                .animateContentSize(
+                                    animationSpec = tween(
+                                        durationMillis = 300,
+                                        easing = FastOutSlowInEasing
+                                    )
+                                )
+                                .onFocusChanged { buttonFocused = it.isFocused }
+                                .clip(CircleShape)
                                 .focusProperties {
                                     up = FocusRequester.Cancel
                                     down = FocusRequester.Cancel
                                     left = FocusRequester.Cancel
                                     right = FocusRequester.Cancel
                                     exit = { FocusRequester.Cancel }
-                                }
+                                },
+                            contentPadding = PaddingValues(8.dp)
                         ) {
                             if (isRequesting) {
                                 CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    modifier = Modifier.size(14.3.dp), // Match icon size
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    strokeWidth = 2.dp
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Requesting...")
+                                if (buttonFocused) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Requesting...",
+                                        style = MaterialTheme.typography.labelLarge.copy(
+                                            fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
+                                        ),
+                                        modifier = Modifier.padding(horizontal = 12.dp)
+                                    )
+                                }
                             } else {
                                 Icon(
                                     imageVector = when {
@@ -377,17 +411,23 @@ fun MovieRequestScreen(
                                         else -> Icons.Filled.Add // Add icon for request
                                     },
                                     contentDescription = null,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(14.3.dp) // Match Play button icon size
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = when {
-                                        isAvailable -> "Available"
-                                        requestSuccess -> "Requested"
-                                        isAlreadyRequested -> "Pending"
-                                        else -> "Request"
-                                    }
-                                )
+                                if (buttonFocused) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = when {
+                                            isAvailable -> "Available"
+                                            requestSuccess -> "Requested"
+                                            isAlreadyRequested -> "Pending"
+                                            else -> "Request"
+                                        },
+                                        style = MaterialTheme.typography.labelLarge.copy(
+                                            fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
+                                        ),
+                                        modifier = Modifier.padding(horizontal = 12.dp)
+                                    )
+                                }
                             }
                         }
                         

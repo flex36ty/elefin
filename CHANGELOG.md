@@ -4,6 +4,34 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2026-01-19
+
+### Added
+
+- **Buy Me a Coffee Section**
+  - Added a new "Buy Me a Coffee" section to the **Settings** screen.
+  - Features a "Support the Developer" message and a scanable QR code for donations.
+
+### Improved
+
+- **Settings Navigation (Auto-Load)**
+  - Implemented auto-loading for settings categories.
+  - Right-panel content now updates instantly when focusing a sidebar category, providing a smoother navigation experience without extra button presses.
+
+- **Unified Library Discovery**
+  - **Always-Visible Discover Tab**: The Discover tab is now always visible in Movies and TV Shows library screens, even when Jellyseerr is not yet configured.
+  - Added helpful setup prompts and direct shortcuts to settings from the Discover tab.
+  - **Always-Visible Trailer Button**: The "Watch Trailer" button now remains visible on all detail screens.
+  - Added proactive prompts to configure TMDB API keys directly from the trailer button when needed.
+
+### Fixed
+
+- **Full-Screen Settings Dialog**
+  - Fixed an issue where the Settings dialog would not cover the entire screen when launched from detail pages.
+  - Refactored settings state management to ensure a true full-screen overlay experience.
+
+---
+
 ## 2026-01-16
 
 ### Added

@@ -46,6 +46,12 @@ import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
 import androidx.tv.material3.Icon
 import androidx.tv.material3.ListItem
 import androidx.tv.material3.ListItemDefaults
@@ -107,20 +113,22 @@ enum class SettingsCategory(val title: String, val icon: ImageVector) {
     ADVANCED("Advanced", Icons.Default.Settings),
     UPDATES("Updates", Icons.Default.Update),
     JELLYSEERR("Jellyseerr (Discover Content)", Icons.Default.Videocam),
-    ACCOUNT("Account", Icons.Default.Person)
+    ACCOUNT("Account", Icons.Default.Person),
+    COFFEE("Buy Me a Coffee", Icons.Filled.Favorite)
 }
 
 @OptIn(coil.annotation.ExperimentalCoilApi::class)
 @Composable
 fun SettingsScreen(
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    initialCategory: SettingsCategory = SettingsCategory.PLAYBACK
 ) {
     val context = LocalContext.current
     val settings = remember { AppSettings(context) }
     val scope = rememberCoroutineScope()
     
     // Selected category
-    var selectedCategory by remember { mutableStateOf(SettingsCategory.PLAYBACK) }
+    var selectedCategory by remember { mutableStateOf(initialCategory) }
     
     // All settings state
     var mpvEnabled by remember { mutableStateOf(settings.isMpvEnabled) }
@@ -306,7 +314,8 @@ fun SettingsScreen(
                         CategoryItem(
                             category = category,
                             isSelected = selectedCategory == category,
-                            onClick = { selectedCategory = category }
+                            onClick = { selectedCategory = category },
+                            onFocused = { selectedCategory = category }
                         )
                     }
                 }
@@ -1911,6 +1920,48 @@ fun SettingsScreen(
                                 }
                             }
                         }
+
+                        SettingsCategory.COFFEE -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Text(
+                                    text = "Support the Developer",
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    textAlign = TextAlign.Center
+                                )
+                                
+                                Text(
+                                    text = "If you enjoy using Elefin and would like to support its development, consider buying me a coffee! Your support helps keep the project alive and motivated. Thank you!",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(horizontal = 32.dp)
+                                )
+                                
+                                Image(
+                                    painter = painterResource(id = com.flex.elefin.R.drawable.qr_code),
+                                    contentDescription = "Buy Me a Coffee QR Code",
+                                    modifier = Modifier
+                                        .size(180.dp)
+                                        .background(Color.White, RoundedCornerShape(12.dp))
+                                        .padding(12.dp)
+                                        .focusable(),
+                                    contentScale = ContentScale.Fit
+                                )
+                                
+                                Text(
+                                    text = "Scan the QR code to donate",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
                     }
                     
                     // Add some bottom padding
@@ -2049,7 +2100,8 @@ fun SettingsScreen(
 private fun CategoryItem(
     category: SettingsCategory,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onFocused: () -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
     
@@ -2063,7 +2115,12 @@ private fun CategoryItem(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .onFocusChanged { isFocused = it.isFocused },
+            .onFocusChanged { 
+                isFocused = it.isFocused 
+                if (it.isFocused) {
+                    onFocused()
+                }
+            },
         colors = ButtonDefaults.colors(
             containerColor = backgroundColor,
             focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant

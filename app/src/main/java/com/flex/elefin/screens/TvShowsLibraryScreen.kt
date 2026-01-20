@@ -55,6 +55,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.Icon
 import androidx.tv.material3.IconButton
 import androidx.tv.material3.IconButtonDefaults
+import androidx.tv.material3.Button
+import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Tab
 import androidx.tv.material3.TabDefaults
@@ -921,9 +923,7 @@ fun TvShowsLibraryScreen(
                             val tabs = buildList {
                                 add("Recommendations" to "recommendations")
                                 add("$libraryName Library" to "library")
-                                if (hasJellyseerr) {
-                                    add("Discover" to "discover")
-                                }
+                                add("Discover" to "discover")
                             }
                             val selectedTabIndex = tabs.indexOfFirst { it.second == selectedTab }.takeIf { it >= 0 } ?: 0
                             
@@ -1796,6 +1796,16 @@ fun TvShowsLibraryScreen(
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = Color.White.copy(alpha = 0.7f)
                                 )
+                                Spacer(modifier = Modifier.height(32.dp))
+                                Button(
+                                    onClick = { showSettings = true },
+                                    colors = ButtonDefaults.colors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                ) {
+                                    Text("Go to Settings")
+                                }
                             }
                         }
                     } else if (isDiscoverLoading) {
@@ -2166,7 +2176,8 @@ fun TvShowsLibraryScreen(
                                         }
                                         
                                         showSettings = false 
-                                    }
+                                    },
+                                    initialCategory = SettingsCategory.JELLYSEERR
                                 )
                             }
                         }

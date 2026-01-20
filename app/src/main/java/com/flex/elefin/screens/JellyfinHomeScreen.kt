@@ -60,6 +60,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.State
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -445,6 +447,12 @@ fun JellyfinHomeScreen(
         }
     }
     val focusRequester = remember { FocusRequester() }
+    
+    // Primary scroll states for different views
+    val homeLazyListState = rememberLazyListState()
+    val libraryLazyListState = rememberLazyListState()
+    val collectionsLazyListState = rememberLazyListState()
+    
     // highlightedItem is used for background image (debounced)
     var highlightedItem by remember { mutableStateOf<JellyfinItem?>(null) }
     var highlightedItemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
@@ -458,6 +466,7 @@ fun JellyfinHomeScreen(
     var backgroundChangeJob by remember { mutableStateOf<Job?>(null) }
     
     // Plex-style dynamic background palette
+    val paletteCache = remember { mutableMapOf<String, ArtworkPalette>() }
     var currentArtworkPalette by remember { mutableStateOf<ArtworkPalette?>(null) }
     
     // Set initial highlighted item to first continue watching item or first recently added movie
@@ -510,6 +519,15 @@ fun JellyfinHomeScreen(
         }
     }
     
+    // Track scrolling state for background optimization
+    val isScrolling: State<Boolean> = remember {
+        derivedStateOf {
+            homeLazyListState.isScrollInProgress || 
+            libraryLazyListState.isScrollInProgress || 
+            collectionsLazyListState.isScrollInProgress
+        }
+    }
+    
     // Main content (navigation drawer removed due to performance issues - using tab bar instead)
     // Wrap with TV-optimized bring-into-view behavior for better focus handling
     TvBringIntoViewProvider {
@@ -547,6 +565,13 @@ fun JellyfinHomeScreen(
             // Extract palette from the current image URL
             LaunchedEffect(imageUrl) {
                 if (imageUrl.isNotEmpty()) {
+                    // Check cache first
+                    val cacheKey = highlightedItem?.Id ?: imageUrl
+                    paletteCache[cacheKey]?.let {
+                        currentArtworkPalette = it
+                        return@LaunchedEffect
+                    }
+
                     withContext(Dispatchers.IO) {
                         try {
                             val loader = coil.ImageLoader(context)
@@ -561,6 +586,7 @@ fun JellyfinHomeScreen(
                                 if (bitmap != null) {
                                     val palette = PlexPaletteExtractor.extract(context, bitmap)
                                     withContext(Dispatchers.Main) {
+                                        paletteCache[cacheKey] = palette
                                         currentArtworkPalette = palette
                                     }
                                 }
@@ -576,22 +602,19 @@ fun JellyfinHomeScreen(
             
             // Use Crossfade for smooth fade in/out animation
             // In dark mode, don't show background image - use Material dark background instead
+            // Optimization: Disable crossfade while scrolling to reduce GPU load
             if (!darkModeEnabled) {
-                Crossfade(
-                    targetState = imageUrl,
-                    animationSpec = tween(durationMillis = 500),
-                    label = "background_fade"
-                ) { currentUrl ->
-                    if (currentUrl.isNotEmpty() && apiService != null) {
+                if (isScrolling.value) {
+                    // Show target image instantly without animation while scrolling
+                    if (imageUrl.isNotEmpty() && apiService != null) {
                         val headerMap = apiService.getImageRequestHeaders()
                         AsyncImage(
                             model = ImageRequest.Builder(LocalContext.current)
-                                .data(currentUrl)
+                                .data(imageUrl)
                                 .headers(headerMap)
                                 .memoryCachePolicy(CachePolicy.ENABLED)
                                 .diskCachePolicy(CachePolicy.ENABLED)
-                                .crossfade(300) // Smooth 300ms crossfade when loading
-                                .allowHardware(true) // Use GPU memory for faster rendering
+                                .allowHardware(true)
                                 .build(),
                             contentDescription = highlightedItem?.Name ?: "",
                             modifier = Modifier.fillMaxSize(),
@@ -604,6 +627,36 @@ fun JellyfinHomeScreen(
                                 .fillMaxSize()
                                 .background(MaterialTheme.colorScheme.surfaceVariant)
                         )
+                    }
+                } else {
+                    Crossfade(
+                        targetState = imageUrl,
+                        animationSpec = tween(durationMillis = 500),
+                        label = "background_fade"
+                    ) { currentUrl ->
+                        if (currentUrl.isNotEmpty() && apiService != null) {
+                            val headerMap = apiService.getImageRequestHeaders()
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(currentUrl)
+                                    .headers(headerMap)
+                                    .memoryCachePolicy(CachePolicy.ENABLED)
+                                    .diskCachePolicy(CachePolicy.ENABLED)
+                                    .crossfade(300) // Smooth 300ms crossfade when loading
+                                    .allowHardware(true) // Use GPU memory for faster rendering
+                                    .build(),
+                                contentDescription = highlightedItem?.Name ?: "",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.FillBounds,
+                                alignment = Alignment.Center
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                            )
+                        }
                     }
                 }
             } else {
@@ -1316,7 +1369,6 @@ fun JellyfinHomeScreen(
                 }
                 val context = LocalContext.current
                 val imageLoader = context.imageLoader
-                val lazyListState = rememberLazyListState()
                 
                 // Preload images for items that are about to come into view
                 LaunchedEffect(items, apiService, selectedLibraryId, preloadLibraryImages, cacheLibraryImages, reducePosterResolution) {
@@ -1350,9 +1402,9 @@ fun JellyfinHomeScreen(
                 }
                 
                 // Preload images as user scrolls - more aggressive (5 rows ahead)
-                LaunchedEffect(lazyListState.firstVisibleItemIndex, items, apiService, selectedLibraryId, preloadLibraryImages, cacheLibraryImages, reducePosterResolution) {
+                LaunchedEffect(libraryLazyListState.firstVisibleItemIndex, items, apiService, selectedLibraryId, preloadLibraryImages, cacheLibraryImages, reducePosterResolution) {
                     if (preloadLibraryImages && apiService != null && items.isNotEmpty()) {
-                        val firstVisible = lazyListState.firstVisibleItemIndex
+                        val firstVisible = libraryLazyListState.firstVisibleItemIndex
                         val columns = 6
                         val preloadStart = (firstVisible + 5) * columns // Start preloading 5 rows ahead
                         val preloadEnd = minOf(preloadStart + (5 * columns), items.size) // Preload 5 rows
@@ -1412,7 +1464,7 @@ fun JellyfinHomeScreen(
                     LaunchedEffect(selectedLetter, letterIndexMap) {
                         if (selectedLetter != null && letterIndexMap.containsKey(selectedLetter)) {
                             val targetRow = letterIndexMap[selectedLetter] ?: return@LaunchedEffect
-                            lazyListState.animateScrollToItem(targetRow)
+                            libraryLazyListState.animateScrollToItem(targetRow)
                         }
                     }
                     
@@ -1464,7 +1516,7 @@ fun JellyfinHomeScreen(
                                 )
                             ) {
                                 LazyColumn(
-                                    state = lazyListState,
+                                    state = libraryLazyListState,
                                     contentPadding = PaddingValues(bottom = 20.dp * 1.15f, top = 24.dp),
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -1536,7 +1588,7 @@ fun JellyfinHomeScreen(
                                                                 
                                                                 // Debounce: wait 1 second before changing background
                                                                 backgroundChangeJob = scope.launch {
-                                                                    delay(1000)
+                                                                    delay(1300)
                                                                     highlightedItem = item
                                                                 }
                                                             }
@@ -1599,6 +1651,7 @@ fun JellyfinHomeScreen(
             if (selectedCollectionId == "__COLLECTIONS__") {
                 // Content rows - same layout as library screens
                 LazyColumn(
+                    state = collectionsLazyListState,
                     contentPadding = PaddingValues(bottom = 20.dp * 1.15f),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1683,7 +1736,7 @@ fun JellyfinHomeScreen(
                                                         originalEpisodeItem = null
                                                         backgroundChangeJob?.cancel()
                                                         backgroundChangeJob = scope.launch {
-                                                            delay(1000)
+                                                            delay(1300)
                                                             highlightedItem = item
                                                         }
                                                     }
@@ -1708,6 +1761,7 @@ fun JellyfinHomeScreen(
             if (selectedLibraryId == null && selectedCollectionId != "__COLLECTIONS__") {
                     // Default rows when no library or collection is selected
                     LazyColumn(
+                        state = homeLazyListState,
                         contentPadding = PaddingValues(bottom = 20.dp * 1.15f), // 15% increase in bottom padding
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1766,7 +1820,7 @@ fun JellyfinHomeScreen(
                                                     originalEpisodeItem = if (item.Type == "Episode") item else null
                                                     backgroundChangeJob?.cancel()
                                                     backgroundChangeJob = scope.launch {
-                                                        delay(1000)
+                                                        delay(1300)
                                                         if (item.Type == "Episode" && item.SeriesId != null) {
                                                             val seriesDetails = apiService?.getItemDetails(item.SeriesId)
                                                             if (seriesDetails != null) {
@@ -1824,7 +1878,7 @@ fun JellyfinHomeScreen(
                                                     originalEpisodeItem = if (item.Type == "Episode") item else null
                                                     backgroundChangeJob?.cancel()
                                                     backgroundChangeJob = scope.launch {
-                                                        delay(1000)
+                                                        delay(1300)
                                                         if (item.Type == "Episode" && item.SeriesId != null) {
                                                             val seriesDetails = apiService?.getItemDetails(item.SeriesId)
                                                             if (seriesDetails != null) {
@@ -1881,7 +1935,7 @@ fun JellyfinHomeScreen(
                                                             originalEpisodeItem = null
                                                             backgroundChangeJob?.cancel()
                                                             backgroundChangeJob = scope.launch {
-                                                                delay(1000)
+                                                                delay(1300)
                                                                 highlightedItem = item
                                                             }
                                                         }
@@ -1927,7 +1981,7 @@ fun JellyfinHomeScreen(
                                                     originalEpisodeItem = null
                                                     backgroundChangeJob?.cancel()
                                                     backgroundChangeJob = scope.launch {
-                                                        delay(1000)
+                                                        delay(1300)
                                                         highlightedItem = item
                                                     }
                                                 }
@@ -1991,7 +2045,7 @@ fun JellyfinHomeScreen(
                                                             originalEpisodeItem = null
                                                             backgroundChangeJob?.cancel()
                                                             backgroundChangeJob = scope.launch {
-                                                                delay(1000)
+                                                                delay(1300)
                                                                 highlightedItem = item
                                                             }
                                                         }
@@ -2048,7 +2102,7 @@ fun JellyfinHomeScreen(
                                                             originalEpisodeItem = if (item.Type == "Episode") item else null
                                                             backgroundChangeJob?.cancel()
                                                             backgroundChangeJob = scope.launch {
-                                                                delay(1000)
+                                                                delay(1300)
                                                                 if (item.Type == "Episode" && item.SeriesId != null) {
                                                                     val seriesDetails = apiService?.getItemDetails(item.SeriesId)
                                                                     if (seriesDetails != null) {
