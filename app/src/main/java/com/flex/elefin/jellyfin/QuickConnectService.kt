@@ -15,6 +15,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import com.flex.elefin.BuildConfig
 
 class QuickConnectService(
     private val baseUrl: String,
@@ -62,7 +63,7 @@ class QuickConnectService(
             val deviceId = getDeviceId()
             val deviceName = "Android TV"
             val clientName = "Elefin"
-            val clientVersion = "1.0.0"
+            val clientVersion = BuildConfig.VERSION_NAME
             
             val embyAuthHeader = "MediaBrowser Client=\"$clientName\", Device=\"$deviceName\", DeviceId=\"$deviceId\", Version=\"$clientVersion\""
             
@@ -131,7 +132,7 @@ class QuickConnectService(
             val deviceId = getDeviceId()
             val deviceName = "Android TV"
             val clientName = "Elefin"
-            val clientVersion = "1.0.0"
+            val clientVersion = BuildConfig.VERSION_NAME
             
             val embyAuthHeader = "MediaBrowser Client=\"$clientName\", Device=\"$deviceName\", DeviceId=\"$deviceId\", Version=\"$clientVersion\""
             
@@ -191,7 +192,7 @@ class QuickConnectService(
             val deviceId = getDeviceId()
             val deviceName = "Android TV"
             val clientName = "Elefin"
-            val clientVersion = "1.0.0"
+            val clientVersion = BuildConfig.VERSION_NAME
             
             val embyAuthHeader = "MediaBrowser Client=\"$clientName\", Device=\"$deviceName\", DeviceId=\"$deviceId\", Version=\"$clientVersion\""
             

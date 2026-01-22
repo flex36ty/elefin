@@ -18,6 +18,7 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import com.flex.elefin.BuildConfig
 
 @Serializable
 data class AuthenticationRequest(
@@ -82,7 +83,7 @@ class JellyfinAuthService(
             val deviceId = getDeviceId()
             val deviceName = "Android TV"
             val clientName = "Elefin"
-            val clientVersion = "1.1.5"
+            val clientVersion = BuildConfig.VERSION_NAME
             
             val embyAuthHeader = "MediaBrowser Client=\"$clientName\", Device=\"$deviceName\", DeviceId=\"$deviceId\", Version=\"$clientVersion\""
             
