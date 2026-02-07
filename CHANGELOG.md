@@ -4,6 +4,23 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2026-02-07
+
+### Added
+
+- **Dedicated Trailers Category**
+  - Added a new "Trailers" category to the **Settings** screen.
+  - Moved TMDB API key configuration and verification into this dedicated section for better visual organization and separation from Jellyseerr settings.
+
+### Improved
+
+- **Smart Settings Redirection**
+  - Detail screens (Movies and TV Series) now intelligently redirect users directly to the **Trailers** category when prompted to configure a TMDB API key.
+  - Prevents user confusion by landing them on the exact page needed for trailer configuration.
+
+---
+
+
 ## 2026-01-19
 
 ### Added

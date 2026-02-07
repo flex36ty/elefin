@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.Person
@@ -113,6 +114,7 @@ enum class SettingsCategory(val title: String, val icon: ImageVector) {
     ADVANCED("Advanced", Icons.Default.Settings),
     UPDATES("Updates", Icons.Default.Update),
     JELLYSEERR("Jellyseerr (Discover Content)", Icons.Default.Videocam),
+    TRAILERS("Trailers", Icons.Default.Movie),
     ACCOUNT("Account", Icons.Default.Person),
     COFFEE("Buy Me a Coffee", Icons.Filled.Favorite)
 }
@@ -1395,143 +1397,143 @@ fun SettingsScreen(
                                         settings.jellyseerrSearchEnabled = jellyseerrSearchEnabled
                                     }
                                 )
-                                
-                                // TMDB Direct API Key (Fallback)
-                                Spacer(modifier = Modifier.height(16.dp))
-                                val tmdbApiKey = settings.tmdbApiKey
-                                var showTmdbKeyDialog by remember { mutableStateOf(false) }
-                                
-                                SettingButton(
-                                    title = "TMDB API Key (Trailers)",
-                                    description = if (tmdbApiKey.isNotBlank()) 
-                                        "TMDB Key Configured ✓" 
-                                    else 
-                                        "Direct fallback for trailers if Jellyseerr fails",
-                                    buttonText = if (tmdbApiKey.isNotBlank()) "Change" else "Set Key",
-                                    onClick = { showTmdbKeyDialog = true }
-                                )
-                                
-                                if (showTmdbKeyDialog) {
-                                    var apiKeyInput by remember { mutableStateOf(tmdbApiKey) }
-                                    var isVerifying by remember { mutableStateOf(false) }
-                                    var verificationError by remember { mutableStateOf<String?>(null) }
-                                    val scope = rememberCoroutineScope()
-                                    val context = LocalContext.current
-                                    Dialog(
-                                        onDismissRequest = { showTmdbKeyDialog = false },
-                                        properties = DialogProperties(usePlatformDefaultWidth = false)
+                            }
+                        }
+
+                        SettingsCategory.TRAILERS -> {
+                            val tmdbApiKey = settings.tmdbApiKey
+                            var showTmdbKeyDialog by remember { mutableStateOf(false) }
+                            
+                            SettingButton(
+                                title = "TMDB API Key (Trailers Support)",
+                                description = if (tmdbApiKey.isNotBlank()) 
+                                    "TMDB Key Configured ✓" 
+                                else 
+                                    "Required to fetch trailers directly from The Movie Database",
+                                buttonText = if (tmdbApiKey.isNotBlank()) "Change" else "Set Key",
+                                onClick = { showTmdbKeyDialog = true }
+                            )
+                            
+                            if (showTmdbKeyDialog) {
+                                var apiKeyInput by remember { mutableStateOf(tmdbApiKey) }
+                                var isVerifying by remember { mutableStateOf(false) }
+                                var verificationError by remember { mutableStateOf<String?>(null) }
+                                val scope = rememberCoroutineScope()
+                                val context = LocalContext.current
+                                Dialog(
+                                    onDismissRequest = { showTmdbKeyDialog = false },
+                                    properties = DialogProperties(usePlatformDefaultWidth = false)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color.Black.copy(alpha = 0.7f)),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .background(Color.Black.copy(alpha = 0.7f)),
-                                            contentAlignment = Alignment.Center
+                                        Surface(
+                                            modifier = Modifier.width(500.dp),
+                                            shape = RoundedCornerShape(16.dp),
+                                            colors = SurfaceDefaults.colors(
+                                                containerColor = MaterialTheme.colorScheme.surface,
+                                                contentColor = MaterialTheme.colorScheme.onSurface
+                                            )
                                         ) {
-                                            Surface(
-                                                modifier = Modifier.width(500.dp),
-                                                shape = RoundedCornerShape(16.dp),
-                                                colors = SurfaceDefaults.colors(
-                                                    containerColor = MaterialTheme.colorScheme.surface,
-                                                    contentColor = MaterialTheme.colorScheme.onSurface
-                                                )
+                                            Column(
+                                                modifier = Modifier.padding(32.dp),
+                                                verticalArrangement = Arrangement.spacedBy(24.dp)
                                             ) {
-                                                Column(
-                                                    modifier = Modifier.padding(32.dp),
-                                                    verticalArrangement = Arrangement.spacedBy(24.dp)
-                                                ) {
+                                                Text(
+                                                    text = "TMDB API Key",
+                                                    style = MaterialTheme.typography.headlineSmall
+                                                )
+                                                
+                                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                                     Text(
-                                                        text = "TMDB API Key",
-                                                        style = MaterialTheme.typography.headlineSmall
+                                                        text = "Enter your TMDB API Key to fetch trailers directly from The Movie Database.",
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                                     )
                                                     
-                                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                        Text(
-                                                            text = "Enter your TMDB API Key to fetch trailers directly from The Movie Database.",
-                                                            style = MaterialTheme.typography.bodyMedium,
-                                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                                        )
-                                                        
-                                                        OutlinedTextField(
-                                                             value = apiKeyInput,
-                                                             onValueChange = { 
-                                                                 apiKeyInput = it
-                                                                 verificationError = null 
-                                                             },
-                                                             label = { Text("TMDB API Key") },
-                                                             singleLine = true,
-                                                             modifier = Modifier.fillMaxWidth(),
-                                                             isError = verificationError != null,
-                                                             supportingText = {
-                                                                 if (verificationError != null) {
-                                                                     Text(
-                                                                         text = verificationError!!,
-                                                                         color = MaterialTheme.colorScheme.error
-                                                                     )
-                                                                 }
-                                                             },
-                                                             colors = TextFieldDefaults.colors(
-                                                                 focusedTextColor = Color.White,
-                                                                 unfocusedTextColor = Color.White,
-                                                                 focusedContainerColor = Color.Transparent,
-                                                                 unfocusedContainerColor = Color.Transparent,
-                                                                 cursorColor = MaterialTheme.colorScheme.primary,
-                                                                 focusedLabelColor = MaterialTheme.colorScheme.primary,
-                                                                 unfocusedLabelColor = Color.White.copy(alpha = 0.7f),
-                                                                 focusedIndicatorColor = MaterialTheme.colorScheme.primary,
-                                                                 unfocusedIndicatorColor = Color.White.copy(alpha = 0.3f),
-                                                                 errorLabelColor = MaterialTheme.colorScheme.error,
-                                                                 errorIndicatorColor = MaterialTheme.colorScheme.error,
-                                                                 errorSupportingTextColor = MaterialTheme.colorScheme.error
-                                                             )
+                                                    OutlinedTextField(
+                                                         value = apiKeyInput,
+                                                         onValueChange = { 
+                                                             apiKeyInput = it
+                                                             verificationError = null 
+                                                         },
+                                                         label = { Text("TMDB API Key") },
+                                                         singleLine = true,
+                                                         modifier = Modifier.fillMaxWidth(),
+                                                         isError = verificationError != null,
+                                                         supportingText = {
+                                                             if (verificationError != null) {
+                                                                 Text(
+                                                                     text = verificationError!!,
+                                                                     color = MaterialTheme.colorScheme.error
+                                                                 )
+                                                             }
+                                                         },
+                                                         colors = TextFieldDefaults.colors(
+                                                             focusedTextColor = Color.White,
+                                                             unfocusedTextColor = Color.White,
+                                                             focusedContainerColor = Color.Transparent,
+                                                             unfocusedContainerColor = Color.Transparent,
+                                                             cursorColor = MaterialTheme.colorScheme.primary,
+                                                             focusedLabelColor = MaterialTheme.colorScheme.primary,
+                                                             unfocusedLabelColor = Color.White.copy(alpha = 0.7f),
+                                                             focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                                                             unfocusedIndicatorColor = Color.White.copy(alpha = 0.3f),
+                                                             errorLabelColor = MaterialTheme.colorScheme.error,
+                                                             errorIndicatorColor = MaterialTheme.colorScheme.error,
+                                                             errorSupportingTextColor = MaterialTheme.colorScheme.error
                                                          )
+                                                     )
+                                                }
+                                                
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                                ) {
+                                                    Button(
+                                                        onClick = { showTmdbKeyDialog = false },
+                                                        modifier = Modifier.weight(1f),
+                                                        enabled = !isVerifying,
+                                                        colors = ButtonDefaults.colors(
+                                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                                        )
+                                                    ) {
+                                                        Text("Cancel")
                                                     }
                                                     
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                                    ) {
-                                                        Button(
-                                                            onClick = { showTmdbKeyDialog = false },
-                                                            modifier = Modifier.weight(1f),
-                                                            enabled = !isVerifying,
-                                                            colors = ButtonDefaults.colors(
-                                                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                                            )
-                                                        ) {
-                                                            Text("Cancel")
-                                                        }
-                                                        
-                                                        Button(
-                                                            onClick = {
-                                                                isVerifying = true
-                                                                verificationError = null
-                                                                scope.launch {
-                                                                    val result = com.flex.elefin.tmdb.TmdbApiService.verifyKey(apiKeyInput)
-                                                                    isVerifying = false
-                                                                    when (result) {
-                                                                        is com.flex.elefin.tmdb.TmdbApiService.VerificationResult.Success -> {
-                                                                            settings.tmdbApiKey = apiKeyInput.trim()
-                                                                            showTmdbKeyDialog = false
-                                                                            Toast.makeText(context, "TMDB Key Verified ✓", Toast.LENGTH_SHORT).show()
-                                                                        }
-                                                                        is com.flex.elefin.tmdb.TmdbApiService.VerificationResult.Error -> {
-                                                                            verificationError = result.message
-                                                                        }
+                                                    Button(
+                                                        onClick = {
+                                                            isVerifying = true
+                                                            verificationError = null
+                                                            scope.launch {
+                                                                val result = com.flex.elefin.tmdb.TmdbApiService.verifyKey(apiKeyInput)
+                                                                isVerifying = false
+                                                                when (result) {
+                                                                    is com.flex.elefin.tmdb.TmdbApiService.VerificationResult.Success -> {
+                                                                        settings.tmdbApiKey = apiKeyInput.trim()
+                                                                        showTmdbKeyDialog = false
+                                                                        Toast.makeText(context, "TMDB Key Verified ✓", Toast.LENGTH_SHORT).show()
+                                                                    }
+                                                                    is com.flex.elefin.tmdb.TmdbApiService.VerificationResult.Error -> {
+                                                                        verificationError = result.message
                                                                     }
                                                                 }
-                                                            },
-                                                            modifier = Modifier.weight(1f),
-                                                            enabled = !isVerifying
-                                                        ) {
-                                                            if (isVerifying) {
-                                                                CircularProgressIndicator(
-                                                                    modifier = Modifier.size(24.dp),
-                                                                    color = MaterialTheme.colorScheme.onPrimary,
-                                                                    strokeWidth = 2.dp
-                                                                )
-                                                            } else {
-                                                                Text("Save")
                                                             }
+                                                        },
+                                                        modifier = Modifier.weight(1f),
+                                                        enabled = !isVerifying
+                                                    ) {
+                                                        if (isVerifying) {
+                                                            CircularProgressIndicator(
+                                                                modifier = Modifier.size(24.dp),
+                                                                color = MaterialTheme.colorScheme.onPrimary,
+                                                                strokeWidth = 2.dp
+                                                            )
+                                                        } else {
+                                                            Text("Save")
                                                         }
                                                     }
                                                 }

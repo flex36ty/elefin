@@ -337,7 +337,7 @@ fun MovieDetailsScreen(
     if (showSettings) {
         SettingsScreen(
             onBack = { showSettings = false },
-            initialCategory = com.flex.elefin.screens.SettingsCategory.JELLYSEERR
+            initialCategory = com.flex.elefin.screens.SettingsCategory.TRAILERS
         )
     }
 }
