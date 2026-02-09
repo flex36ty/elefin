@@ -16,10 +16,11 @@ final class ClientsConstants {
     static final String WEB_CLIENT_ID = "1";
     static final String WEB_CLIENT_NAME = "WEB";
     /**
-     * The client version for InnerTube requests with the {@code WEB} client, used as the last
+     * The client version for InnerTube requests with the {@code WEB} client, used
+     * as the last
      * fallback if the extraction of the real one failed.
      */
-    static final String WEB_HARDCODED_CLIENT_VERSION = "2.20250122.04.00";
+    static final String WEB_HARDCODED_CLIENT_VERSION = "2.20250205.01.00";
 
     // WEB_REMIX (YouTube Music) client fields
 
@@ -35,8 +36,7 @@ final class ClientsConstants {
     static final String TVHTML5_DEVICE_MAKE = "Sony";
     static final String TVHTML5_DEVICE_MODEL_AND_OS_NAME = "PlayStation 4";
     // CHECKSTYLE:OFF
-    static final String TVHTML5_USER_AGENT =
-            "Mozilla/5.0 (PlayStation; PlayStation 4/12.00) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.4 Safari/605.1.15";
+    static final String TVHTML5_USER_AGENT = "Mozilla/5.0 (PlayStation; PlayStation 4/12.00) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.4 Safari/605.1.15";
     // CHECKSTYLE:ON
 
     // WEB_EMBEDDED_PLAYER (YouTube embeds)
@@ -57,38 +57,46 @@ final class ClientsConstants {
     static final String IOS_CLIENT_NAME = "IOS";
 
     /**
-     * The hardcoded client version of the iOS app used for InnerTube requests with this client.
+     * The hardcoded client version of the iOS app used for InnerTube requests with
+     * this client.
      *
      * <p>
      * It can be extracted by getting the latest release version of the app on
-     * <a href="https://apps.apple.com/us/app/youtube-watch-listen-stream/id544007664/">the App
+     * <a href=
+     * "https://apps.apple.com/us/app/youtube-watch-listen-stream/id544007664/">the
+     * App
      * Store page of the YouTube app</a>, in the {@code What’s New} section.
      * </p>
      */
     static final String IOS_CLIENT_VERSION = "20.03.02";
 
     /**
-     * The device machine id for the iPhone 15 Pro Max, used to get 60fps with the {@code iOS}
+     * The device machine id for the iPhone 15 Pro Max, used to get 60fps with the
+     * {@code iOS}
      * client.
      *
      * <p>
-     * See <a href="https://gist.github.com/adamawolf/3048717">this GitHub Gist</a> for more
+     * See <a href="https://gist.github.com/adamawolf/3048717">this GitHub Gist</a>
+     * for more
      * information.
      * </p>
      */
     static final String IOS_DEVICE_MODEL = "iPhone16,2";
 
     /**
-     * The iOS version to be used in JSON POST requests, the one of an iPhone 15 Pro Max running
-     * iOS 18.2.1 with the hardcoded version of the iOS app (for the {@code "osVersion"} field).
+     * The iOS version to be used in JSON POST requests, the one of an iPhone 15 Pro
+     * Max running
+     * iOS 18.2.1 with the hardcoded version of the iOS app (for the
+     * {@code "osVersion"} field).
      *
      * <p>
      * The value of this field seems to use the following structure:
      * "iOS major version.minor version.patch version.build version", where
      * "patch version" is equal to 0 if it isn't set
      * The build version corresponding to the iOS version used can be found on
-     * <a href="https://theapplewiki.com/wiki/Firmware/iPhone/18.x#iPhone_15_Pro_Max">
-     *     https://theapplewiki.com/wiki/Firmware/iPhone/18.x#iPhone_15_Pro_Max</a>
+     * <a href=
+     * "https://theapplewiki.com/wiki/Firmware/iPhone/18.x#iPhone_15_Pro_Max">
+     * https://theapplewiki.com/wiki/Firmware/iPhone/18.x#iPhone_15_Pro_Max</a>
      * </p>
      *
      * @see #IOS_USER_AGENT_VERSION
@@ -112,13 +120,16 @@ final class ClientsConstants {
     static final String ANDROID_CLIENT_NAME = "ANDROID";
 
     /**
-     * The hardcoded client version of the Android app used for InnerTube requests with this
+     * The hardcoded client version of the Android app used for InnerTube requests
+     * with this
      * client.
      *
      * <p>
-     * It can be extracted by getting the latest release version of the app in an APK repository
-     * such as <a href="https://www.apkmirror.com/apk/google-inc/youtube/">APKMirror</a>.
+     * It can be extracted by getting the latest release version of the app in an
+     * APK repository
+     * such as
+     * <a href="https://www.apkmirror.com/apk/google-inc/youtube/">APKMirror</a>.
      * </p>
      */
-    static final String ANDROID_CLIENT_VERSION = "19.28.35";
+    static final String ANDROID_CLIENT_VERSION = "19.45.36";
 }

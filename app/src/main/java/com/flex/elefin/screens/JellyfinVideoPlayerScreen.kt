@@ -355,6 +355,7 @@ fun JellyfinVideoPlayerScreen(
     var is4KContent by remember { mutableStateOf(false) } // Track if current content is 4K
     // Store subtitle streams list for composite key registration in onTracksChanged
     var jellyfinSubtitleStreams by remember { mutableStateOf<List<MediaStream>>(emptyList()) }
+    
     // Downloaded subtitles from OpenSubtitles
     var downloadedSubtitles by remember { mutableStateOf<List<com.flex.elefin.subtitles.DownloadedSubtitle>>(emptyList()) }
     var nextEpisodeId by remember { mutableStateOf<String?>(null) } // Next episode ID for autoplay
