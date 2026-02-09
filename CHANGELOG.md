@@ -4,6 +4,17 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2026-02-09
+
+### Fixed
+
+- **YouTube Trailer Playback**
+  - Resolved "The page needs to be reloaded" error that prevented YouTube trailers from playing.
+  - Updated YouTube client versions to maintain compatibility with recent YouTube platform changes.
+  - Implemented a robust fallback mechanism to the Android client when the Web client encounters playability issues.
+
+---
+
 ## 2026-02-07
 
 ### Added
