@@ -381,10 +381,19 @@ fun SeriesDetailsScreen(
         seasons[selectedSeasonIndex]
     } else null
     
-    // Get backdrop URL - same pattern as MovieDetailsScreen
-    // Use 1080p resolution - sufficient for background images and faster loading
-    val backdropUrl = remember(displayItem) {
-        apiService?.getImageUrl(displayItem.Id, "Backdrop", null, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
+    // Determine which item to use for the backdrop
+    // We prefer the focused season, then the selected season, then the series details
+    // BUT only if they actually have a Backdrop image tag to avoid showing a blank background
+    val backgroundItem = remember(focusedSeason, selectedSeason, itemDetails, item) {
+        val focusedWithBackdrop = focusedSeason?.takeIf { it.ImageTags?.containsKey("Backdrop") == true }
+        val selectedWithBackdrop = selectedSeason?.takeIf { it.ImageTags?.containsKey("Backdrop") == true }
+        val detailsWithBackdrop = itemDetails?.takeIf { it.ImageTags?.containsKey("Backdrop") == true }
+        
+        focusedWithBackdrop ?: selectedWithBackdrop ?: detailsWithBackdrop ?: item
+    }
+
+    val backdropUrl = remember(backgroundItem) {
+        apiService?.getImageUrl(backgroundItem.Id, "Backdrop", null, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -510,6 +519,9 @@ fun SeriesDetailsScreen(
                     isLoadingEpisodes = isLoadingEpisodes,
                     onEpisodeFocused = { episode ->
                         focusedEpisode = episode
+                    },
+                    onSeasonFocused = { season ->
+                        focusedSeason = season
                     },
                     onEpisodesRefreshRequested = {
                         refreshEpisodesAfterWatched = true
@@ -982,6 +994,7 @@ fun SeriesBottomContainer(
     apiService: JellyfinApiService?,
     isLoadingEpisodes: Boolean,
     onEpisodeFocused: (JellyfinItem?) -> Unit,
+    onSeasonFocused: (JellyfinItem?) -> Unit,
     onEpisodesRefreshRequested: () -> Unit,
     initialEpisodeId: String? = null,
     episodeFocusRequesters: MutableMap<String, FocusRequester>? = null,
@@ -1197,6 +1210,11 @@ fun SeriesBottomContainer(
                                         )
                                         .onFocusChanged { focusState ->
                                             isFocused = focusState.isFocused
+                                            if (focusState.isFocused) {
+                                                onSeasonFocused(season)
+                                            } else {
+                                                onSeasonFocused(null)
+                                            }
                                         }
                                         .onKeyEvent { keyEvent ->
                                             // When pressing down from season buttons, restore focus to last focused episode
@@ -1219,8 +1237,10 @@ fun SeriesBottomContainer(
                                         }
                                         .clip(CircleShape),
                                     colors = ButtonDefaults.colors(
-                                        containerColor = MaterialTheme.colorScheme.surface,
-                                        contentColor = MaterialTheme.colorScheme.onSurface
+                                        containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                                        contentColor = androidx.compose.ui.graphics.Color.White,
+                                        focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                                        focusedContentColor = androidx.compose.ui.graphics.Color.Black
                                     ),
                                     contentPadding = PaddingValues(8.dp)
                                 ) {
@@ -1991,6 +2011,8 @@ fun EpisodeActionButtonsRow(
         }
     }
     
+    val playButtonLabel = if (isResumable) "Play From Start" else "Play"
+    
     Box(
         modifier = modifier
             .padding(top = 12.dp, bottom = 0.dp) // 25% less top padding (16 * 0.75 = 12), no bottom padding
@@ -2010,7 +2032,7 @@ fun EpisodeActionButtonsRow(
             // Resume button (only show if resumable, on the left)
             if (isResumable) {
                 if (useAnimatedButton) {
-                AnimatedPlayButton(
+                    AnimatedPlayButton(
                         onClick = {
                             val intent = JellyfinVideoPlayerActivity.createIntent(
                                 context = context,
@@ -2022,12 +2044,11 @@ fun EpisodeActionButtonsRow(
                             context.startActivity(intent)
                         },
                         label = "Resume",
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = MaterialTheme.colorScheme.onSurface
+                        containerColor = androidx.compose.ui.graphics.Color.White,
+                        contentColor = androidx.compose.ui.graphics.Color.Black
                     )
                 } else {
                     var resumeFocused by remember { mutableStateOf(false) }
-                    
                     Button(
                         onClick = {
                             val intent = JellyfinVideoPlayerActivity.createIntent(
@@ -2042,66 +2063,51 @@ fun EpisodeActionButtonsRow(
                         modifier = Modifier
                             .then(
                                 if (resumeFocused) {
-                                    Modifier
-                                        .wrapContentWidth()
-                                        .height(28.dp)
+                                    Modifier.wrapContentWidth().height(28.dp)
                                 } else {
                                     Modifier.size(28.dp)
                                 }
                             )
-                            .animateContentSize(
-                                animationSpec = tween(
-                                    durationMillis = 300,
-                                    easing = FastOutSlowInEasing
-                                )
-                            )
+                            .animateContentSize()
                             .onFocusChanged { resumeFocused = it.isFocused }
                             .clip(CircleShape),
                         colors = ButtonDefaults.colors(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            contentColor = MaterialTheme.colorScheme.onSurface
+                            containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                            contentColor = androidx.compose.ui.graphics.Color.White,
+                            focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                            focusedContentColor = androidx.compose.ui.graphics.Color.Black
                         ),
+                        shape = ButtonDefaults.shape(CircleShape),
                         contentPadding = PaddingValues(8.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Resume",
-                            modifier = Modifier.size(14.3.dp)
-                        )
+                        Icon(imageVector = Icons.Default.Refresh, contentDescription = "Resume", modifier = Modifier.size(14.3.dp))
                         if (resumeFocused) {
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Resume",
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                                ),
-                                modifier = Modifier.padding(horizontal = 12.dp)
-                            )
+                            Text("Resume", style = MaterialTheme.typography.labelLarge.copy(fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f), modifier = Modifier.padding(horizontal = 12.dp))
                         }
                     }
                 }
             }
-            
+
             // Play button - always shows, plays from beginning
             if (useAnimatedButton) {
                 AnimatedPlayButton(
-                        onClick = {
-                            val intent = JellyfinVideoPlayerActivity.createIntent(
-                                context = context,
-                                itemId = displayEpisode.Id,
-                                resumePositionMs = 0L,
-                                subtitleStreamIndex = storedSubtitleIndex ?: defaultSubtitleIndex,
-                                audioStreamIndex = storedAudioIndex ?: defaultAudioIndex
-                            )
-                            context.startActivity(intent)
-                        },
-                    label = "Play",
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.onSurface
+                    onClick = {
+                        val intent = JellyfinVideoPlayerActivity.createIntent(
+                            context = context,
+                            itemId = displayEpisode.Id,
+                            resumePositionMs = 0L,
+                            subtitleStreamIndex = storedSubtitleIndex ?: defaultSubtitleIndex,
+                            audioStreamIndex = storedAudioIndex ?: defaultAudioIndex
+                        )
+                        context.startActivity(intent)
+                    },
+                    label = playButtonLabel,
+                    containerColor = androidx.compose.ui.graphics.Color.White,
+                    contentColor = androidx.compose.ui.graphics.Color.Black
                 )
             } else {
                 var playFocused by remember { mutableStateOf(false) }
-                
                 Button(
                     onClick = {
                         val intent = JellyfinVideoPlayerActivity.createIntent(
@@ -2116,44 +2122,31 @@ fun EpisodeActionButtonsRow(
                     modifier = Modifier
                         .then(
                             if (playFocused) {
-                                Modifier
-                                    .wrapContentWidth()
-                                    .height(28.dp)
+                                Modifier.wrapContentWidth().height(28.dp)
                             } else {
                                 Modifier.size(28.dp)
                             }
                         )
-                        .animateContentSize(
-                            animationSpec = tween(
-                                durationMillis = 300,
-                                easing = FastOutSlowInEasing
-                            )
-                        )
+                        .animateContentSize()
                         .onFocusChanged { playFocused = it.isFocused }
                         .clip(CircleShape),
                     colors = ButtonDefaults.colors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = MaterialTheme.colorScheme.onSurface
+                        containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                        contentColor = androidx.compose.ui.graphics.Color.White,
+                        focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                        focusedContentColor = androidx.compose.ui.graphics.Color.Black
                     ),
+                    shape = ButtonDefaults.shape(CircleShape),
                     contentPadding = PaddingValues(8.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Play",
-                        modifier = Modifier.size(14.3.dp)
-                    )
+                    Icon(imageVector = Icons.Default.PlayArrow, contentDescription = "Play", modifier = Modifier.size(14.3.dp))
                     if (playFocused) {
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Play",
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                            ),
-                            modifier = Modifier.padding(horizontal = 12.dp)
-                        )
+                        Text(playButtonLabel, style = MaterialTheme.typography.labelLarge.copy(fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f), modifier = Modifier.padding(horizontal = 12.dp))
                     }
                 }
             }
+        }
             
             // Audio track button (only show if media has multiple audio tracks)
             if (hasMultiAudio) {
@@ -2182,9 +2175,12 @@ fun EpisodeActionButtonsRow(
                     .onFocusChanged { audioFocused = it.isFocused }
                     .clip(CircleShape),
                 colors = ButtonDefaults.colors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.onSurface
+                    containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                    contentColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
+                shape = ButtonDefaults.shape(CircleShape),
                 contentPadding = PaddingValues(8.dp)
             ) {
                 Icon(
@@ -2231,9 +2227,12 @@ fun EpisodeActionButtonsRow(
                     .onFocusChanged { subtitleFocused = it.isFocused }
                     .clip(CircleShape),
                 colors = ButtonDefaults.colors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.onSurface
+                    containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                    contentColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
+                shape = ButtonDefaults.shape(CircleShape),
                 contentPadding = PaddingValues(8.dp)
             ) {
                 Icon(
@@ -2291,9 +2290,12 @@ fun EpisodeActionButtonsRow(
                     .onFocusChanged { trailerFocused = it.isFocused }
                     .clip(CircleShape),
                 colors = ButtonDefaults.colors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.onSurface
+                    containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                    contentColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
+                shape = ButtonDefaults.shape(CircleShape),
                 contentPadding = PaddingValues(8.dp)
             ) {
                 Icon(
@@ -2385,9 +2387,12 @@ fun EpisodeActionButtonsRow(
                     .onFocusChanged { watchedFocused = it.isFocused }
                     .clip(CircleShape),
                 colors = ButtonDefaults.colors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.onSurface
+                    containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                    contentColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
+                shape = ButtonDefaults.shape(CircleShape),
                 contentPadding = PaddingValues(8.dp)
             ) {
                 Icon(
@@ -2404,7 +2409,6 @@ fun EpisodeActionButtonsRow(
                         )
                     )
                 }
-            }
             }
             
             // Right side: Selected subtitle and Watched indicator

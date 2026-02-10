@@ -41,7 +41,8 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
-import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.MediaMetadata
+import androidx.media3.session.MediaSession
 import androidx.media3.ui.PlayerView
 import com.flex.elefin.jellyfin.JellyfinApiService
 import com.flex.elefin.jellyfin.JellyfinItem
@@ -255,6 +256,8 @@ fun JellyfinVideoPlayerScreen(
             setParameters(
                 buildUponParameters()
                     .setForceHighestSupportedBitrate(true)
+                    // Audio preference - use system default language
+                    .setPreferredAudioLanguage(java.util.Locale.getDefault().language)
                     // Subtitle preferences - disable ALL auto-selection but allow manual control
                     .setSelectUndeterminedTextLanguage(false)  // Don't auto-select unknown language subs
                     .setDisabledTextTrackSelectionFlags(C.SELECTION_FLAG_FORCED or C.SELECTION_FLAG_DEFAULT)  // Disable forced AND default auto-selection
@@ -304,6 +307,8 @@ fun JellyfinVideoPlayerScreen(
                 .setTrackSelector(trackSelector)
                 .setAudioAttributes(audioAttributes, true)
                 .setLoadControl(loadControl)
+                .setSeekBackIncrementMs(15000)
+                .setSeekForwardIncrementMs(15000)
                 .build()
                 .also { 
                 if (settings.minimalBuffer4K) {
@@ -312,6 +317,20 @@ fun JellyfinVideoPlayerScreen(
                     Log.d("JellyfinPlayer", "Created player with standard buffering (250MB limit)")
                 }
                     Log.d("JellyfinPlayer", "Extension renderer mode: PREFER, Decoder fallback: enabled")
+        }
+    }
+    
+    // Create MediaSession to handle system media keys and focus
+    DisposableEffect(player) {
+        val mediaSession = MediaSession.Builder(context, player)
+            .setId("ElefinVideoSession_${item.Id}")
+            .build()
+            
+        Log.d("JellyfinPlayer", "MediaSession created for item ${item.Id}")
+        
+        onDispose {
+            Log.d("JellyfinPlayer", "Releasing MediaSession")
+            mediaSession.release()
         }
     }
     
@@ -859,13 +878,25 @@ fun JellyfinVideoPlayerScreen(
                             if (allSubtitleConfigs.isNotEmpty()) {
                                 MediaItem.Builder()
                                     .setUri(Uri.parse(currentMediaUrl))
+                                    .setMediaMetadata(
+                                        MediaMetadata.Builder()
+                                            .setTitle(item.Name)
+                                            .build()
+                                    )
                                     .setSubtitleConfigurations(allSubtitleConfigs)
                                     .build().also {
                                         Log.d("JellyfinPlayer", "✅ MediaItem created with ${allSubtitleConfigs.size} subtitle configuration(s)")
                                     }
                             } else {
                                 Log.d("JellyfinPlayer", "No valid subtitle configurations - creating MediaItem without subtitles")
-                                MediaItem.fromUri(Uri.parse(currentMediaUrl))
+                                MediaItem.Builder()
+                                    .setUri(Uri.parse(currentMediaUrl))
+                                    .setMediaMetadata(
+                                        MediaMetadata.Builder()
+                                            .setTitle(item.Name)
+                                            .build()
+                                    )
+                                    .build()
                             }
                         } catch (e: Exception) {
                             Log.e("JellyfinPlayer", "❌ Error creating MediaItem with subtitles: ${e.message}", e)
@@ -2456,7 +2487,8 @@ fun JellyfinVideoPlayerScreen(
                     false
                 }
             }
-    ) {
+    )
+ {
         when {
             mediaUrl != null -> {
                 Box(modifier = Modifier.fillMaxSize()) {

@@ -745,6 +745,8 @@ class JellyfinApiService(
                 android.util.Log.d("JellyfinAPI", "Item ${item.Id} is resumable at position ${item.UserData?.PositionTicks} ticks (${seconds} seconds)")
             }
             item
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             android.util.Log.e("JellyfinAPI", "Error fetching item details", e)
             e.printStackTrace()
@@ -1305,6 +1307,8 @@ class JellyfinApiService(
             // Cache the result
             seasonCache[seriesId] = System.currentTimeMillis() to seasons
             seasons
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             android.util.Log.e("JellyfinAPI", "Error fetching seasons for series $seriesId", e)
             e.printStackTrace()
@@ -1340,6 +1344,8 @@ class JellyfinApiService(
             // Cache the result
             episodeCache[seasonId] = System.currentTimeMillis() to episodes
             episodes
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             android.util.Log.e("JellyfinAPI", "Error fetching episodes for season $seasonId", e)
             e.printStackTrace()

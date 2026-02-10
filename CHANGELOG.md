@@ -4,9 +4,38 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2026-02-10
+
+### Added
+
+- **Season-Specific Backdrops**
+  - Updated the TV Series detail screen to dynamically change the background artwork based on the focused or selected season.
+  - Implemented robust artwork validation that checks for the existence of "Backdrop" tags before switching, ensuring a reliable fallback to the series background if season-specific art is missing.
+
+### Improved
+
+- **Rounded Action Buttons**
+  - Updated action buttons on Movie and TV Series info screens (Play, Resume, Trailer, etc.) to feature a modern rounded (stadium) shape when focused and expanded.
+
+- **Transparent Glass Season Buttons**
+  - Updated the season selector buttons on the series info screen to use a modern "transparent glass" aesthetic when unfocused.
+  - Implemented light, high-legibility numbers against a semi-transparent background to match the style of the main action buttons.
+
+### Fixed
+
+- **API Log Clutter**
+  - Enhanced `JellyfinApiService` to correctly handle `CancellationException`. These are now re-thrown without being logged as errors, preventing normal coroutine lifecycle cancellations from cluttering the system logs.
+
+---
+
+
 ## 2026-02-09
 
 ### Fixed
+
+- **Automatic Audio Language Selection**
+  - ExoPlayer now automatically selects audio tracks that match the system's default language (e.g., automatically choosing English audio if the device language is set to English).
+  - Maintains compatibility with manual track selection and saved preferences.
 
 - **YouTube Trailer Playback**
   - Resolved "The page needs to be reloaded" error that prevented YouTube trailers from playing.

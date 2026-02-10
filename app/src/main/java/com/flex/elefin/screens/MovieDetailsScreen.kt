@@ -1725,8 +1725,8 @@ fun ActionButtonsRow(
                         // Don't finish - let back button return to movie details screen
                     },
                     label = "Resume",
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    containerColor = androidx.compose.ui.graphics.Color.White,
+                    contentColor = androidx.compose.ui.graphics.Color.Black,
                     modifier = Modifier.focusRequester(resumeFocusRequester)
                 )
             } else {
@@ -1765,11 +1765,12 @@ fun ActionButtonsRow(
                         .onFocusChanged { resumeFocused = it.isFocused }
                         .clip(CircleShape),
                     colors = ButtonDefaults.colors(
-                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
-                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                        contentColor = androidx.compose.ui.graphics.Color.White,
                         focusedContainerColor = androidx.compose.ui.graphics.Color.White,
                         focusedContentColor = androidx.compose.ui.graphics.Color.Black
                     ),
+                    shape = ButtonDefaults.shape(CircleShape),
                     contentPadding = PaddingValues(8.dp)
                 ) {
                     Icon(
@@ -1807,8 +1808,8 @@ fun ActionButtonsRow(
                     // Don't finish - let back button return to movie details screen
                 },
                 label = playButtonLabel,
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.onSurface
+                containerColor = androidx.compose.ui.graphics.Color.White,
+                contentColor = androidx.compose.ui.graphics.Color.Black
             )
         } else {
             var playFocused by remember { mutableStateOf(false) }
@@ -1845,11 +1846,12 @@ fun ActionButtonsRow(
                     .onFocusChanged { playFocused = it.isFocused }
                     .clip(CircleShape),
                 colors = ButtonDefaults.colors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
-                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                    contentColor = androidx.compose.ui.graphics.Color.White,
                     focusedContainerColor = androidx.compose.ui.graphics.Color.White,
                     focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
+                    shape = ButtonDefaults.shape(CircleShape),
                 contentPadding = PaddingValues(8.dp)
             ) {
                 Icon(
@@ -1899,13 +1901,14 @@ fun ActionButtonsRow(
                 )
                 .onFocusChanged { audioFocused = it.isFocused }
                 .clip(CircleShape),
-            colors = ButtonDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                focusedContainerColor = androidx.compose.ui.graphics.Color.White,
-                focusedContentColor = androidx.compose.ui.graphics.Color.Black
-            ),
-            contentPadding = PaddingValues(8.dp)
+                colors = ButtonDefaults.colors(
+                    containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                    contentColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContentColor = androidx.compose.ui.graphics.Color.Black
+                ),
+                shape = ButtonDefaults.shape(CircleShape),
+                contentPadding = PaddingValues(8.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.VolumeUp,
@@ -1951,11 +1954,12 @@ fun ActionButtonsRow(
                 .onFocusChanged { subtitleFocused = it.isFocused }
                 .clip(CircleShape),
             colors = ButtonDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
-                contentColor = MaterialTheme.colorScheme.onSurface,
+                containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                contentColor = androidx.compose.ui.graphics.Color.White,
                 focusedContainerColor = androidx.compose.ui.graphics.Color.White,
                 focusedContentColor = androidx.compose.ui.graphics.Color.Black
             ),
+            shape = ButtonDefaults.shape(CircleShape),
             contentPadding = PaddingValues(8.dp)
         ) {
             Icon(
@@ -2013,11 +2017,12 @@ fun ActionButtonsRow(
                 .onFocusChanged { trailerFocused = it.isFocused }
                 .clip(CircleShape),
             colors = ButtonDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
-                contentColor = MaterialTheme.colorScheme.onSurface,
+                containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                contentColor = androidx.compose.ui.graphics.Color.White,
                 focusedContainerColor = androidx.compose.ui.graphics.Color.White,
                 focusedContentColor = androidx.compose.ui.graphics.Color.Black
             ),
+            shape = ButtonDefaults.shape(CircleShape),
             contentPadding = PaddingValues(8.dp)
         ) {
             Icon(
@@ -2098,11 +2103,12 @@ fun ActionButtonsRow(
                 .onFocusChanged { watchedFocused = it.isFocused }
                 .clip(CircleShape),
             colors = ButtonDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
-                contentColor = MaterialTheme.colorScheme.onSurface,
+                containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                contentColor = androidx.compose.ui.graphics.Color.White,
                 focusedContainerColor = androidx.compose.ui.graphics.Color.White,
                 focusedContentColor = androidx.compose.ui.graphics.Color.Black
             ),
+            shape = ButtonDefaults.shape(CircleShape),
             contentPadding = PaddingValues(8.dp)
         ) {
             Icon(

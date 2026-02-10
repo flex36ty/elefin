@@ -27,6 +27,7 @@ import androidx.compose.ui.focus.focusTarget
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import com.flex.elefin.JellyfinAppTheme
 import com.flex.elefin.jellyfin.AppSettings
@@ -35,6 +36,7 @@ import com.flex.elefin.jellyfin.JellyfinConfig
 import `is`.xyz.mpv.MPVLib
 import `is`.xyz.mpv.MPVView
 import `is`.xyz.mpv.MPVView.Track
+import com.flex.elefin.player.SubtitleDownloader
 import kotlinx.coroutines.*
 import java.io.File
 
@@ -148,11 +150,16 @@ class MpvTvPlayerActivity : ComponentActivity() {
         super.onPause()
         Log.d(TAG, "onPause called - Stopping playback")
         // Force pause via property to ensure it sticks at the core level
-        MPVLib.setPropertyBoolean("pause", true)
-        mpvView?.pause()
-        // Surface lifecycle hardening:
-        // When activity pauses (often before destroy), disable video keys to avoid surface detach crash
-        // mpvView?.onPause() // If MPVAndroidView exposes this
+        // Offload to background to avoid blocking main thread during pause
+        val currentMpvView = mpvView
+        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                `is`.xyz.mpv.MPVLib.setPropertyBoolean("pause", true)
+                currentMpvView?.pause()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error pausing MPV in onPause", e)
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -187,6 +194,7 @@ private fun MpvPlayerScreen(
     onMpvViewCreated: (MPVView) -> Unit,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var mpvViewRef by remember { mutableStateOf<MPVView?>(null) }
     
@@ -220,6 +228,21 @@ private fun MpvPlayerScreen(
     var currentJellyfinAudioIndex by remember { mutableStateOf(initialAudioStreamIndex) }
     var currentJellyfinSubtitleIndex by remember { mutableStateOf(initialSubtitleStreamIndex) }
     
+    // Resolved Subtitle Path (Local Cache)
+    var resolvedSubtitlePath by remember { mutableStateOf<String?>(null) }
+    var isSubtitleReady by remember { mutableStateOf(false) }
+
+    // Reinforce subtitle visibility on track change
+    LaunchedEffect(currentSubtitleId) {
+        if (currentSubtitleId != -1) {
+            withContext(Dispatchers.IO) {
+                Log.d("MpvTvPlayer", "Reinforcing subtitle visibility for track: $currentSubtitleId")
+                MPVLib.setPropertyBoolean("sub-visibility", true)
+                MPVLib.setPropertyString("sub-ass-override", "force")
+            }
+        }
+    }
+
     // Progress reporting job
     var progressReportingJob by remember { mutableStateOf<Job?>(null) }
 
@@ -333,6 +356,90 @@ private fun MpvPlayerScreen(
         }
     }
 
+    // Load MediaStreams and Resolve/Download Primary Subtitle
+    LaunchedEffect(itemId, apiService) {
+        if (apiService != null && itemId.isNotEmpty()) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val item = apiService.getItemDetails(itemId)
+                    if (item != null) {
+                        val source = item.MediaSources?.firstOrNull()
+                        val streams = source?.MediaStreams ?: emptyList()
+                        mediaStreams = streams
+                        
+                        val sourceId = source?.Id ?: itemId
+
+                        // 1. Determine if we need to download the primary subtitle
+                        var finalSubPath: String? = null
+                        
+                        // Scenario A: subtitle_file URL passed in intent
+                        if (subtitleFile != null && (subtitleFile.startsWith("http") || subtitleFile.startsWith("https"))) {
+                            Log.d("MpvTvPlayer", "Downloading initial subtitleFile URL: $subtitleFile")
+                            // We need a MediaStream object for SubtitleDownloader
+                            // If we don't have one, we can try to find it in streams by URL or Index
+                            val stream = streams.find { it.Index == initialSubtitleStreamIndex }
+                            if (stream != null) {
+                                finalSubPath = SubtitleDownloader.downloadSubtitle(context, apiService, itemId, sourceId, stream)
+                            }
+                        } 
+                        // Scenario B: initialSubtitleStreamIndex provided for an external track
+                        else if (initialSubtitleStreamIndex != -1) {
+                            val stream = streams.find { it.Index == initialSubtitleStreamIndex }
+                            if (stream != null && stream.IsExternal == true && stream.Type == "Subtitle") {
+                                Log.d("MpvTvPlayer", "Downloading initial subtitle by index: $initialSubtitleStreamIndex")
+                                finalSubPath = SubtitleDownloader.downloadSubtitle(context, apiService, itemId, sourceId, stream)
+                            }
+                        }
+
+                        resolvedSubtitlePath = finalSubPath
+                        isSubtitleReady = true
+                        Log.d("MpvTvPlayer", "Primary subtitle ready: $finalSubPath")
+                    } else {
+                        isSubtitleReady = true
+                    }
+                } catch (e: Exception) {
+                    Log.e("MpvTvPlayer", "Error loading media streams/external subs", e)
+                    isSubtitleReady = true
+                }
+            }
+        } else {
+            isSubtitleReady = true
+        }
+    }
+    
+    // Auxiliary Subtitle Loading (All others)
+    LaunchedEffect(mediaStreams, mpvViewRef) {
+        if (mediaStreams.isNotEmpty() && mpvViewRef != null && apiService != null) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val sourceId = itemId // Simplified, ideally match from playback info if possible
+                    
+                    mediaStreams.forEach { stream ->
+                        // Add all external tracks EXCEPT the one we already resolved as primary
+                        if (stream.Type == "Subtitle" && stream.IsExternal == true) {
+                            val streamIndex = stream.Index ?: -1
+                            if (streamIndex != initialSubtitleStreamIndex) {
+                                val subtitleUrl = apiService.buildJellyfinSubtitleUrl(
+                                    itemId = itemId,
+                                    mediaSourceId = sourceId,
+                                    streamIndex = streamIndex,
+                                    isExternal = true,
+                                    codec = stream.Codec,
+                                    path = stream.Path
+                                )
+                                val label = stream.DisplayTitle ?: stream.Language ?: "External"
+                                Log.d("MpvTvPlayer", "Adding auxiliary external subtitle: $label")
+                                MPVLib.command(arrayOf("sub-add", subtitleUrl, "auto", label))
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("MpvTvPlayer", "Error loading auxiliary subs", e)
+                }
+            }
+        }
+    }
+
     // Capture focus when controls are hidden so we can show them again
     LaunchedEffect(controlsVisible) {
         if (!controlsVisible) {
@@ -429,45 +536,48 @@ private fun MpvPlayerScreen(
 
     // Apply aspect mode
     LaunchedEffect(currentAspectMode, mpvViewRef) {
-        mpvViewRef?.let { mpv ->
-            when (currentAspectMode) {
-                AspectMode.FIT -> {
-                    MPVLib.setOptionString("video-aspect-override", "no")
-                    MPVLib.setOptionString("video-aspect-method", "container")
-                    MPVLib.setOptionString("panscan", "0.0")
-                    MPVLib.setOptionString("video-unscaled", "no")
+        val mpv = mpvViewRef
+        if (mpv != null) {
+            withContext(Dispatchers.IO) {
+                when (currentAspectMode) {
+                    AspectMode.FIT -> {
+                        MPVLib.setOptionString("video-aspect-override", "no")
+                        MPVLib.setOptionString("video-aspect-method", "container")
+                        MPVLib.setOptionString("panscan", "0.0")
+                        MPVLib.setOptionString("video-unscaled", "no")
+                    }
+                    AspectMode.FILL -> {
+                        MPVLib.setOptionString("video-aspect-override", "no")
+                        MPVLib.setOptionString("video-aspect-method", "container")
+                        MPVLib.setOptionString("panscan", "1.0")
+                        MPVLib.setOptionString("video-unscaled", "no")
+                    }
+                    AspectMode.LETTERBOX -> {
+                        MPVLib.setOptionString("video-aspect-override", "16:9")
+                        MPVLib.setOptionString("panscan", "0.0")
+                        MPVLib.setOptionString("video-unscaled", "no")
+                    }
+                    AspectMode.CINEMA -> {
+                        MPVLib.setOptionString("video-aspect-override", "2.39:1")
+                        MPVLib.setOptionString("panscan", "0.0")
+                        MPVLib.setOptionString("video-unscaled", "no")
+                    }
+                    AspectMode.STRETCH -> {
+                        MPVLib.setOptionString("video-aspect-override", "no")
+                        MPVLib.setOptionString("keepaspect", "no")
+                        MPVLib.setOptionString("panscan", "0.0")
+                        MPVLib.setOptionString("video-unscaled", "no")
+                    }
+                    AspectMode.ORIGINAL -> {
+                        MPVLib.setOptionString("video-aspect-override", "no")
+                        MPVLib.setOptionString("video-aspect-method", "container")
+                        MPVLib.setOptionString("panscan", "0.0")
+                        MPVLib.setOptionString("video-unscaled", "yes")
+                    }
                 }
-                AspectMode.FILL -> {
-                    MPVLib.setOptionString("video-aspect-override", "no")
-                    MPVLib.setOptionString("video-aspect-method", "container")
-                    MPVLib.setOptionString("panscan", "1.0")
-                    MPVLib.setOptionString("video-unscaled", "no")
+                if (currentAspectMode != AspectMode.STRETCH) {
+                    MPVLib.setOptionString("keepaspect", "yes")
                 }
-                AspectMode.LETTERBOX -> {
-                    MPVLib.setOptionString("video-aspect-override", "16:9")
-                    MPVLib.setOptionString("panscan", "0.0")
-                    MPVLib.setOptionString("video-unscaled", "no")
-                }
-                AspectMode.CINEMA -> {
-                    MPVLib.setOptionString("video-aspect-override", "2.39:1")
-                    MPVLib.setOptionString("panscan", "0.0")
-                    MPVLib.setOptionString("video-unscaled", "no")
-                }
-                AspectMode.STRETCH -> {
-                    MPVLib.setOptionString("video-aspect-override", "no")
-                    MPVLib.setOptionString("keepaspect", "no")
-                    MPVLib.setOptionString("panscan", "0.0")
-                    MPVLib.setOptionString("video-unscaled", "no")
-                }
-                AspectMode.ORIGINAL -> {
-                    MPVLib.setOptionString("video-aspect-override", "no")
-                    MPVLib.setOptionString("video-aspect-method", "container")
-                    MPVLib.setOptionString("panscan", "0.0")
-                    MPVLib.setOptionString("video-unscaled", "yes")
-                }
-            }
-            if (currentAspectMode != AspectMode.STRETCH) {
-                MPVLib.setOptionString("keepaspect", "yes")
             }
         }
     }
@@ -713,21 +823,27 @@ private fun MpvPlayerScreen(
                     }
 
                     Key.DirectionLeft -> {
-                        // Seek when hidden
-                        mpvViewRef?.seek(-10)
+                        // Seek when hidden - Offload to background
+                        scope.launch(Dispatchers.IO) {
+                            mpvViewRef?.seek(-10)
+                        }
                         consumeAndTouch()
                     }
 
                     Key.DirectionRight -> {
-                        // Seek when hidden
-                        mpvViewRef?.seek(10)
+                        // Seek when hidden - Offload to background
+                        scope.launch(Dispatchers.IO) {
+                            mpvViewRef?.seek(10)
+                        }
                         consumeAndTouch()
                     }
 
                     Key.MediaPlayPause -> {
                         // If hidden, show controls. If specific media key, maybe just toggle?
                         // Let's mirror Netflix: Media Button always acts on media
-                        mpvViewRef?.cyclePause()
+                        scope.launch(Dispatchers.IO) {
+                            mpvViewRef?.cyclePause()
+                        }
                         showControls()
                         consumeAndTouch()
                     }
@@ -743,158 +859,150 @@ private fun MpvPlayerScreen(
             .focusable()
     ) {
         // MPV View
-        AndroidView(
-            modifier = Modifier
-                .fillMaxSize()
-                .focusable(false),
-            factory = { ctx ->
-                MPVView(ctx).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
+        if (isSubtitleReady) {
+            AndroidView(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .focusable(false),
+                factory = { ctx ->
+                    MPVView(ctx).apply {
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
 
-                    // Make sure the View can't take focus
-                    isFocusable = false
-                    isFocusableInTouchMode = false
+                        // Make sure the View can't take focus
+                        isFocusable = false
+                        isFocusableInTouchMode = false
 
-                    val configDir = File(ctx.filesDir, "mpv")
-                    configDir.mkdirs()
+                        val configDir = File(ctx.filesDir, "mpv")
+                        configDir.mkdirs()
 
-                    // ✅ Write TV-hard config files BEFORE initialize()
-                    writeMpvTvConfig(configDir)
-                    
-                    // ✅ Install Shaders
-                    MpvShaderManager.installShaders(ctx)
+                        // ✅ Write TV-hard config files BEFORE initialize()
+                        writeMpvTvConfig(configDir)
+                        
+                        // ✅ Install Shaders
+                        MpvShaderManager.installShaders(ctx)
 
-                    initialize(configDir.absolutePath, ctx.cacheDir.absolutePath)
-                    
-                    // ✅ Apply Shader Profile
-                    val settings = AppSettings(ctx)
-                    try {
-                        val profileName = settings.mpvShaderProfile
-                        val profile = MpvShaderManager.ShaderProfile.fromString(profileName)
-                        Log.d("MpvTvPlayer", "Applying Shader Profile: ${profile.displayName}")
+                        initialize(configDir.absolutePath, ctx.cacheDir.absolutePath)
                         
-                        // Check for Dynamic Tone Mapping Setting if using relevant profile
-                        // For HdrBoostPlus, we enforce it if the profile is selected, BUT
-                        // we also check the boolean setting to see if user DISABLED it explicitly 
-                        // relative to the profile? 
-                        // Actually, the user's instructions imply the profile "HdrBoostPlus" IS the feature.
-                        // But also asked for a setting.
-                        // Let's assume if the User selected "HDR++ (Dynamic)" in the picker, they want it.
-                        // BUT "implement this and add an option in settings to enable / disable it. set it disable by default"
-                        // This usually means the *feature capability* is gated. 
-                        // If I disable the setting, maybe HdrBoostPlus falls back to HdrBoost? 
-                        // Or maybe I just strictly follow: If setting OFF, and they pick HdrBoostPlus, 
-                        // we filter out the dynamic shader from the list?
+                        // ✅ Apply Shader Profile
+                        val settings = AppSettings(ctx)
+                        try {
+                            val profileName = settings.mpvShaderProfile
+                            val profile = MpvShaderManager.ShaderProfile.fromString(profileName)
+                            Log.d("MpvTvPlayer", "Applying Shader Profile: ${profile.displayName}")
+                            
+                            var shaderPaths = MpvShaderManager.getShadersForProfile(ctx, profile).toMutableList()
+                            
+                            // Logic: If Dynamic Tone Mapping setting is disabled, REMOVE the dynamic shader 
+                            // from the list if it was added (e.g. if user selected HdrBoostPlus)
+                            if (!settings.enableDynamicToneMapping) {
+                                val dynShaderPath = MpvShaderManager.getShaderPath(ctx, MpvShaderManager.SHADER_DYN_TONEMAP)
+                                shaderPaths.remove(dynShaderPath)
+                                Log.d("MpvTvPlayer", "Dynamic Tone Mapping disabled in settings, removing shader.")
+                            }
+
+                            if (shaderPaths.isNotEmpty()) {
+                                // Join with standard path separator (:)
+                                val shaderList = shaderPaths.joinToString(File.pathSeparator)
+                                Log.d("MpvTvPlayer", "Setting glsl-shaders: $shaderList")
+                                MPVLib.setOptionString("glsl-shaders", shaderList)
+                            } else {
+                                // If None, clear shaders just in case (though init should be clean)
+                                MPVLib.setOptionString("glsl-shaders", "")
+                            }
+
+                            // Profile-specific extra settings
+                            when (profile) {
+                                MpvShaderManager.ShaderProfile.Cinema -> {
+                                    MPVLib.setOptionString("deband", "yes")
+                                    MPVLib.setOptionString("deband-iterations", "2")
+                                    MPVLib.setOptionString("deband-threshold", "48")
+                                }
+                                MpvShaderManager.ShaderProfile.Sports -> {
+                                    applySuperResolutionScalers()
+                                }
+                                MpvShaderManager.ShaderProfile.Sharp -> {
+                                    applySuperResolutionScalers()
+                                }
+                                MpvShaderManager.ShaderProfile.HdrBoostPlus -> {
+                                    MPVLib.setOptionString("scale", "bilinear")
+                                    MPVLib.setOptionString("deband", "no")
+                                }
+                                else -> {
+                                    // Default safer scaling
+                                    MPVLib.setOptionString("scale", "bilinear")
+                                    MPVLib.setOptionString("deband", "no")
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e("MpvTvPlayer", "Error applying shader profile", e)
+                        }
                         
-                        // Let's go with: MpvShaderManager handles the list. 
-                        // I need to filter the list here if I didn't do it in Manager.
-                        // In Manager, I just added it.
-                        // So I should check `settings.enableDynamicToneMapping` here.
-                        
-                        var shaderPaths = MpvShaderManager.getShadersForProfile(ctx, profile).toMutableList()
-                        
-                        // Logic: If Dynamic Tone Mapping setting is disabled, REMOVE the dynamic shader 
-                        // from the list if it was added (e.g. if user selected HdrBoostPlus)
-                        if (!settings.enableDynamicToneMapping) {
-                            val dynShaderPath = MpvShaderManager.getShaderPath(ctx, MpvShaderManager.SHADER_DYN_TONEMAP)
-                            shaderPaths.remove(dynShaderPath)
-                            Log.d("MpvTvPlayer", "Dynamic Tone Mapping disabled in settings, removing shader.")
+                        // 🔥 Force-enable subtitle renderer at runtime (REINFORCED FOR SRT)
+                        MPVLib.setPropertyBoolean("sub-ass", true)
+                        MPVLib.setPropertyBoolean("sub-visibility", true)
+                        MPVLib.setPropertyString("sub-ass-override", "force")
+                        MPVLib.setPropertyString("sub-font", "sans")
+                        MPVLib.setPropertyDouble("sub-font-size", 52.0)
+                        MPVLib.setPropertyString("sub-bold", "yes")
+                        MPVLib.setPropertyString("sub-color", "#FFFFFFFF")
+                        MPVLib.setPropertyString("sub-border-color", "#FF000000")
+                        MPVLib.setPropertyDouble("sub-border-size", 3.0)
+                        MPVLib.setPropertyDouble("sub-shadow-offset", 2.0)
+                        MPVLib.setPropertyString("sub-use-margins", "no")
+                        MPVLib.setPropertyString("sub-auto", "fuzzy")
+                        MPVLib.setPropertyString("sub-fix-timing", "yes")
+                        MPVLib.setPropertyBoolean("embeddedfonts", true)
+
+                        // Still keep these as reinforcement
+                        MPVLib.setOptionString("osc", "no")
+                        MPVLib.setOptionString("input-touch", "no")
+                        MPVLib.setOptionString("input-default-bindings", "no")
+                        MPVLib.setOptionString("input-builtin-bindings", "no")
+
+                        if (resumePositionMs > 0) {
+                            val startSeconds = resumePositionMs / 1000.0
+                            MPVLib.setOptionString("start", startSeconds.toString())
                         }
 
-                        if (shaderPaths.isNotEmpty()) {
-                            // Join with standard path separator (:)
-                            val shaderList = shaderPaths.joinToString(File.pathSeparator)
-                            Log.d("MpvTvPlayer", "Setting glsl-shaders: $shaderList")
-                            MPVLib.setOptionString("glsl-shaders", shaderList)
-                        } else {
-                            // If None, clear shaders just in case (though init should be clean)
-                            MPVLib.setOptionString("glsl-shaders", "")
+                        setHttpHeaders(headers)
+
+                        // ✅ INJECT PRIMARY SUBTITLE AS OPTION (ROCK-SOLID METHOD)
+                        if (resolvedSubtitlePath != null) {
+                            Log.d("MpvTvPlayer", "Injecting sub-file (cached): $resolvedSubtitlePath")
+                            MPVLib.setOptionString("sub-file", resolvedSubtitlePath!!)
+                            MPVLib.setOptionString("sid", "auto")
+                        } else if (subtitleFile != null && !subtitleFile.startsWith("http")) {
+                            Log.d("MpvTvPlayer", "Injecting sub-file (provided): $subtitleFile")
+                            // Fallback for local files if any
+                            MPVLib.setOptionString("sub-file", subtitleFile)
+                            MPVLib.setOptionString("sid", "auto")
                         }
 
-                        // Profile-specific extra settings
-                        when (profile) {
-                            MpvShaderManager.ShaderProfile.Cinema -> {
-                                MPVLib.setOptionString("deband", "yes")
-                                MPVLib.setOptionString("deband-iterations", "2")
-                                MPVLib.setOptionString("deband-threshold", "48")
-                            }
-                            MpvShaderManager.ShaderProfile.Sports -> {
-                                applySuperResolutionScalers()
-                            }
-                            MpvShaderManager.ShaderProfile.Sharp -> {
-                                applySuperResolutionScalers()
-                            }
-                            MpvShaderManager.ShaderProfile.HdrBoostPlus -> {
-                                // Smart HDR logic is mostly in shader, but we can enable scaler too if desired?
-                                // User didn't explicitly ask for SR on HDR++, only on Sports/Sharp.
-                                // "HdrBoostPlus = “smart HDR” for mixed content"
-                                // "Sharp/Sports = enable the SR scalers"
-                                // So leave default scaling for HdrBoostPlus unless user adds it manually.
-                                MPVLib.setOptionString("scale", "bilinear")
-                                MPVLib.setOptionString("deband", "no")
-                            }
-                            else -> {
-                                // Default safer scaling
-                                MPVLib.setOptionString("scale", "bilinear")
-                                MPVLib.setOptionString("deband", "no")
-                            }
+                        // TRAILER OPTIMIZATION
+                        if (isTrailer) {
+                            MPVLib.command(arrayOf("apply-profile", "trailer"))
                         }
-                    } catch (e: Exception) {
-                        Log.e("MpvTvPlayer", "Error applying shader profile", e)
+
+                        playFile(url)
+
+                        // AUDIO TRACK
+                        if (externalAudioUrl != null) {
+                            // Use Handler to ensure the main file load has initialized the player core
+                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                 Log.d("MpvTvPlayer", "Executing delayed audio-add: $externalAudioUrl")
+                                 MPVLib.command(arrayOf("audio-add", externalAudioUrl, "select"))
+                            }, 500)
+                        }
+
+                        mpvViewRef = this
+                        onMpvViewCreated(this)
                     }
-                    
-                    // 🔥 Force-enable subtitle renderer at runtime
-                    MPVLib.setPropertyBoolean("sub-ass", true)
-                    MPVLib.setPropertyBoolean("sub-visibility", true)
-                    MPVLib.setPropertyString("sub-ass-override", "scale")
-                    MPVLib.setPropertyString("sub-auto", "fuzzy")
-                    MPVLib.setPropertyString("sub-fix-timing", "yes")
-                    MPVLib.setPropertyBoolean("embeddedfonts", true)
-
-                    // Still keep these as reinforcement
-                    MPVLib.setOptionString("osc", "no")
-                    MPVLib.setOptionString("input-touch", "no")
-                    MPVLib.setOptionString("input-default-bindings", "no")
-                    MPVLib.setOptionString("input-builtin-bindings", "no")
-
-                    if (resumePositionMs > 0) {
-                        val startSeconds = resumePositionMs / 1000.0
-                        MPVLib.setOptionString("start", startSeconds.toString())
-                    }
-
-                    setHttpHeaders(headers)
-
-                    // TRAILER OPTIMIZATION
-                    if (isTrailer) {
-                        MPVLib.command(arrayOf("apply-profile", "trailer"))
-                    }
-
-                    playFile(url)
-
-                    // AUDIO TRACK
-                    if (externalAudioUrl != null) {
-                        // Use Handler to ensure the main file load has initialized the player core
-                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                             Log.d("MpvTvPlayer", "Executing delayed audio-add: $externalAudioUrl")
-                             MPVLib.command(arrayOf("audio-add", externalAudioUrl, "select"))
-                        }, 500)
-                    }
-
-                    if (subtitleFile != null) {
-                        postDelayed({
-                            Log.d("MpvTvPlayer", "Adding external subtitle: $subtitleFile")
-                            MPVLib.command(arrayOf("sub-add", subtitleFile, "select"))
-                        }, 1000) // Load slightly earlier than track matcher
-                    }
-
-                    mpvViewRef = this
-                    onMpvViewCreated(this)
                 }
-            }
-        )
+            )
+        }
 
         // Title overlay (always show when controls visible)
         AnimatedVisibility(
@@ -923,7 +1031,7 @@ private fun MpvPlayerScreen(
         }
 
         // Buffering indicator
-        if (isBuffering) {
+        if (isBuffering || !isSubtitleReady) {
             CircularProgressIndicator(
                 modifier = Modifier.align(Alignment.Center),
                 color = Color.White
@@ -937,17 +1045,27 @@ private fun MpvPlayerScreen(
             currentPosition = currentPositionMs,
             duration = durationMs,
             currentAspectMode = currentAspectMode,
-            onPlayPause = { mpvViewRef?.cyclePause() },
+            onPlayPause = { 
+                scope.launch(Dispatchers.IO) {
+                    mpvViewRef?.cyclePause()
+                }
+            },
             onSeek = { pos -> 
-                mpvViewRef?.timePos = pos / 1000.0 
+                scope.launch(Dispatchers.IO) {
+                    mpvViewRef?.timePos = pos / 1000.0 
+                }
                 lastInteractionTime = System.currentTimeMillis()
             },
             onFastRewind = { 
-                mpvViewRef?.seek(-15) 
+                scope.launch(Dispatchers.IO) {
+                    mpvViewRef?.seek(-15) 
+                }
                 lastInteractionTime = System.currentTimeMillis()
             },
             onFastForward = { 
-                mpvViewRef?.seek(15)
+                scope.launch(Dispatchers.IO) {
+                    mpvViewRef?.seek(15)
+                }
                 lastInteractionTime = System.currentTimeMillis()
             },
             onAspectModeChange = {
@@ -980,20 +1098,27 @@ private fun MpvPlayerScreen(
                     showControls()
                 },
                 onAudioSelected = { trackId ->
-                    mpvViewRef?.aid = trackId
+                    scope.launch(Dispatchers.IO) {
+                        mpvViewRef?.aid = trackId
+                    }
                     currentAudioId = trackId
                 },
                 onSubtitleSelected = { trackId ->
-                    mpvViewRef?.sid = trackId
-                    currentSubtitleId = trackId
-                    if (trackId != -1) {
-                         MPVLib.setPropertyBoolean("sub-visibility", true)
-                         // Force redraw/rescan
-                         MPVLib.command(arrayOf("rescan-external-files"))
+                    scope.launch(Dispatchers.IO) {
+                        mpvViewRef?.sid = trackId
+                        if (trackId != -1) {
+                            MPVLib.setPropertyBoolean("sub-visibility", true)
+                            // Reinforce override on manual selection
+                            MPVLib.setPropertyString("sub-ass-override", "force")
+                        }
                     }
+                    currentSubtitleId = trackId
                 },
-                onPlaybackSpeedChange = { playbackSpeed ->
-                    mpvViewRef?.playbackSpeed = playbackSpeed
+                onPlaybackSpeedChange = { speed ->
+                    scope.launch(Dispatchers.IO) {
+                        mpvViewRef?.playbackSpeed = speed
+                    }
+                    playbackSpeed = speed
                 },
                 initialMenuLevel = settingsInitialLevel
             )
@@ -1014,25 +1139,31 @@ private fun writeMpvTvConfig(dir: File) {
         load-scripts=no
         cursor-autohide=no
         terminal=no
-        msg-level=all=error
+        msg-level=all=warn
+
+        # --- Video Output ---
+        vo=gpu
+        gpu-context=android
+        hwdec=mediacodec-copy
         
         # Instant Start Optimization
         cache-pause=no
 
-        # --- Subtitle rendering (CRITICAL FIX) ---
+        # --- Subtitle rendering (PRODUCTION FIX) ---
         sub-ass=yes
         sub-visibility=yes
         sub-auto=fuzzy
         sub-fix-timing=yes
-        sub-ass-override=scale
-        sub-font-size=48
-        sub-border-size=2
+        sub-ass-override=force
+        sub-font-size=55
+        sub-bold=yes
+        sub-border-size=3
         sub-shadow-offset=2
         sub-use-margins=no
         embeddedfonts=yes
         embeddedfonts=yes
-        sub-font="Roboto"
-        
+        sub-font=sans
+
         [trailer]
         profile=default
         hwdec=mediacodec-copy

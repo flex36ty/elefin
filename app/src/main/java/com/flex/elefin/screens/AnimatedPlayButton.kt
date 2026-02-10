@@ -77,6 +77,14 @@ fun AnimatedPlayButton(
         restartOnPlay = true
     )
     
+    val focusColor = androidx.compose.ui.graphics.Color.White
+    val unfocusColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f)
+    val focusedContent = androidx.compose.ui.graphics.Color.Black
+    val unfocusedContent = androidx.compose.ui.graphics.Color.White
+
+    val currentContainerColor = if (focused) focusColor else unfocusColor
+    val currentContentColor = if (focused) focusedContent else unfocusedContent
+
     // Button container that extends horizontally when focused
     Box(
         modifier = modifier
@@ -95,7 +103,7 @@ fun AnimatedPlayButton(
                     easing = FastOutSlowInEasing
                 )
             )
-            .background(containerColor, androidx.compose.foundation.shape.CircleShape)
+            .background(currentContainerColor, androidx.compose.foundation.shape.CircleShape)
             .focusable()
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -127,7 +135,7 @@ fun AnimatedPlayButton(
                 imageVector = icon,
                 contentDescription = label,
                 modifier = Modifier.size(iconSize),
-                tint = contentColor
+                tint = currentContentColor
             )
             
             // Show label when focused
@@ -136,7 +144,7 @@ fun AnimatedPlayButton(
                 Text(
                     text = label,
                     style = labelTextStyle,
-                    color = contentColor,
+                    color = currentContentColor,
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
             }
