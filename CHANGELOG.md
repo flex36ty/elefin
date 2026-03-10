@@ -4,6 +4,30 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2026-03-08
+
+### Fixed
+
+- **Playback Navigation Stack**
+  - Fixed an issue where the movie or TV show info screen was lost after playback completed.
+  - Removed `singleTask` launch modes from `JellyfinVideoPlayerActivity` and `MpvTvPlayerActivity` to preserve the activity back stack.
+  - Corrected autoplay logic in `JellyfinVideoPlayerScreen.kt` to maintain navigation flow during episode transitions.
+
+### Improved
+
+- **Codebase Cleanup**
+  - Deleted multiple legacy Leanback-style activities, fragments, and presenters (`DetailsActivity`, `PlaybackActivity`, `MainFragment`, etc.) as the app has fully transitioned to a Compose-based architecture.
+  - Streamlined `AndroidManifest.xml` by removing redundant activity declarations.
+
+- **Next Up & Library Enhancements**
+  - Switched the **Next Up** row on the home screen to use vertical (portrait) poster cards for better aesthetic consistency.
+  - Added a new **Next Up** row to the **TV Shows library screen**, positioned directly beneath the "Continue Watching" row.
+  - Implemented library-specific fetching for "Next Up" episodes in `JellyfinApi.kt`.
+  - Enhanced card image logic to prioritize episode primary images (previews) as a fallback for "Next Up" and "Continue Watching" items.
+
+---
+
+
 ## 2026-02-10
 
 ### Added

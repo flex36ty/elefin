@@ -1864,9 +1864,9 @@ fun JellyfinHomeScreen(
                                     items(
                                         items = nextUpItems,
                                         key = { it.Id },
-                                        contentType = { "horizontal_card_progress" }
+                                        contentType = { "collection_item" }
                                     ) { item ->
-                                        JellyfinHorizontalCardWithProgress(
+                                        JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
                                             onClick = {
@@ -1882,7 +1882,7 @@ fun JellyfinHomeScreen(
                                                         if (item.Type == "Episode" && item.SeriesId != null) {
                                                             val seriesDetails = apiService?.getItemDetails(item.SeriesId)
                                                             if (seriesDetails != null) {
-                                                                highlightedItem = seriesDetails
+                                                                 highlightedItem = seriesDetails
                                                             } else {
                                                                 highlightedItem = item
                                                             }
@@ -1892,6 +1892,9 @@ fun JellyfinHomeScreen(
                                                     }
                                                 }
                                             },
+                                            enableCaching = cacheLibraryImages,
+                                            reducePosterResolution = reducePosterResolution,
+                                            useSeriesPosterForEpisodes = true,
                                             useSimpleCards = useSimpleCards.value,
                                             useGoogleTvCards = useGoogleTvCards.value,
                                             lowPowerMode = lowPowerMode.value,
@@ -3291,12 +3294,13 @@ fun JellyfinHorizontalCardWithProgress(
                 if (episodeThumb.isNotEmpty()) {
                     episodeThumb
                 } else {
-                    // Last resort: series backdrop, then episode backdrop, then primary
-                    val seriesBackdrop = apiService?.getImageUrl(item.SeriesId, "Backdrop", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
-                    seriesBackdrop.ifEmpty {
-                        val episodeBackdrop = apiService?.getImageUrl(item.Id, "Backdrop", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
-                        episodeBackdrop.ifEmpty {
-                            apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
+                    // Fall back to episode's primary image (preview photo) before backdrops
+                    val episodePrimary = apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
+                    episodePrimary.ifEmpty {
+                        // Last resort: series backdrop, then episode backdrop
+                        val seriesBackdrop = apiService?.getImageUrl(item.SeriesId, "Backdrop", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
+                        seriesBackdrop.ifEmpty {
+                            apiService?.getImageUrl(item.Id, "Backdrop", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
                         }
                     }
                 }

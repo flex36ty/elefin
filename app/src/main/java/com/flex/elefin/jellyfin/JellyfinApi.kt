@@ -1845,6 +1845,32 @@ class JellyfinApiService(
     }
     
     /**
+     * Get next up episodes from a specific TV library
+     */
+    suspend fun getNextUpEpisodesFromLibrary(libraryId: String, limit: Int = 20): List<JellyfinItem> {
+        return try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val url = URLBuilder().takeFrom("${base}Shows/NextUp").apply {
+                parameters.append("UserId", userId)
+                parameters.append("ParentId", libraryId)
+                parameters.append("Limit", limit.toString())
+                // Explicitly include Type field to ensure proper routing in UI
+                parameters.append("Fields", "ImageTags,UserData,SeriesName,SeriesId,Type")
+                parameters.append("EnableResumable", "false")
+            }.buildString()
+            
+            val response: ItemsResponse = client.get(url) {
+                header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
+                header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"${BuildConfig.VERSION_NAME}\"")
+            }.body()
+            response.Items
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinAPI", "Error fetching next up episodes from library $libraryId", e)
+            emptyList()
+        }
+    }
+    
+    /**
      * Get recently released episodes from a specific TV library (sorted by premiere date)
      */
     suspend fun getRecentlyReleasedEpisodesFromLibrary(libraryId: String, limit: Int = 20): List<JellyfinItem> {

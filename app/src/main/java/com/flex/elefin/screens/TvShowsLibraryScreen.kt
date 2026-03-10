@@ -202,6 +202,7 @@ fun TvShowsLibraryScreen(
     
     // Data states for recommendations
     var continueWatchingEpisodes by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
+    var nextUpEpisodes by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
     var recentlyReleasedEpisodes by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
     var recentlyAddedShows by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
     var startWatchingShows by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
@@ -287,6 +288,7 @@ fun TvShowsLibraryScreen(
                     // Fetch all TV show data in parallel using coroutineScope
                     coroutineScope {
                         val continueWatchingDeferred = async { apiService.getContinueWatchingEpisodesFromLibrary(libraryId, settings.rowCardCount) }
+                        val nextUpDeferred = async { apiService.getNextUpEpisodesFromLibrary(libraryId, settings.rowCardCount) }
                         val recentlyReleasedDeferred = async { apiService.getRecentlyReleasedEpisodesFromLibrary(libraryId, settings.rowCardCount) }
                         val recentlyAddedDeferred = async { apiService.getRecentlyAddedShowsFromLibrary(libraryId, settings.rowCardCount) }
                         val startWatchingDeferred = async { apiService.getRandomUnwatchedShowsFromLibrary(libraryId, settings.rowCardCount) }
@@ -299,6 +301,7 @@ fun TvShowsLibraryScreen(
                         val libraryDeferred = async { apiService.getAllLibraryItems(libraryId) }
                         
                         continueWatchingEpisodes = continueWatchingDeferred.await()
+                        nextUpEpisodes = nextUpDeferred.await()
                         recentlyReleasedEpisodes = recentlyReleasedDeferred.await()
                         recentlyAddedShows = recentlyAddedDeferred.await()
                         startWatchingShows = startWatchingDeferred.await()
@@ -313,6 +316,7 @@ fun TvShowsLibraryScreen(
                     
                     Log.d("TvShowsLibraryScreen", "Loaded TV shows for '$libraryName': " +
                         "continueWatching=${continueWatchingEpisodes.size}, " +
+                        "nextUp=${nextUpEpisodes.size}, " +
                         "recentlyReleased=${recentlyReleasedEpisodes.size}, " +
                         "recentlyAdded=${recentlyAddedShows.size}, " +
                         "startWatching=${startWatchingShows.size}, " +
@@ -325,6 +329,7 @@ fun TvShowsLibraryScreen(
                     
                     // Set initial highlighted item
                     val firstItem = continueWatchingEpisodes.firstOrNull() 
+                        ?: nextUpEpisodes.firstOrNull()
                         ?: recentlyReleasedEpisodes.firstOrNull()
                         ?: recentlyAddedShows.firstOrNull()
                         ?: startWatchingShows.firstOrNull()
@@ -1210,6 +1215,55 @@ fun TvShowsLibraryScreen(
                                                             }
                                                         }
                                                     },
+                                                    useSimpleCards = useSimpleCards.value,
+                                                    useGoogleTvCards = useGoogleTvCards.value,
+                                                    lowPowerMode = lowPowerMode.value
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // Next Up row
+                                    if (nextUpEpisodes.isNotEmpty()) {
+                                        Text(
+                                            text = "Next Up",
+                                            style = MaterialTheme.typography.headlineMedium.copy(
+                                                fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+                                            ),
+                                            modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
+                                        )
+                                        
+                                        LazyRow(
+                                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
+                                            horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                            flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
+                                            modifier = if (debugOutlinesEnabled) {
+                                                Modifier.border(2.dp, Color.Magenta)
+                                            } else {
+                                                Modifier
+                                            }
+                                        ) {
+                                            items(
+                                                items = nextUpEpisodes,
+                                                key = { it.Id },
+                                                contentType = { "collection_item" }
+                                            ) { item ->
+                                                JellyfinHorizontalCard(
+                                                    item = item,
+                                                    apiService = apiService,
+                                                    onClick = { onItemClick(item, 0L) },
+                                                    onFocusChanged = { isFocused ->
+                                                        if (isFocused) {
+                                                            instantHighlightedItem = item
+                                                            backgroundChangeJob?.cancel()
+                                                            backgroundChangeJob = scope.launch {
+                                                                delay(1000)
+                                                                highlightedItem = item
+                                                            }
+                                                        }
+                                                    },
+                                                    enableCaching = true,
+                                                    useSeriesPosterForEpisodes = true,
                                                     useSimpleCards = useSimpleCards.value,
                                                     useGoogleTvCards = useGoogleTvCards.value,
                                                     lowPowerMode = lowPowerMode.value

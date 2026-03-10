@@ -442,25 +442,25 @@ fun JellyfinVideoPlayerScreen(
             }
         }
         
-        // Step 4: Finish current activity FIRST (player is already released)
-        // This is critical - we must finish before starting new activity to avoid conflicts
-        Log.d("JellyfinPlayer", "🎬 Step 4: Finishing current activity FIRST...")
-        activity.finish()
-        
-        // Step 5: Create and start intent for next episode
-        // Use Handler to post the startActivity after finish() has been processed
+        // Step 4: Create and start intent for next episode
+        // We start the new activity WITHOUT FLAG_ACTIVITY_NEW_TASK to maintain the same task
+        // and back stack (pointing back to the details screen).
         val intent = com.flex.elefin.JellyfinVideoPlayerActivity.createIntent(
-            context = activity.applicationContext, // Use applicationContext since activity is finishing
+            context = activity,
             itemId = nextEp.Id,
             resumePositionMs = 0L,
             subtitleStreamIndex = null,
             audioStreamIndex = null
         )
-        // FLAG_ACTIVITY_NEW_TASK is required when starting from applicationContext
-        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         
-        Log.d("JellyfinPlayer", "🎬 Step 5: Starting new activity...")
-        activity.applicationContext.startActivity(intent)
+        Log.d("JellyfinPlayer", "🎬 Step 4: Starting next episode activity...")
+        activity.startActivity(intent)
+        
+        // Step 5: Finish current activity
+        // Finishing after starting the next one ensures the back stack remains correct:
+        // [DetailsActivity] -> [New PlayerActivity]
+        Log.d("JellyfinPlayer", "🎬 Step 5: Finishing current activity...")
+        activity.finish()
         
         Log.d("JellyfinPlayer", "🎬 ===== AUTOPLAY COMPLETE =====")
     }

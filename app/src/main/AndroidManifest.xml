@@ -46,24 +46,12 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity
-            android:name=".DetailsActivity"
-            android:exported="false" />
-        <activity
-            android:name=".PlaybackActivity"
-            android:exported="false" />
-        <activity
-            android:name=".BrowseErrorActivity"
-            android:exported="false" />
-        <activity
-            android:name=".JellyfinHomeActivity"
-            android:exported="false"
-            android:screenOrientation="landscape" />
+
+
         <activity
             android:name=".JellyfinVideoPlayerActivity"
             android:exported="false"
             android:screenOrientation="landscape"
-            android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation" />
         <activity
             android:name=".MovieDetailsActivity"
@@ -98,7 +86,6 @@
             android:name=".player.mpv.MpvTvPlayerActivity"
             android:exported="false"
             android:screenOrientation="landscape"
-            android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation" />
         <provider
             android:name="androidx.core.content.FileProvider"

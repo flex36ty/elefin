@@ -1,7 +1,4 @@
-> Task :app:preBuild UP-TO-DATE
-> Task :app:preDebugBuild UP-TO-DATE
-> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
-> Task :timeago-parser:processResources NO-SOURCE
+﻿> Task :timeago-parser:processResources NO-SOURCE
 > Task :newpipe-extractor:extractIncludeProto UP-TO-DATE
 > Task :newpipe-extractor:extractProto UP-TO-DATE
 > Task :newpipe-extractor:generateProto UP-TO-DATE
@@ -11,6 +8,9 @@
 > Task :newpipe-extractor:classes UP-TO-DATE
 > Task :newpipe-extractor:jar UP-TO-DATE
 > Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:generateDebugBuildConfig UP-TO-DATE
 > Task :decoder_av1:preBuild UP-TO-DATE
 > Task :decoder_av1:preDebugBuild UP-TO-DATE
 > Task :decoder_av1:writeDebugAarMetadata UP-TO-DATE
@@ -43,73 +43,47 @@
 > Task :decoder_av1:javaPreCompileDebug UP-TO-DATE
 > Task :decoder_av1:compileDebugJavaWithJavac UP-TO-DATE
 > Task :decoder_av1:bundleLibCompileToJarDebug UP-TO-DATE
-> Task :app:javaPreCompileDebug UP-TO-DATE
-> Task :app:mergeDebugShaders UP-TO-DATE
-> Task :app:compileDebugShaders NO-SOURCE
-> Task :app:generateDebugAssets UP-TO-DATE
-> Task :decoder_av1:mergeDebugShaders UP-TO-DATE
-> Task :decoder_av1:compileDebugShaders NO-SOURCE
-> Task :decoder_av1:generateDebugAssets UP-TO-DATE
-> Task :decoder_av1:mergeDebugAssets UP-TO-DATE
-> Task :app:mergeDebugAssets UP-TO-DATE
-> Task :app:compressDebugAssets UP-TO-DATE
-> Task :timeago-parser:classes UP-TO-DATE
-> Task :timeago-parser:jar UP-TO-DATE
-> Task :decoder_av1:processDebugJavaRes NO-SOURCE
-> Task :app:checkDebugDuplicateClasses UP-TO-DATE
-> Task :app:desugarDebugFileDependencies UP-TO-DATE
-> Task :app:mergeExtDexDebug UP-TO-DATE
-> Task :decoder_av1:bundleLibRuntimeToJarDebug UP-TO-DATE
-> Task :app:mergeDebugJniLibFolders UP-TO-DATE
-> Task :app:mergeLibDexDebug UP-TO-DATE
-> Task :decoder_av1:preReleaseBuild UP-TO-DATE
-> Task :decoder_av1:configureCMakeRelease[arm64-v8a]
-> Task :decoder_av1:buildCMakeRelease[arm64-v8a][gav1JNI]
-> Task :decoder_av1:configureCMakeRelease[armeabi-v7a]
-> Task :decoder_av1:buildCMakeRelease[armeabi-v7a][gav1JNI]
-> Task :decoder_av1:mergeDebugJniLibFolders UP-TO-DATE
-> Task :decoder_av1:mergeDebugNativeLibs UP-TO-DATE
-> Task :decoder_av1:copyDebugJniLibsProjectOnly UP-TO-DATE
-> Task :app:mergeDebugNativeLibs UP-TO-DATE
-> Task :app:stripDebugDebugSymbols UP-TO-DATE
-> Task :app:validateSigningDebug UP-TO-DATE
-> Task :app:writeDebugAppMetadata UP-TO-DATE
-> Task :app:writeDebugSigningConfigVersions UP-TO-DATE
-> Task :decoder_av1:checkDebugAarMetadata UP-TO-DATE
-> Task :decoder_av1:stripDebugDebugSymbols UP-TO-DATE
-> Task :decoder_av1:copyDebugJniLibsProjectAndLocalJars UP-TO-DATE
-> Task :decoder_av1:extractDebugAnnotations UP-TO-DATE
-> Task :decoder_av1:extractDeepLinksForAarDebug UP-TO-DATE
-> Task :decoder_av1:mergeDebugGeneratedProguardFiles UP-TO-DATE
-> Task :decoder_av1:mergeDebugConsumerProguardFiles UP-TO-DATE
-> Task :decoder_av1:prepareDebugArtProfile UP-TO-DATE
-> Task :decoder_av1:prepareLintJarForPublish UP-TO-DATE
-> Task :decoder_av1:mergeDebugJavaResource UP-TO-DATE
-> Task :decoder_av1:syncDebugLibJars UP-TO-DATE
-> Task :decoder_av1:bundleDebugAar UP-TO-DATE
-> Task :decoder_av1:assembleDebug UP-TO-DATE
-
-> Task :app:kaptGenerateStubsDebugKotlin
-w: Kapt currently doesn't support language version 2.0+. Falling back to 1.9.
-
+> Task :app:kaptGenerateStubsDebugKotlin UP-TO-DATE
 > Task :app:kaptDebugKotlin UP-TO-DATE
 
-> Task :app:compileDebugKotlin
-w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:260:22 'fun setDisabledTextTrackSelectionFlags(p0: Int): DefaultTrackSelector.Parameters.Builder' is deprecated. Deprecated in Java.
-w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:273:27 'static field CONTENT_TYPE_MOVIE: Int' is deprecated. Deprecated in Java.
-w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:415:28 This is a delicate API and its use requires care. Make sure you fully read and understand documentation of the declaration that is marked as a delicate API.
-w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:2218:32 This is a delicate API and its use requires care. Make sure you fully read and understand documentation of the declaration that is marked as a delicate API.
-w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:2934:50 Check for instance is always 'true'.
-w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:3760:85 'val Icons.Filled.VolumeUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.VolumeUp.
+> Task :app:compileDebugKotlin FAILED
+./gradlew : e: file:///C:/Users/flex360/AndroidStudioProjects/el
+efin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlay
+erScreen.kt:40:49 Conflicting import: imported name 
+'DefaultTrackSelector' is ambiguous.
+At line:1 char:1
++ ./gradlew :app:compileDebugKotlin --console=plain 2>&1 | 
+Out-File -Fi ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (e: file:///C:/U... 
+   ' is ambiguous.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+e: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src
+/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:
+111:49 Conflicting import: imported name 'DefaultTrackSelector' 
+is ambiguous.
+e: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src
+/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:
+3288:61 Unresolved reference 'ClosedCaption'.
+e: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src
+/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:
+5091:44 Unresolved reference 'AspectRatio'.
 
-> Task :app:compileDebugJavaWithJavac UP-TO-DATE
-> Task :app:processDebugJavaRes UP-TO-DATE
-> Task :app:mergeDebugJavaResource UP-TO-DATE
-> Task :app:dexBuilderDebug
-> Task :app:mergeProjectDexDebug
-> Task :app:packageDebug
-> Task :app:createDebugApkListingFileRedirect
-> Task :app:assembleDebug
+FAILURE: Build failed with an exception.
 
-BUILD SUCCESSFUL in 44s
-82 actionable tasks: 10 executed, 72 up-to-date
+* What went wrong:
+Execution failed for task ':app:compileDebugKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compil
+erRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWor
+kAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 3s
+39 actionable tasks: 1 executed, 38 up-to-date
