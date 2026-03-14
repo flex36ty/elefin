@@ -98,6 +98,7 @@ fun MpvControls(
     onOpenSettings: (String) -> Unit, // "main", "subtitles", "audio", etc.
     onHide: () -> Unit,
     onResetHideTimer: () -> Unit,
+    videoResolution: String = "",
     modifier: Modifier = Modifier
 ) {
     AnimatedVisibility(
@@ -177,6 +178,24 @@ fun MpvControls(
                     onSeek = onSeek,
                     onInteraction = onResetHideTimer
                 )
+                
+                if (videoResolution.isNotEmpty()) {
+                    androidx.tv.material3.Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        colors = androidx.tv.material3.SurfaceDefaults.colors(
+                            containerColor = Color.Black.copy(alpha = 0.5f),
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier.padding(top = 8.dp)
+                    ) {
+                        Text(
+                            text = videoResolution,
+                            color = Color.White.copy(alpha = 0.9f),
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
@@ -200,8 +219,7 @@ fun MpvControls(
                         icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                         contentDescription = if (isPlaying) "Pause" else "Play",
                         onClick = onPlayPause,
-                        modifier = Modifier.focusRequester(playPauseFocusRequester),
-                        isLarge = true
+                        modifier = Modifier.focusRequester(playPauseFocusRequester)
                     )
 
                     Spacer(modifier = Modifier.width(32.dp))
@@ -592,12 +610,11 @@ private fun PlayerControlButton(
     icon: ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    isLarge: Boolean = false
+    modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val size = if (isLarge) 80.dp else 56.dp
-    val iconSize = if (isLarge) 40.dp else 28.dp
+    val size = 48.dp
+    val iconSize = 24.dp
 
     Box(
         modifier = modifier
@@ -729,7 +746,7 @@ private fun AspectModeButton(
 
     Box(
         modifier = modifier
-            .size(56.dp)
+            .size(48.dp)
             .background(
                 color = when {
                     isFocused -> Color.White
@@ -755,7 +772,7 @@ private fun AspectModeButton(
                 imageVector = Icons.Filled.AspectRatio,
                 contentDescription = "Picture Mode: ${currentMode.label}",
                 tint = if (isFocused) Color.Black else Color.White,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(18.dp)
             )
             Text(
                 text = currentMode.label,

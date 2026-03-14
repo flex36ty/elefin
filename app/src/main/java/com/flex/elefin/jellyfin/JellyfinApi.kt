@@ -82,6 +82,26 @@ data class JellyfinItem(
     fun getLastPlayedDateForSort(): String {
         return UserData?.LastPlayedDate ?: "1970-01-01T00:00:00.0000000Z"
     }
+
+    // Format RunTimeTicks into a human-readable string like "1 hour 47 mins"
+    val formattedRuntime: String? get() {
+        val ticks = RunTimeTicks ?: return null
+        val totalMinutes = ticks / 600_000_000L
+        if (totalMinutes <= 0) return null
+        
+        val hours = totalMinutes / 60
+        val mins = totalMinutes % 60
+        
+        return buildString {
+            if (hours > 0) {
+                append("$hours ${if (hours == 1L) "hour" else "hours"}")
+                if (mins > 0) append(" ")
+            }
+            if (mins > 0) {
+                append("$mins ${if (mins == 1L) "min" else "mins"}")
+            }
+        }
+    }
 }
 
 @Stable

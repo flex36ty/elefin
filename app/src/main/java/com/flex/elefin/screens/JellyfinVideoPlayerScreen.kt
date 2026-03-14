@@ -20,6 +20,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
+import androidx.media3.common.ColorInfo
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.DefaultDataSource
@@ -380,6 +381,7 @@ fun JellyfinVideoPlayerScreen(
     var nextEpisodeId by remember { mutableStateOf<String?>(null) } // Next episode ID for autoplay
     var nextEpisodeDetails by remember { mutableStateOf<JellyfinItem?>(null) } // Next episode details
     var currentAspectMode by remember { mutableStateOf(AspectMode.FIT) } // Picture mode / aspect ratio
+    var videoResolution by remember { mutableStateOf("") } // Current video resolution string
     
     // ===================================================================================
     // CLEAN AUTOPLAY STATE - Single source of truth
@@ -928,6 +930,22 @@ fun JellyfinVideoPlayerScreen(
                             // Update GL surface with video dimensions for proper aspect ratio
                             if (videoSize.width > 0 && videoSize.height > 0) {
                                 glSurfaceViewRef.value?.setVideoSize(videoSize.width, videoSize.height)
+                                
+                                // Update resolution string with HDR/SDR info
+                                val format = player.videoFormat
+                                val isHdr = ColorInfo.isTransferHdr(format?.colorInfo)
+                                val hdrTag = if (isHdr) "HDR" else "SDR"
+                                
+                                val resBase = when {
+                                    videoSize.width >= 3840 || videoSize.height >= 2160 -> "4K"
+                                    videoSize.width >= 2560 || videoSize.height >= 1440 -> "1440p"
+                                    videoSize.width >= 1920 || videoSize.height >= 1080 -> "1080p"
+                                    videoSize.width >= 1280 || videoSize.height >= 720 -> "720p"
+                                    videoSize.width >= 854 || videoSize.height >= 480 -> "480p"
+                                    else -> "${videoSize.height}p"
+                                }
+                                videoResolution = "$resBase $hdrTag"
+                                Log.d("JellyfinPlayer", "📺 Detected resolution: $videoResolution (${videoSize.width}x${videoSize.height})")
                             }
                             
                             // Also check codec from videoFormat when size changes
@@ -3056,58 +3074,101 @@ fun JellyfinVideoPlayerScreen(
                     val showTitle = (titleOverlayVisible || showControls) && (displayName.isNotEmpty() || (isEpisode && seriesName != null))
                     
                     if (showTitle) {
-                        Column(
+                        androidx.tv.material3.Surface(
                             modifier = Modifier
                                 .align(Alignment.TopStart)
-                                .padding(start = 32.dp, top = 32.dp)
+                                .padding(start = 24.dp, top = 24.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = androidx.tv.material3.SurfaceDefaults.colors(
+                                containerColor = Color.Black.copy(alpha = 0.5f),
+                                contentColor = Color.White
+                            )
                         ) {
-                            // Show series name for episodes, or movie/show name for others
-                            if (isEpisode && seriesName != null) {
-                                androidx.tv.material3.Text(
-                                    text = seriesName!!,
-                                    style = androidx.tv.material3.MaterialTheme.typography.titleLarge,
-                                    color = Color.White,
-                                    modifier = Modifier.padding(bottom = 4.dp)
-                                )
-                            } else if (!isEpisode && displayName.isNotEmpty()) {
-                                androidx.tv.material3.Text(
-                                    text = displayName,
-                                    style = androidx.tv.material3.MaterialTheme.typography.titleLarge,
-                                    color = Color.White,
-                                    modifier = Modifier.padding(bottom = 4.dp)
-                                )
-                            }
-                            
-                            // Show season/episode number and episode name for episodes
-                            if (isEpisode) {
-                                val seasonNum = itemDetails?.ParentIndexNumber ?: item.ParentIndexNumber
-                                val episodeNum = itemDetails?.IndexNumber ?: item.IndexNumber
-                                
-                                // Build episode info string: "S1 E5 - Episode Name" or "S1 E5" or just episode name
-                                val episodeInfo = buildString {
-                                    if (seasonNum != null && episodeNum != null) {
-                                        append("S${seasonNum} E${episodeNum}")
-                                        if (displayName.isNotEmpty()) {
-                                            append(" · ")
-                                            append(displayName)
+                            Column(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                            ) {
+                                // Show series name for episodes, or movie/show name for others
+                                if (isEpisode && seriesName != null) {
+                                    androidx.tv.material3.Text(
+                                        text = seriesName!!,
+                                        style = androidx.tv.material3.MaterialTheme.typography.titleLarge,
+                                        color = Color.White,
+                                        modifier = Modifier.padding(bottom = 4.dp)
+                                    )
+                                } else if (!isEpisode && displayName.isNotEmpty()) {
+                                    androidx.tv.material3.Text(
+                                        text = displayName,
+                                        style = androidx.tv.material3.MaterialTheme.typography.titleLarge,
+                                        color = Color.White,
+                                        modifier = Modifier.padding(bottom = 4.dp)
+                                    )
+                                    
+                                    // Show metadata for movies (Year - Runtime)
+                                    val year = itemDetails?.ProductionYear ?: item.ProductionYear
+                                    val runtime = (itemDetails ?: item).formattedRuntime
+                                    if (year != null || runtime != null) {
+                                        val metadata = buildString {
+                                            if (year != null) append(year)
+                                            if (year != null && runtime != null) append(" · ")
+                                            if (runtime != null) append(runtime)
                                         }
-                                    } else if (episodeNum != null) {
-                                        append("Episode ${episodeNum}")
-                                        if (displayName.isNotEmpty()) {
-                                            append(" · ")
-                                            append(displayName)
-                                        }
-                                    } else if (displayName.isNotEmpty()) {
-                                        append(displayName)
+                                        androidx.tv.material3.Text(
+                                            text = metadata,
+                                            style = androidx.tv.material3.MaterialTheme.typography.bodyMedium,
+                                            color = Color.White.copy(alpha = 0.7f),
+                                            modifier = Modifier.padding(bottom = 4.dp)
+                                        )
                                     }
                                 }
                                 
-                                if (episodeInfo.isNotEmpty()) {
-                                    androidx.tv.material3.Text(
-                                        text = episodeInfo,
-                                        style = androidx.tv.material3.MaterialTheme.typography.titleMedium,
-                                        color = Color.White.copy(alpha = 0.9f)
-                                    )
+                                // Show season/episode number and episode name for episodes
+                                if (isEpisode) {
+                                    val seasonNum = itemDetails?.ParentIndexNumber ?: item.ParentIndexNumber
+                                    val episodeNum = itemDetails?.IndexNumber ?: item.IndexNumber
+                                    
+                                    // Build episode info string: "S1 E5 - Episode Name" or "S1 E5" or just episode name
+                                    val episodeInfo = buildString {
+                                        if (seasonNum != null && episodeNum != null) {
+                                            append("S${seasonNum} E${episodeNum}")
+                                            if (displayName.isNotEmpty()) {
+                                                append(" · ")
+                                                append(displayName)
+                                            }
+                                        } else if (episodeNum != null) {
+                                            append("Episode ${episodeNum}")
+                                            if (displayName.isNotEmpty()) {
+                                                append(" · ")
+                                                append(displayName)
+                                            }
+                                        } else if (displayName.isNotEmpty()) {
+                                            append(displayName)
+                                        }
+                                    }
+                                    
+                                    if (episodeInfo.isNotEmpty()) {
+                                        androidx.tv.material3.Text(
+                                            text = episodeInfo,
+                                            style = androidx.tv.material3.MaterialTheme.typography.titleMedium,
+                                            color = Color.White.copy(alpha = 0.9f)
+                                        )
+                                        
+                                        // Show metadata for episodes (Year - Runtime)
+                                        val year = itemDetails?.ProductionYear ?: item.ProductionYear
+                                        val runtime = (itemDetails ?: item).formattedRuntime
+                                        if (year != null || runtime != null) {
+                                            val metadata = buildString {
+                                                if (year != null) append(year)
+                                                if (year != null && runtime != null) append(" · ")
+                                                if (runtime != null) append(runtime)
+                                            }
+                                            androidx.tv.material3.Text(
+                                                text = metadata,
+                                                style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
+                                                color = Color.White.copy(alpha = 0.7f),
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -3180,6 +3241,24 @@ fun JellyfinVideoPlayerScreen(
                                     }
                                 )
                                 
+                                if (videoResolution.isNotEmpty()) {
+                                    androidx.tv.material3.Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = androidx.tv.material3.SurfaceDefaults.colors(
+                                            containerColor = Color.Black.copy(alpha = 0.5f),
+                                            contentColor = Color.White
+                                        ),
+                                        modifier = Modifier.padding(top = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = videoResolution,
+                                            color = Color.White.copy(alpha = 0.9f),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                                
                                 Spacer(modifier = Modifier.height(24.dp))
                                 
                                 // Control buttons row
@@ -3207,8 +3286,7 @@ fun JellyfinVideoPlayerScreen(
                                         onClick = {
                                             if (isPlaying) player.pause() else player.play()
                                         },
-                                        modifier = Modifier.focusRequester(playPauseFocusRequester),
-                                        isLarge = true
+                                        modifier = Modifier.focusRequester(playPauseFocusRequester)
                                     )
                                     
                                     Spacer(modifier = Modifier.width(32.dp))
@@ -4818,12 +4896,11 @@ private fun PlayerControlButton(
     icon: ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    isLarge: Boolean = false
+    modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val size = if (isLarge) 80.dp else 56.dp
-    val iconSize = if (isLarge) 40.dp else 28.dp
+    val size = 48.dp
+    val iconSize = 24.dp
     
     Box(
         modifier = modifier
@@ -4992,7 +5069,7 @@ private fun AspectModeButton(
     
     Box(
         modifier = modifier
-            .size(56.dp)
+            .size(48.dp)
             .background(
                 color = when {
                     isFocused -> Color.White
@@ -5018,7 +5095,7 @@ private fun AspectModeButton(
                 imageVector = Icons.Filled.AspectRatio,
                 contentDescription = "Picture Mode: ${currentMode.label}",
                 tint = if (isFocused) Color.Black else Color.White,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(18.dp)
             )
             Text(
                 text = currentMode.label,

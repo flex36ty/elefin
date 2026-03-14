@@ -40,6 +40,12 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -1697,7 +1703,11 @@ fun ActionButtonsRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
         // Resume button (only show if resumable, on the left)
-        if (isResumable) {
+        AnimatedVisibility(
+            visible = isResumable,
+            enter = fadeIn() + expandHorizontally(),
+            exit = fadeOut() + shrinkHorizontally()
+        ) {
             val resumeFocusRequester = remember { FocusRequester() }
             
             // Request focus on Resume button by default when resumable
@@ -1811,7 +1821,8 @@ fun ActionButtonsRow(
                 containerColor = androidx.compose.ui.graphics.Color.White,
                 contentColor = androidx.compose.ui.graphics.Color.Black
             )
-        } else {
+        }
+ else {
             var playFocused by remember { mutableStateOf(false) }
             
             Button(
@@ -1861,13 +1872,22 @@ fun ActionButtonsRow(
                 )
                 if (playFocused) {
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = playButtonLabel,
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                        ),
-                        modifier = Modifier.padding(horizontal = 12.dp)
-                    )
+                    AnimatedContent(
+                        targetState = playButtonLabel,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(220, delayMillis = 90)) togetherWith
+                            fadeOut(animationSpec = tween(90))
+                        },
+                        label = "PlayButtonLabelAnimation"
+                    ) { targetLabel ->
+                        Text(
+                            text = targetLabel,
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
+                            ),
+                            modifier = Modifier.padding(horizontal = 12.dp)
+                        )
+                    }
                 }
             }
         }

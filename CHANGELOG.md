@@ -3,8 +3,29 @@
 All notable changes to Elefin will be documented in this file.
 
 ---
+ 
+ ## 2026-03-10
+ 
+ ### Added
+ 
+ - **ExoPlayer Video Resolution Display**
+   - Added a dynamic resolution indicator (4K, 1080p, 720p, etc.) to the ExoPlayer controls.
+   - Positioned on the left side, directly below the progress bar for easy visibility during playback.
 
-## 2026-03-08
+ ### Improved
+ 
+ - **Compact Player Controls (ExoPlayer & MPV)**
+   - Resized all playback control buttons (Rewind, Play/Pause, Forward, etc.) in both ExoPlayer and MPV to be a uniform 48dp size (15% smaller).
+   - Removed the `isLarge` parameter from button logic for a more streamlined and consistent visual experience across both players.
+   - Refined icon scaling within buttons for improved clarity.
+
+ - **Next Up Layout Enhancements**
+   - Switched the **Next Up** row on the home screen to use vertical (portrait) poster cards to match the library screens' aesthetics while maintaining horizontalthumbnails for "Continue Watching" items.
+   - Added a "Next Up" row below "Continue Watching" on the TV Shows library screen for a more comprehensive browsing experience.
+
+---
+ 
+ ## 2026-03-08
 
 ### Fixed
 

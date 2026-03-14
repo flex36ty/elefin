@@ -14,6 +14,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -218,6 +219,9 @@ private fun MpvPlayerScreen(
     var currentAudioId by remember { mutableStateOf(-1) }
     var currentSubtitleId by remember { mutableStateOf(-1) }
     var playbackSpeed by remember { mutableStateOf(1.0) }
+    var videoResolution by remember { mutableStateOf("") }
+    var productionYear by remember { mutableStateOf<Int?>(null) }
+    var runtimeText by remember { mutableStateOf<String?>(null) }
     
     // Aspect mode
     var currentAspectMode by remember { mutableStateOf(AspectMode.FIT) }
@@ -330,6 +334,35 @@ private fun MpvPlayerScreen(
                                 // Only update ID if changed to avoid jitter? 
                                 if (currentAudioId != newAid) currentAudioId = newAid
                                 if (currentSubtitleId != newSid) currentSubtitleId = newSid
+                                
+                                // Fetch and map resolution
+                                withContext(Dispatchers.IO) {
+                                    val width = MPVLib.getPropertyInt("video-params/w") ?: 0
+                                    val height = MPVLib.getPropertyInt("video-params/h") ?: 0
+                                    val colorTransfer = MPVLib.getPropertyString("video-params/color-transfer") ?: "sdr"
+                                    
+                                    val isHdr = colorTransfer == "smpte2084" || colorTransfer == "arib-std-b67"
+                                    val hdrTag = if (isHdr) "HDR" else "SDR"
+                                    
+                                    if (width > 0 || height > 0) {
+                                        val resBase = when {
+                                            width >= 3840 || height >= 2160 -> "4K"
+                                            width >= 2560 || height >= 1440 -> "1440p"
+                                            width >= 1920 || height >= 1080 -> "1080p"
+                                            width >= 1280 || height >= 720 -> "720p"
+                                            width >= 854 || height >= 480 -> "480p"
+                                            else -> "${height}p"
+                                        }
+                                        val resolution = "$resBase $hdrTag"
+                                        
+                                        withContext(Dispatchers.Main) {
+                                            if (videoResolution != resolution) {
+                                                videoResolution = resolution
+                                                Log.d("MpvTvPlayer", "📺 Detected resolution: $resolution (${width}x${height}, transfer=$colorTransfer)")
+                                            }
+                                        }
+                                    }
+                                }
                                 
                                 if (newTracks != null) {
                                     tracks = newTracks
@@ -621,9 +654,12 @@ private fun MpvPlayerScreen(
                          Log.d("MpvTvPlayer", "Fetching item details to match streams. Initial: Sub=$initialSubtitleStreamIndex, Audio=$initialAudioStreamIndex")
                          val itemDetails = apiService.getItemDetails(itemId)
                          val streams = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams ?: emptyList()
-                         // Save streams to state for later reverse matching
+                         
+                         // Update metadata states
                          withContext(Dispatchers.Main) {
                              mediaStreams = streams
+                             productionYear = itemDetails?.ProductionYear
+                             runtimeText = itemDetails?.formattedRuntime
                          }
                          
                          // 1. Match Subtitle
@@ -1004,29 +1040,44 @@ private fun MpvPlayerScreen(
             )
         }
 
-        // Title overlay (always show when controls visible)
         AnimatedVisibility(
             visible = controlsVisible && title.isNotEmpty(),
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.TopStart)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)
-                        )
-                    )
-                    .padding(24.dp)
-            ) {
-                Text(
-                    text = title,
-                    color = Color.White,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold
+            androidx.tv.material3.Surface(
+                modifier = Modifier.padding(24.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = androidx.tv.material3.SurfaceDefaults.colors(
+                    containerColor = Color.Black.copy(alpha = 0.5f),
+                    contentColor = Color.White
                 )
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    Text(
+                        text = title,
+                        color = Color.White,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    
+                    if (productionYear != null || runtimeText != null) {
+                        val metadata = buildString {
+                            if (productionYear != null) append(productionYear)
+                            if (productionYear != null && runtimeText != null) append(" · ")
+                            if (runtimeText != null) append(runtimeText)
+                        }
+                        Text(
+                            text = metadata,
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 16.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
             }
         }
 
@@ -1083,6 +1134,7 @@ private fun MpvPlayerScreen(
             },
             onHide = { controlsVisible = false },
             onResetHideTimer = { lastInteractionTime = System.currentTimeMillis() },
+            videoResolution = videoResolution,
             modifier = Modifier.align(Alignment.BottomCenter)
         )
         
