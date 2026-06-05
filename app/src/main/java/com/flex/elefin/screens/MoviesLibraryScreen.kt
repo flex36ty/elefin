@@ -131,6 +131,18 @@ fun MoviesLibraryScreen(
     val repository = remember(apiService) {
         apiService?.let { JellyfinRepository(it, settings) }
     }
+
+    val isTv = remember(context) { com.flex.elefin.ui.DeviceUtils.isTvDevice(context) }
+    if (!isTv && repository != null) {
+        JellyfinMobileLibraryScreen(
+            libraryId = libraryId,
+            libraryName = libraryName,
+            repository = repository,
+            onItemClick = onItemClick,
+            onBackClick = onBackPressed
+        )
+        return
+    }
     
     // Settings states (same as home screen)
     var darkModeEnabled by remember { mutableStateOf(settings.darkModeEnabled) }

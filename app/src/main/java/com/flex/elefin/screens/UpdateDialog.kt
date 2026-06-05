@@ -45,6 +45,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.graphics.Color
 
+import com.flex.elefin.ui.DeviceUtils
+
 @Composable
 fun UpdateDialog(
     release: GitHubRelease,
@@ -53,6 +55,7 @@ fun UpdateDialog(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val isTv = remember(context) { DeviceUtils.isTvDevice(context) }
     var isDownloading by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableIntStateOf(0) }
     var downloadError by remember { mutableStateOf<String?>(null) }
@@ -76,29 +79,19 @@ fun UpdateDialog(
                 .background(Color.Black.copy(alpha = 0.7f)),
             contentAlignment = Alignment.Center
         ) {
-            Surface(
-                modifier = Modifier
-                    .width(600.dp)
-                    .fillMaxHeight(0.8f)
-                    .padding(32.dp),
-                shape = RoundedCornerShape(16.dp),
-                tonalElevation = 8.dp,
-                colors = SurfaceDefaults.colors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            ) {
+            val content = @Composable {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .fillMaxHeight()
-                        .padding(32.dp),
+                        .padding(if (isTv) 32.dp else 20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(24.dp)
                 ) {
                     Text(
                         text = "Update Available",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onSurface
+                        style = if (isTv) MaterialTheme.typography.headlineMedium else androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                        color = if (isTv) MaterialTheme.colorScheme.onSurface else androidx.compose.material3.MaterialTheme.colorScheme.onSurface
                     )
                     
                     Column(
@@ -109,8 +102,8 @@ fun UpdateDialog(
                     ) {
                         Text(
                             text = "A new version is available: ${release.name}\n\n${release.body ?: "Bug fixes and improvements."}",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                            style = if (isTv) MaterialTheme.typography.bodyLarge else androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                            color = if (isTv) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f) else androidx.compose.material3.MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                         )
                     }
                     
@@ -118,20 +111,20 @@ fun UpdateDialog(
                     if (installationStarted) {
                         Text(
                             text = "Installation started. The system installer will appear shortly.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary
+                            style = if (isTv) MaterialTheme.typography.bodyMedium else androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                            color = if (isTv) MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.primary
                         )
                     } else if (isDownloading) {
                         Text(
                             text = "Downloading update... $downloadProgress%",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary
+                            style = if (isTv) MaterialTheme.typography.bodyMedium else androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                            color = if (isTv) MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.primary
                         )
                     } else if (downloadError != null) {
                         Text(
                             text = "Error: $downloadError",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error
+                            style = if (isTv) MaterialTheme.typography.bodyMedium else androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                            color = if (isTv) MaterialTheme.colorScheme.error else androidx.compose.material3.MaterialTheme.colorScheme.error
                         )
                     }
                     
@@ -140,82 +133,138 @@ fun UpdateDialog(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Button(
-                            onClick = {
-                                val apkUrl = release.assets.firstOrNull()?.browserDownloadUrl
-                                if (apkUrl != null && !isDownloading) {
-                                    isDownloading = true
-                                    downloadProgress = 0
-                                    downloadError = null
-                                    
-                                    // Download APK in a coroutine
-                                    scope.launch {
-                                        try {
-                                            val apkUri = UpdateService.downloadApk(
-                                                context = context,
-                                                apkUrl = apkUrl,
-                                                progressCallback = { progress ->
-                                                    downloadProgress = progress
-                                                }
-                                            )
-                                            
-                                            if (apkUri != null) {
-                                                // Install APK using UpdateService (handles both regular Android and Android TV)
-                                                try {
-                                                    val installed = UpdateService.installApk(context, apkUri)
-                                                    if (installed) {
-                                                        // Installation started successfully
-                                                        isDownloading = false
-                                                        installationStarted = true
-                                                        // Keep dialog open for a moment to show the message
-                                                        kotlinx.coroutines.delay(2000)
-                                                        onUpdate()
-                                                    } else {
-                                                        downloadError = "Failed to start installation"
-                                                        isDownloading = false
-                                                    }
-                                                } catch (e: Exception) {
-                                                    Log.e("UpdateDialog", "Error installing APK", e)
-                                                    downloadError = "Installation failed: ${e.message}"
+                        val triggerDownload = {
+                            val apkUrl = release.assets.firstOrNull()?.browserDownloadUrl
+                            if (apkUrl != null && !isDownloading) {
+                                isDownloading = true
+                                downloadProgress = 0
+                                downloadError = null
+                                
+                                // Download APK in a coroutine
+                                scope.launch {
+                                    try {
+                                        val apkUri = UpdateService.downloadApk(
+                                            context = context,
+                                            apkUrl = apkUrl,
+                                            progressCallback = { progress ->
+                                                downloadProgress = progress
+                                            }
+                                        )
+                                        
+                                        if (apkUri != null) {
+                                            // Install APK using UpdateService (handles both regular Android and Android TV)
+                                            try {
+                                                val installed = UpdateService.installApk(context, apkUri)
+                                                if (installed) {
+                                                    // Installation started successfully
+                                                    isDownloading = false
+                                                    installationStarted = true
+                                                    // Keep dialog open for a moment to show the message
+                                                    kotlinx.coroutines.delay(2000)
+                                                    onUpdate()
+                                                } else {
+                                                    downloadError = "Failed to start installation"
                                                     isDownloading = false
                                                 }
-                                            } else {
-                                                downloadError = "Download failed"
+                                            } catch (e: Exception) {
+                                                Log.e("UpdateDialog", "Error installing APK", e)
+                                                downloadError = "Installation failed: ${e.message}"
                                                 isDownloading = false
                                             }
-                                        } catch (e: Exception) {
-                                            Log.e("UpdateDialog", "Error downloading APK", e)
-                                            downloadError = "Download failed: ${e.message}"
+                                        } else {
+                                            downloadError = "Download failed"
                                             isDownloading = false
                                         }
+                                    } catch (e: Exception) {
+                                        Log.e("UpdateDialog", "Error downloading APK", e)
+                                        downloadError = "Download failed: ${e.message}"
+                                        isDownloading = false
                                     }
                                 }
-                            },
-                            modifier = Modifier.weight(1f),
-                            enabled = !isDownloading
-                        ) {
-                            Text(
-                                text = if (isDownloading) "Downloading..." else "Update Now",
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = FontWeight.Bold
-                                )
-                            )
+                            }
                         }
-                        
-                        OutlinedButton(
-                            onClick = onDismiss,
-                            modifier = Modifier.weight(1f),
-                            enabled = !isDownloading
-                        ) {
-                            Text(
-                                text = "Later",
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = FontWeight.Bold
+
+                        if (isTv) {
+                            Button(
+                                onClick = triggerDownload,
+                                modifier = Modifier.weight(1f),
+                                enabled = !isDownloading
+                            ) {
+                                Text(
+                                    text = if (isDownloading) "Downloading..." else "Update Now",
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 )
-                            )
+                            }
+                            
+                            OutlinedButton(
+                                onClick = onDismiss,
+                                modifier = Modifier.weight(1f),
+                                enabled = !isDownloading
+                            ) {
+                                Text(
+                                    text = "Later",
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                )
+                            }
+                        } else {
+                            androidx.compose.material3.Button(
+                                onClick = triggerDownload,
+                                modifier = Modifier.weight(1f),
+                                enabled = !isDownloading
+                            ) {
+                                androidx.compose.material3.Text(
+                                    text = if (isDownloading) "Downloading..." else "Update Now",
+                                    style = androidx.compose.material3.MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                )
+                            }
+                            
+                            androidx.compose.material3.OutlinedButton(
+                                onClick = onDismiss,
+                                modifier = Modifier.weight(1f),
+                                enabled = !isDownloading
+                            ) {
+                                androidx.compose.material3.Text(
+                                    text = "Later",
+                                    style = androidx.compose.material3.MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                )
+                            }
                         }
                     }
                 }
+            }
+
+            if (isTv) {
+                Surface(
+                    modifier = Modifier
+                        .width(600.dp)
+                        .fillMaxHeight(0.8f)
+                        .padding(32.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    tonalElevation = 8.dp,
+                    colors = SurfaceDefaults.colors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    content = { content() }
+                )
+            } else {
+                androidx.compose.material3.Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .fillMaxHeight(0.7f)
+                        .padding(16.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                    contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                    content = content
+                )
             }
         }
     }

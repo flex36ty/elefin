@@ -54,7 +54,12 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
+import androidx.compose.material3.Button as MobileButton
+import androidx.compose.material3.OutlinedButton as MobileOutlinedButton
+import androidx.compose.material3.Text as MobileText
+import androidx.compose.material3.ButtonDefaults as MobileButtonDefaults
 import com.flex.elefin.components.TvTextField
+import com.flex.elefin.ui.DeviceUtils
 import com.flex.elefin.jellyfin.JellyfinAuthService
 import com.flex.elefin.jellyfin.JellyfinConfig
 import com.flex.elefin.jellyfin.QuickConnectError
@@ -92,17 +97,23 @@ fun JellyfinLoginScreen(
     var isPolling by remember { mutableStateOf(false) }
     var isUnavailable by remember { mutableStateOf(false) }
 
+    val isTv = remember(context) { DeviceUtils.isTvDevice(context) }
+    val widthFraction = if (isTv) 0.5f else 0.9f
+    val horizontalPadding = if (isTv) 48.dp else 24.dp
+    val verticalPadding = if (isTv) 27.dp else 16.dp
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
+            .background(MaterialTheme.colorScheme.surface),
+        contentAlignment = if (isTv) Alignment.TopStart else Alignment.Center
     ) {
-        // Left side content area (matches Jellyfin AndroidTV layout)
+        // Left side content area (matches Jellyfin AndroidTV layout / centered on mobile)
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.5f)
+                .fillMaxWidth(widthFraction)
                 .fillMaxSize()
-                .padding(horizontal = 48.dp, vertical = 27.dp),
+                .padding(horizontal = horizontalPadding, vertical = verticalPadding),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             // Title and subtitle section
@@ -183,65 +194,112 @@ fun JellyfinLoginScreen(
             Spacer(modifier = Modifier.weight(1f))
 
             // Action buttons at bottom
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Other options:",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(end = 8.dp)
-                )
-
-                AnimatedVisibility(visible = loginMethod != LoginMethod.CREDENTIALS) {
-                    Button(
-                        onClick = { loginMethod = LoginMethod.CREDENTIALS },
-                        enabled = !isAuthenticating,
-                        modifier = Modifier.onKeyEvent { keyEvent ->
-                            if (keyEvent.type == KeyEventType.KeyUp && keyEvent.key == Key.Enter && !isAuthenticating) {
-                                loginMethod = LoginMethod.CREDENTIALS
-                                true
-                            } else {
-                                false
+            if (!isTv) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    MobileText(
+                        text = "Other options:",
+                        style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        AnimatedVisibility(
+                            visible = loginMethod != LoginMethod.CREDENTIALS,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            MobileButton(
+                                onClick = { loginMethod = LoginMethod.CREDENTIALS },
+                                enabled = !isAuthenticating,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                MobileText("Use Password", textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                             }
                         }
-                    ) {
-                        Text("Use Password")
-                    }
-                }
 
-                AnimatedVisibility(visible = loginMethod != LoginMethod.QUICKCONNECT) {
-                    Button(
-                        onClick = { loginMethod = LoginMethod.QUICKCONNECT },
-                        enabled = !isAuthenticating,
-                        modifier = Modifier.onKeyEvent { keyEvent ->
-                            if (keyEvent.type == KeyEventType.KeyUp && keyEvent.key == Key.Enter && !isAuthenticating) {
-                                loginMethod = LoginMethod.QUICKCONNECT
-                                true
-                            } else {
-                                false
+                        AnimatedVisibility(
+                            visible = loginMethod != LoginMethod.QUICKCONNECT,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            MobileButton(
+                                onClick = { loginMethod = LoginMethod.QUICKCONNECT },
+                                enabled = !isAuthenticating,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                MobileText("Use QuickConnect", textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                             }
                         }
-                    ) {
-                        Text("Use QuickConnect")
+
+                        MobileOutlinedButton(
+                            onClick = {
+                                if (onCancel != null) {
+                                    onCancel()
+                                } else {
+                                    username = ""
+                                    password = ""
+                                    errorMessage = null
+                                }
+                            },
+                            enabled = !isAuthenticating,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            MobileText("Cancel", textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        }
                     }
                 }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Other options:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
 
-                OutlinedButton(
-                    onClick = {
-                        if (onCancel != null) {
-                            onCancel()
-                        } else {
-                            username = ""
-                            password = ""
-                            errorMessage = null
+                    AnimatedVisibility(visible = loginMethod != LoginMethod.CREDENTIALS) {
+                        Button(
+                            onClick = { loginMethod = LoginMethod.CREDENTIALS },
+                            enabled = !isAuthenticating,
+                            modifier = Modifier.onKeyEvent { keyEvent ->
+                                if (keyEvent.type == KeyEventType.KeyUp && keyEvent.key == Key.Enter && !isAuthenticating) {
+                                    loginMethod = LoginMethod.CREDENTIALS
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                        ) {
+                            Text("Use Password")
                         }
-                    },
-                    enabled = !isAuthenticating,
-                    modifier = Modifier.onKeyEvent { keyEvent ->
-                        if (keyEvent.type == KeyEventType.KeyUp && keyEvent.key == Key.Enter && !isAuthenticating) {
+                    }
+
+                    AnimatedVisibility(visible = loginMethod != LoginMethod.QUICKCONNECT) {
+                        Button(
+                            onClick = { loginMethod = LoginMethod.QUICKCONNECT },
+                            enabled = !isAuthenticating,
+                            modifier = Modifier.onKeyEvent { keyEvent ->
+                                if (keyEvent.type == KeyEventType.KeyUp && keyEvent.key == Key.Enter && !isAuthenticating) {
+                                    loginMethod = LoginMethod.QUICKCONNECT
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                        ) {
+                            Text("Use QuickConnect")
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = {
                             if (onCancel != null) {
                                 onCancel()
                             } else {
@@ -249,13 +307,25 @@ fun JellyfinLoginScreen(
                                 password = ""
                                 errorMessage = null
                             }
-                            true
-                        } else {
-                            false
+                        },
+                        enabled = !isAuthenticating,
+                        modifier = Modifier.onKeyEvent { keyEvent ->
+                            if (keyEvent.type == KeyEventType.KeyUp && keyEvent.key == Key.Enter && !isAuthenticating) {
+                                if (onCancel != null) {
+                                    onCancel()
+                                } else {
+                                    username = ""
+                                    password = ""
+                                    errorMessage = null
+                                }
+                                true
+                            } else {
+                                false
+                            }
                         }
+                    ) {
+                        Text("Cancel")
                     }
-                ) {
-                    Text("Cancel")
                 }
             }
         }
@@ -338,63 +408,92 @@ private fun CredentialsLoginContent(
         )
 
         // Login Button and Error
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Button(
-                onClick = onLogin,
-                enabled = !isAuthenticating && username.isNotBlank() && password.isNotBlank(),
-                modifier = Modifier
-                    .focusRequester(loginButtonFocusRequester)
-                    .onFocusChanged { loginButtonFocused = it.isFocused }
-                    .onKeyEvent { keyEvent ->
-                        if (keyEvent.type == KeyEventType.KeyUp) {
-                            when (keyEvent.key) {
-                                Key.Enter -> {
-                                    if (!isAuthenticating && username.isNotBlank() && password.isNotBlank()) {
-                                        onLogin()
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
-                                Key.DirectionUp -> {
-                                    // Move back to password field
-                                    passwordFocusRequester.requestFocus()
-                                    true
-                                }
-                                else -> false
-                            }
-                        } else {
-                            false
-                        }
-                    },
-                colors = ButtonDefaults.colors(
-                    containerColor = if (loginButtonFocused) 
-                        MaterialTheme.colorScheme.primary 
-                    else 
-                        MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = if (loginButtonFocused)
-                        MaterialTheme.colorScheme.onPrimary
-                    else
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                )
+        val context = LocalContext.current
+        val isTv = remember(context) { DeviceUtils.isTvDevice(context) }
+        if (isTv) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = if (isAuthenticating) "Authenticating..." else "Login",
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
+                Button(
+                    onClick = onLogin,
+                    enabled = !isAuthenticating && username.isNotBlank() && password.isNotBlank(),
+                    modifier = Modifier
+                        .focusRequester(loginButtonFocusRequester)
+                        .onFocusChanged { loginButtonFocused = it.isFocused }
+                        .onKeyEvent { keyEvent ->
+                            if (keyEvent.type == KeyEventType.KeyUp) {
+                                when (keyEvent.key) {
+                                    Key.Enter -> {
+                                        if (!isAuthenticating && username.isNotBlank() && password.isNotBlank()) {
+                                            onLogin()
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
+                                    Key.DirectionUp -> {
+                                        // Move back to password field
+                                        passwordFocusRequester.requestFocus()
+                                        true
+                                    }
+                                    else -> false
+                                }
+                            } else {
+                                false
+                            }
+                        },
+                    colors = ButtonDefaults.colors(
+                        containerColor = if (loginButtonFocused) 
+                            MaterialTheme.colorScheme.primary 
+                        else 
+                            MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = if (loginButtonFocused)
+                            MaterialTheme.colorScheme.onPrimary
+                        else
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                ) {
+                    Text(
+                        text = if (isAuthenticating) "Authenticating..." else "Login",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
 
-            if (errorMessage != null) {
-                Text(
-                    text = errorMessage,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(start = 8.dp)
-                )
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                MobileButton(
+                    onClick = onLogin,
+                    enabled = !isAuthenticating && username.isNotBlank() && password.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    MobileText(
+                        text = if (isAuthenticating) "Authenticating..." else "Login",
+                        style = androidx.compose.material3.MaterialTheme.typography.labelLarge
+                    )
+                }
+
+                if (errorMessage != null) {
+                    MobileText(
+                        text = errorMessage,
+                        style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
             }
         }
     }
@@ -576,56 +675,71 @@ private fun QuickConnectLoginContent(
         android.util.Log.d("QuickConnectLogin", "Polling loop ended")
     }
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(24.dp)
-    ) {
-        // Left side: Instructions and code box
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+    val isTv = remember(context) { DeviceUtils.isTvDevice(context) }
+
+    val content = @Composable {
+        // Instructions
+        Text(
+            text = "Step 1: Open the Jellyfin app on your phone or browser",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = "Step 2: Navigate to Quick Connect in user settings",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = "Step 3: Enter the code below",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        // Code box on the left side
+        QuickConnectCodeBox(
+            quickConnectCode = quickConnectCode,
+            isUnavailable = isUnavailable,
+            isPolling = isPolling
+        )
+
+        if (isPolling && quickConnectCode != null) {
+            Text(
+                text = "Waiting for authorization...",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        if (errorMessage != null) {
+            Text(
+                text = errorMessage,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+    }
+
+    if (isTv) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            // Instructions
-            Text(
-                text = "Step 1: Open the Jellyfin app on your phone or browser",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = "Step 2: Navigate to Quick Connect in user settings",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = "Step 3: Enter the code below",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            // Code box on the left side
-            QuickConnectCodeBox(
-                quickConnectCode = quickConnectCode,
-                isUnavailable = isUnavailable,
-                isPolling = isPolling
-            )
-
-            if (isPolling && quickConnectCode != null) {
-                Text(
-                    text = "Waiting for authorization...",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    modifier = Modifier.padding(top = 8.dp)
-                )
+            // Left side: Instructions and code box
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                content()
             }
-
-            if (errorMessage != null) {
-                Text(
-                    text = errorMessage,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
+        }
+    } else {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            content()
         }
     }
 }

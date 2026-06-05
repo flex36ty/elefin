@@ -1,5 +1,6 @@
 package com.flex.elefin.screens
 
+import com.flex.elefin.jellyfin.JellyfinRepository
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -128,6 +129,24 @@ fun MovieDetailsScreen(
     val context = LocalContext.current
     val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
     var darkModeEnabled by remember { mutableStateOf(settings.darkModeEnabled) }
+    
+    val repository = remember(apiService) {
+        apiService?.let { JellyfinRepository(it, settings) }
+    }
+
+    val isTv = remember(context) { com.flex.elefin.ui.DeviceUtils.isTvDevice(context) }
+    if (!isTv && repository != null) {
+        JellyfinMobileDetailsScreen(
+            item = item,
+            repository = repository,
+            onPlayClick = { playItem, resumeMs ->
+                val intent = JellyfinVideoPlayerActivity.createIntent(context, playItem.Id, resumeMs)
+                context.startActivity(intent)
+            },
+            onBackClick = { onBackPressed?.invoke() }
+        )
+        return
+    }
     
     // GL Pipeline warmup for NVIDIA Shield - prevents initial frame stutter and ANR
     LaunchedEffect(Unit) {

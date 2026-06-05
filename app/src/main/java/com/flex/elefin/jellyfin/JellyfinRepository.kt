@@ -109,7 +109,7 @@ class JellyfinRepository(
             val seenIds = mutableSetOf<String>()
             
             // Fetch from each library that might contain movies
-            libraries.forEach { library ->
+            libraries.filter { it.CollectionType.equals("movies", ignoreCase = true) }.forEach { library ->
                 try {
                     // Fetch recently added items from this specific library
                     val libraryItems = apiService.getRecentlyAddedMoviesFromLibrary(library.Id, limit = settings.rowCardCount)
@@ -184,7 +184,7 @@ class JellyfinRepository(
             }
             
             // Fetch from each library that might contain movies
-            libraries.forEach { library ->
+            libraries.filter { it.CollectionType.equals("movies", ignoreCase = true) }.forEach { library ->
                 try {
                     // Fetch recently released items from this specific library
                     val libraryItems = apiService.getRecentlyReleasedMoviesFromLibrary(library.Id, limit = settings.rowCardCount)
@@ -235,7 +235,7 @@ class JellyfinRepository(
             val allItems = mutableListOf<JellyfinItem>()
             
             // Fetch from each library that might contain shows
-            libraries.forEach { library ->
+            libraries.filter { it.CollectionType.equals("tvshows", ignoreCase = true) }.forEach { library ->
                 try {
                     // Fetch recently added shows from this specific library
                     val libraryItems = apiService.getRecentlyAddedShowsFromLibrary(library.Id, limit = settings.rowCardCount)
@@ -295,7 +295,7 @@ class JellyfinRepository(
             val allItems = mutableListOf<JellyfinItem>()
             
             // Fetch from each library that might contain episodes
-            libraries.forEach { library ->
+            libraries.filter { it.CollectionType.equals("tvshows", ignoreCase = true) }.forEach { library ->
                 try {
                     // Fetch recently added episodes from this specific library
                     val libraryItems = apiService.getRecentlyAddedEpisodesFromLibrary(library.Id, limit = settings.rowCardCount)

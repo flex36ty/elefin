@@ -59,6 +59,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import com.flex.elefin.ui.DeviceUtils
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.focusable
@@ -76,9 +80,14 @@ import androidx.tv.material3.ListItem
 import androidx.tv.material3.Text
 import androidx.tv.material3.Icon
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.background
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
@@ -111,6 +120,15 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.CircularProgressIndicator
+import com.flex.elefin.theme.*
 
 // Picture mode / aspect ratio options
 enum class AspectMode(val label: String) {
@@ -140,6 +158,31 @@ fun JellyfinVideoPlayerScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
+    
+    val themeColor = remember(settings.themeColorHex) {
+        try {
+            Color(android.graphics.Color.parseColor(settings.themeColorHex))
+        } catch (e: Exception) {
+            Color(0xFF9C27B0) // Fallback to purple
+        }
+    }
+    
+    val themeColorInt = remember(settings.themeColorHex) {
+        try {
+            android.graphics.Color.parseColor(settings.themeColorHex)
+        } catch (e: Exception) {
+            android.graphics.Color.parseColor("#9C27B0")
+        }
+    }
+    
+    val transparentThemeColorInt = remember(themeColorInt) {
+        android.graphics.Color.argb(
+            150,
+            android.graphics.Color.red(themeColorInt),
+            android.graphics.Color.green(themeColorInt),
+            android.graphics.Color.blue(themeColorInt)
+        )
+    }
     
     // Track itemDetails state for codec detection (will be populated by LaunchedEffect)
     var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
@@ -383,6 +426,46 @@ fun JellyfinVideoPlayerScreen(
     var currentAspectMode by remember { mutableStateOf(AspectMode.FIT) } // Picture mode / aspect ratio
     var videoResolution by remember { mutableStateOf("") } // Current video resolution string
     
+    
+    // Portrait mobile detail state variables
+    var seriesDetails by remember { mutableStateOf<JellyfinItem?>(null) }
+    var seasons by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
+    var selectedSeasonIndex by remember { mutableStateOf(0) }
+    var episodes by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
+    var isLoadingEpisodes by remember { mutableStateOf(false) }
+
+    LaunchedEffect(itemDetails, selectedSeasonIndex) {
+        val details = itemDetails ?: return@LaunchedEffect
+        if (details.Type == "Episode" && details.SeriesId != null) {
+            withContext(Dispatchers.IO) {
+                try {
+                    if (seriesDetails == null) {
+                        seriesDetails = apiService.getItemDetails(details.SeriesId)
+                    }
+                    if (seasons.isEmpty()) {
+                        val fetchedSeasons = apiService.getSeasons(details.SeriesId)
+                        seasons = fetchedSeasons
+                        // Find matching season index
+                        val currentSeasonNum = details.ParentIndexNumber
+                        val initialIndex = fetchedSeasons.indexOfFirst { it.IndexNumber == currentSeasonNum }
+                        if (initialIndex >= 0) {
+                            selectedSeasonIndex = initialIndex
+                        }
+                    }
+                    if (seasons.isNotEmpty() && selectedSeasonIndex < seasons.size) {
+                        isLoadingEpisodes = true
+                        val currentSeasonId = seasons[selectedSeasonIndex].Id
+                        episodes = apiService.getEpisodes(details.SeriesId, currentSeasonId)
+                        isLoadingEpisodes = false
+                    }
+                } catch (e: Exception) {
+                    Log.e("JellyfinPlayer", "Error fetching seasons/episodes for player layout", e)
+                }
+            }
+        }
+    }
+
+
     // ===================================================================================
     // CLEAN AUTOPLAY STATE - Single source of truth
     // ===================================================================================
@@ -391,6 +474,37 @@ fun JellyfinVideoPlayerScreen(
     var autoplayCancelled by remember { mutableStateOf(false) }
     var isAutoPlayingNext by remember { mutableStateOf(false) } // Guard against double triggers
     var countdownJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    val playClickedEpisode: (JellyfinItem, Long) -> Unit = playClickedEpisode@{ clickedEp, resumePos ->
+        if (isAutoPlayingNext) return@playClickedEpisode
+        val activity = context as? android.app.Activity
+        if (activity != null && !activity.isFinishing) {
+            isAutoPlayingNext = true
+            showNextUpOverlay = false
+            countdownJob?.cancel()
+            countdownJob = null
+            
+            progressReportingJob?.cancel()
+            progressReportingJob = null
+            
+            try {
+                player.stop()
+                player.release()
+            } catch (e: Exception) {
+                Log.w("JellyfinPlayer", "Error stopping player on episode click", e)
+            }
+            
+            val intent = com.flex.elefin.JellyfinVideoPlayerActivity.createIntent(
+                context = activity,
+                itemId = clickedEp.Id,
+                resumePositionMs = resumePos,
+                subtitleStreamIndex = null,
+                audioStreamIndex = null
+            )
+            activity.startActivity(intent)
+            activity.finish()
+        }
+    }
     
     // ===================================================================================
     // AUTOPLAY HELPER FUNCTION - Single exit point for starting next episode
@@ -2351,6 +2465,9 @@ fun JellyfinVideoPlayerScreen(
         }
     }
     
+    // Detect mobile vs TV for touch vs D-pad controls
+    val isMobile = remember { !DeviceUtils.isTvDevice(context) }
+
     // Track last interaction time to reset auto-hide timer
     var controlsInteractionKey by remember { mutableStateOf(0) }
     
@@ -2416,743 +2533,747 @@ fun JellyfinVideoPlayerScreen(
         }
     }
     
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .focusable()
-            .onPreviewKeyEvent { event ->
-                // Handle key events for video controls
-                if (event.type == KeyEventType.KeyUp) {
-                    when (event.key) {
-                        Key.DirectionCenter,  // DPAD center
-                        Key.Enter,             // Enter key
-                        Key.NumPadEnter -> {
-                            if (!showControls) {
-                                // Show custom Compose controls overlay
-                                showControls = true
-                                Log.d("ExoPlayer", "Enter/OK pressed - showing custom controls")
-                                true
-                            } else {
-                                // Controls are showing, let them handle the event
-                                false
-                            }
+    val configuration = LocalConfiguration.current
+    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+    val isPortraitMode = isMobile && isPortrait
+
+    val playerContent = @Composable { playerModifier: Modifier ->
+        Box(
+            modifier = playerModifier
+                .background(Color.Black)
+                .focusable()
+                .then(
+                    if (isMobile) {
+                        Modifier.pointerInput(Unit) {
+                            detectTapGestures(onTap = {
+                                showControls = !showControls
+                                if (showControls) controlsInteractionKey++
+                            })
                         }
-                        Key.DirectionLeft -> {
-                            // Cancel autoplay if overlay is showing
-                            if (showNextUpOverlay) {
-                                autoplayCancelled = true
-                                showNextUpOverlay = false
-                                Log.d("JellyfinPlayer", "Autoplay cancelled by user (Left key)")
-                                true
-                            } else if (!showControls) {
-                                // Controls not showing - seek backward 15 seconds
-                                scope.launch(Dispatchers.Main) {
-                                    val currentPos = player.currentPosition
-                                    val seekTo = (currentPos - 15000).coerceAtLeast(0)
-                                    player.seekTo(seekTo)
-                                    Log.d("ExoPlayer", "Left pressed - seeking backward to ${seekTo}ms")
+                    } else Modifier
+                )
+                .onPreviewKeyEvent { event ->
+                    // Handle key events for video controls
+                    if (event.type == KeyEventType.KeyUp) {
+                        when (event.key) {
+                            Key.DirectionCenter,  // DPAD center
+                            Key.Enter,             // Enter key
+                            Key.NumPadEnter -> {
+                                if (!showControls) {
+                                    // Show custom Compose controls overlay
+                                    showControls = true
+                                    Log.d("ExoPlayer", "Enter/OK pressed - showing custom controls")
+                                    true
+                                } else {
+                                    // Controls are showing, let them handle the event
+                                    false
                                 }
-                                true // Consume event
-                            } else {
-                                false // Don't consume - let controls handle navigation
                             }
-                        }
-                        Key.DirectionRight -> {
-                            // Cancel autoplay if overlay is showing
-                            if (showNextUpOverlay) {
-                                autoplayCancelled = true
-                                showNextUpOverlay = false
-                                Log.d("JellyfinPlayer", "Autoplay cancelled by user (Right key)")
-                                true
-                            } else if (!showControls) {
-                                // Controls not showing - seek forward 15 seconds
-                                scope.launch(Dispatchers.Main) {
-                                    val currentPos = player.currentPosition
-                                    val dur = player.duration
-                                    val seekTo = if (dur > 0) {
-                                        (currentPos + 15000).coerceAtMost(dur)
-                                    } else {
-                                        currentPos + 15000
+                            Key.DirectionLeft -> {
+                                // Cancel autoplay if overlay is showing
+                                if (showNextUpOverlay) {
+                                    autoplayCancelled = true
+                                    showNextUpOverlay = false
+                                    Log.d("JellyfinPlayer", "Autoplay cancelled by user (Left key)")
+                                    true
+                                } else if (!showControls) {
+                                    // Controls not showing - seek backward 15 seconds
+                                    scope.launch(Dispatchers.Main) {
+                                        val currentPos = player.currentPosition
+                                        val seekTo = (currentPos - 15000).coerceAtLeast(0)
+                                        player.seekTo(seekTo)
+                                        Log.d("ExoPlayer", "Left pressed - seeking backward to ${seekTo}ms")
                                     }
-                                    player.seekTo(seekTo)
-                                    Log.d("ExoPlayer", "Right pressed - seeking forward to ${seekTo}ms")
+                                    true // Consume event
+                                } else {
+                                    false // Don't consume - let controls handle navigation
                                 }
-                                true // Consume event
-                            } else {
-                                false // Don't consume - let controls handle navigation
                             }
-                        }
-                        Key.DirectionUp, Key.DirectionDown -> {
-                            // Cancel autoplay if overlay is showing
-                            if (showNextUpOverlay) {
-                                autoplayCancelled = true
-                                showNextUpOverlay = false
-                                Log.d("JellyfinPlayer", "Autoplay cancelled by user (Up/Down key)")
+                            Key.DirectionRight -> {
+                                // Cancel autoplay if overlay is showing
+                                if (showNextUpOverlay) {
+                                    autoplayCancelled = true
+                                    showNextUpOverlay = false
+                                    Log.d("JellyfinPlayer", "Autoplay cancelled by user (Right key)")
+                                    true
+                                } else if (!showControls) {
+                                    // Controls not showing - seek forward 15 seconds
+                                    scope.launch(Dispatchers.Main) {
+                                        val currentPos = player.currentPosition
+                                        val dur = player.duration
+                                        val seekTo = if (dur > 0) {
+                                            (currentPos + 15000).coerceAtMost(dur)
+                                        } else {
+                                            currentPos + 15000
+                                        }
+                                        player.seekTo(seekTo)
+                                        Log.d("ExoPlayer", "Right pressed - seeking forward to ${seekTo}ms")
+                                    }
+                                    true // Consume event
+                                } else {
+                                    false // Don't consume - let controls handle navigation
+                                }
+                            }
+                            Key.DirectionUp, Key.DirectionDown -> {
+                                // Cancel autoplay if overlay is showing
+                                if (showNextUpOverlay) {
+                                    autoplayCancelled = true
+                                    showNextUpOverlay = false
+                                    Log.d("JellyfinPlayer", "Autoplay cancelled by user (Up/Down key)")
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            Key.Menu -> {
+                                // Open settings menu when Menu key is pressed
+                                showSettingsMenu = true
                                 true
-                            } else {
-                                false
                             }
+                            else -> false
                         }
-                        Key.Menu -> {
-                            // Open settings menu when Menu key is pressed
-                            showSettingsMenu = true
-                            true
-                        }
-                        else -> false
+                    } else {
+                        false
                     }
-                } else {
-                    false
                 }
-            }
-    )
- {
-        when {
-            mediaUrl != null -> {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    AndroidView(
-                        factory = { ctx ->
-                            // Log rendering mode decision
-                            // Note: AV1 detection happens at RUNTIME via onTracksChanged listener
-                            // At this point we don't know if it's AV1 yet - we use user's GL setting
-                            Log.d("JellyfinPlayer", "🎬 Creating video view - GL mode: $useGLEnhancements")
-                            
-                            if (useGLEnhancements) {
-                                // GL Enhancement mode: Use FrameLayout with GL surface + overlaid PlayerView
-                                // WARNING: If content is AV1, this will cause black screen on devices without HW AV1 decoder
-                                // The runtime AV1 detection in onTracksChanged will log warnings if this happens
-                                FrameLayout(ctx).apply {
-                                    // Create GL surface for video rendering with effects
-                                    val glSurface = GLVideoSurfaceView(ctx).apply {
-                                        layoutParams = FrameLayout.LayoutParams(
-                                            FrameLayout.LayoutParams.MATCH_PARENT,
-                                            FrameLayout.LayoutParams.MATCH_PARENT
-                                        )
-                                        // Video enhancement effects
-                                        this.enableFakeHDR = settings.enableFakeHDR
-                                        this.enableSharpening = settings.enableSharpening
-                                        this.hdrStrength = settings.hdrStrength
-                                        this.sharpeningStrength = settings.sharpenStrength
-                                        this.enableFrameBlending = settings.enableFrameBlending
-                                        this.frameBlendStrength = settings.frameBlendStrength
-                                        
-                                        // New video enhancement effects
-                                        this.enableDenoise = settings.enableDenoise
-                                        this.denoiseStrength = settings.denoiseStrength
-                                        this.enableDeband = settings.enableDeband
-                                        this.debandStrength = settings.debandStrength
-                                        this.enableFXAA = settings.enableFXAA
-                                        this.brightness = settings.videoBrightness
-                                        this.contrast = settings.videoContrast
-                                        this.saturation = settings.videoSaturation
-                                        this.colorTemperature = settings.videoColorTemperature
-                                        
-                                        glSurfaceViewRef.value = this
-                                        
-                                        // Use callback for when GL surface is ready (async)
-                                        // This fixes the issue where getCodecSurface() returns null
-                                        // because onSurfaceCreated hasn't been called yet
-                                        setOnSurfaceReadyListener { surface ->
-                                            // Fix race condition: Ensure view hasn't been disposed
-                                            if (glSurfaceViewRef.value != null) {
-                                                try {
-                                                    player.setVideoSurface(surface)
-                                                    Log.d("JellyfinPlayer", "🎬 GL surface attached to player via callback")
-                                                } catch (e: Exception) {
-                                                    Log.w("JellyfinPlayer", "⚠️ Failed to attach GL surface: ${e.message}")
+        ) {
+            when {
+                mediaUrl != null -> {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        AndroidView(
+                            factory = { ctx ->
+                                // Log rendering mode decision
+                                // Note: AV1 detection happens at RUNTIME via onTracksChanged listener
+                                // At this point we don't know if it's AV1 yet - we use user's GL setting
+                                Log.d("JellyfinPlayer", "🎬 Creating video view - GL mode: $useGLEnhancements")
+                                
+                                if (useGLEnhancements) {
+                                    // GL Enhancement mode: Use FrameLayout with GL surface + overlaid PlayerView
+                                    // WARNING: If content is AV1, this will cause black screen on devices without HW AV1 decoder
+                                    // The runtime AV1 detection in onTracksChanged will log warnings if this happens
+                                    FrameLayout(ctx).apply {
+                                        // Create GL surface for video rendering with effects
+                                        val glSurface = GLVideoSurfaceView(ctx).apply {
+                                            layoutParams = FrameLayout.LayoutParams(
+                                                FrameLayout.LayoutParams.MATCH_PARENT,
+                                                FrameLayout.LayoutParams.MATCH_PARENT
+                                            )
+                                            // Video enhancement effects
+                                            this.enableFakeHDR = settings.enableFakeHDR
+                                            this.enableSharpening = settings.enableSharpening
+                                            this.hdrStrength = settings.hdrStrength
+                                            this.sharpeningStrength = settings.sharpenStrength
+                                            this.enableFrameBlending = settings.enableFrameBlending
+                                            this.frameBlendStrength = settings.frameBlendStrength
+                                            
+                                            // New video enhancement effects
+                                            this.enableDenoise = settings.enableDenoise
+                                            this.denoiseStrength = settings.denoiseStrength
+                                            this.enableDeband = settings.enableDeband
+                                            this.debandStrength = settings.debandStrength
+                                            this.enableFXAA = settings.enableFXAA
+                                            this.brightness = settings.videoBrightness
+                                            this.contrast = settings.videoContrast
+                                            this.saturation = settings.videoSaturation
+                                            this.colorTemperature = settings.videoColorTemperature
+                                            
+                                            glSurfaceViewRef.value = this
+                                            
+                                            // Use callback for when GL surface is ready (async)
+                                            // This fixes the issue where getCodecSurface() returns null
+                                            // because onSurfaceCreated hasn't been called yet
+                                            setOnSurfaceReadyListener { surface ->
+                                                // Fix race condition: Ensure view hasn't been disposed
+                                                if (glSurfaceViewRef.value != null) {
+                                                    try {
+                                                        player.setVideoSurface(surface)
+                                                        Log.d("JellyfinPlayer", "🎬 GL surface attached to player via callback")
+                                                    } catch (e: Exception) {
+                                                        Log.w("JellyfinPlayer", "⚠️ Failed to attach GL surface: ${e.message}")
+                                                    }
+                                                } else {
+                                                    Log.d("JellyfinPlayer", "🛑 Ignoring GL surface callback - view disposed")
                                                 }
-                                            } else {
-                                                Log.d("JellyfinPlayer", "🛑 Ignoring GL surface callback - view disposed")
                                             }
                                         }
+                                        addView(glSurface)
+                                        
+                                        // Create PlayerView WITHOUT video surface (just for subtitles only - controls handled by Compose)
+                                        val playerView = PlayerView(ctx).apply {
+                                            this.player = player
+                                            // Keep screen on during playback
+                                            keepScreenOn = true
+                                            // DISABLE built-in controller - Compose handles controls
+                                            useController = false
+                                            // Block focus from going to PlayerView children
+                                            descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                                            isFocusable = false
+                                            isFocusableInTouchMode = false
+                                            
+                                            // Make video surface area transparent so GL surface shows through
+                                            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                                            
+                                            layoutParams = FrameLayout.LayoutParams(
+                                                FrameLayout.LayoutParams.MATCH_PARENT,
+                                                FrameLayout.LayoutParams.MATCH_PARENT
+                                            )
+                                            
+                                            playerViewRef.value = this
+                                            
+                                            // Hide next/previous track buttons
+                                            post {
+                                                findViewById<android.view.View>(androidx.media3.ui.R.id.exo_prev)?.visibility = android.view.View.GONE
+                                                findViewById<android.view.View>(androidx.media3.ui.R.id.exo_next)?.visibility = android.view.View.GONE
+                                                
+                                                // Apply ExoPlayer subtitle customization settings
+                                                subtitleView?.apply {
+                                                    val textSizePx = settings.exoSubtitleTextSize.toFloat()
+                                                    setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, textSizePx)
+                                                    
+                                                    setStyle(
+                                                        androidx.media3.ui.CaptionStyleCompat(
+                                                            settings.exoSubtitleTextColor,
+                                                            if (settings.exoSubtitleBgTransparent) android.graphics.Color.TRANSPARENT else settings.exoSubtitleBgColor,
+                                                            android.graphics.Color.TRANSPARENT,
+                                                            androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                                                            android.graphics.Color.BLACK,
+                                                            null
+                                                        )
+                                                    )
+                                                }
+                                                
+                                                setShowSubtitleButton(true)
+                                                
+                                                // Get the PlayerControlView for custom settings button
+                                                val controller = findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
+                                                controller?.let { controlView ->
+                                                    // ⭐ CUSTOM SETTINGS BUTTON
+                                                    val existingSubtitleButton = controlView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_subtitle)
+                                                    existingSubtitleButton?.let { existingBtn ->
+                                                        existingBtn.visibility = android.view.View.GONE
+                                                        
+                                                        val customSettingsButton = android.widget.ImageButton(ctx).apply {
+                                                            setImageResource(android.R.drawable.ic_menu_sort_by_size)
+                                                            background = android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
+                                                            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+                                                            setPadding(16, 16, 16, 16)
+                                                            contentDescription = "Player Settings"
+                                                            isFocusable = true
+                                                            isClickable = true
+                                                            layoutParams = android.view.ViewGroup.LayoutParams(
+                                                                resources.getDimensionPixelSize(androidx.media3.ui.R.dimen.exo_small_icon_width),
+                                                                resources.getDimensionPixelSize(androidx.media3.ui.R.dimen.exo_small_icon_height)
+                                                            )
+                                                            setOnClickListener { showSettingsMenu = true }
+                                                        }
+                                                        
+                                                        (existingBtn.parent as? android.view.ViewGroup)?.let { parent ->
+                                                            val existingBtnIndex = parent.indexOfChild(existingBtn)
+                                                            parent.addView(customSettingsButton, existingBtnIndex + 1)
+                                                        }
+                                                    }
+                                                    
+                                                    // ⭐ PURPLE FOCUS STYLING
+                                                    val transparentPurple = transparentThemeColorInt
+                                                    
+                                                    // Settings button should not be the default focus
+                                                    findViewById<android.view.View>(androidx.media3.ui.R.id.exo_settings)?.let { settingsBtn ->
+                                                        // Keep it visible but not the first focus
+                                                        settingsBtn.isFocusable = true
+                                                        settingsBtn.isFocusableInTouchMode = false
+                                                    }
+                                                    
+                                                    val buttonIds = listOf(
+                                                        androidx.media3.ui.R.id.exo_play,
+                                                        androidx.media3.ui.R.id.exo_pause,
+                                                        androidx.media3.ui.R.id.exo_ffwd,
+                                                        androidx.media3.ui.R.id.exo_rew,
+                                                        androidx.media3.ui.R.id.exo_subtitle,
+                                                        androidx.media3.ui.R.id.exo_settings,
+                                                        androidx.media3.ui.R.id.exo_progress,
+                                                        androidx.media3.ui.R.id.exo_position,
+                                                        androidx.media3.ui.R.id.exo_duration,
+                                                        androidx.media3.ui.R.id.exo_repeat_toggle,
+                                                        androidx.media3.ui.R.id.exo_shuffle
+                                                    )
+                                                    
+                                                    fun applyPurpleFocus(view: android.view.View) {
+                                                        val originalBackground = view.background
+                                                        view.setOnFocusChangeListener { v, hasFocus ->
+                                                            if (hasFocus) {
+                                                                v.post {
+                                                                    val width = v.width
+                                                                    val height = v.height
+                                                                    if (width > 0 && height > 0) {
+                                                                        val drawable = android.graphics.drawable.GradientDrawable().apply {
+                                                                            setColor(transparentPurple)
+                                                                            val maxDimension = maxOf(width, height)
+                                                                            val cornerRadius = maxDimension * 0.5f
+                                                                            setCornerRadius(cornerRadius)
+                                                                        }
+                                                                        val padding = (maxOf(width, height) * 0.05f).toInt()
+                                                                        val layerDrawable = android.graphics.drawable.LayerDrawable(arrayOf(drawable))
+                                                                        layerDrawable.setLayerInset(0, -padding, -padding, -padding, -padding)
+                                                                        v.background = layerDrawable
+                                                                    } else {
+                                                                        v.setBackgroundColor(transparentPurple)
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                v.background = originalBackground
+                                                            }
+                                                        }
+                                                    }
+                                                    
+                                                    buttonIds.forEach { buttonId ->
+                                                        findViewById<android.view.View>(buttonId)?.let { button ->
+                                                            applyPurpleFocus(button)
+                                                        }
+                                                    }
+                                                    
+                                                    fun applyToAllChildren(parent: android.view.ViewGroup) {
+                                                        for (i in 0 until parent.childCount) {
+                                                            val child = parent.getChildAt(i)
+                                                            if (child is android.view.ViewGroup) {
+                                                                applyToAllChildren(child)
+                                                            } else if (child is android.widget.Button || 
+                                                                      child is android.widget.ImageButton ||
+                                                                      (child.isFocusable && child.isClickable)) {
+                                                                applyPurpleFocus(child)
+                                                            }
+                                                        }
+                                                    }
+                                                    
+                                                    applyToAllChildren(controlView)
+                                                    controlView.invalidate()
+                                                    
+                                                    // Auto-focus play/pause button when controller appears
+                                                    // Set play/pause button as default next focus to prevent settings button from getting focus
+                                                    val pauseButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_pause)
+                                                    val playButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_play)
+                                                    
+                                                    // Make play/pause button the default focus
+                                                    playButton?.let { play ->
+                                                        play.nextFocusDownId = android.view.View.NO_ID
+                                                        play.nextFocusUpId = android.view.View.NO_ID
+                                                        play.isFocusedByDefault = true
+                                                    }
+                                                    pauseButton?.let { pause ->
+                                                        pause.nextFocusDownId = android.view.View.NO_ID
+                                                        pause.nextFocusUpId = android.view.View.NO_ID  
+                                                        pause.isFocusedByDefault = true
+                                                    }
+                                                    
+                                                    // Use postDelayed to ensure controller is fully rendered, then request focus
+                                                    controlView.postDelayed({
+                                                        val buttonToFocus = if (player.isPlaying && pauseButton != null) pauseButton else playButton
+                                                        
+                                                        buttonToFocus?.let { button ->
+                                                            button.requestFocus()
+                                                            Log.d("ExoPlayer", "GL Mode: Focused play/pause button (hasFocus=${button.hasFocus()})")
+                                                        }
+                                                    }, 200) // 200ms delay to ensure controller is ready
+                                                    
+                                                    Log.d("ExoPlayer", "GL Mode: PlayerControlView initialized with purple focus styling")
+                                                }
+                                            }
+                                        }
+                                        addView(playerView)
                                     }
-                                    addView(glSurface)
-                                    
-                                    // Create PlayerView WITHOUT video surface (just for subtitles only - controls handled by Compose)
-                                    val playerView = PlayerView(ctx).apply {
+                                } else {
+                                    // Standard mode: Regular PlayerView (subtitles only - controls handled by Compose)
+                                    PlayerView(ctx).apply {
                                         this.player = player
                                         // Keep screen on during playback
                                         keepScreenOn = true
-                                        // DISABLE built-in controller - Compose handles controls
-                                        useController = false
-                                        // Block focus from going to PlayerView children
-                                        descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
-                                        isFocusable = false
-                                        isFocusableInTouchMode = false
-                                        
-                                        // Make video surface area transparent so GL surface shows through
-                                        setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                                        
-                                        layoutParams = FrameLayout.LayoutParams(
-                                            FrameLayout.LayoutParams.MATCH_PARENT,
-                                            FrameLayout.LayoutParams.MATCH_PARENT
-                                        )
-                                        
-                                        playerViewRef.value = this
-                                        
-                                        // Hide next/previous track buttons
-                                        post {
-                                            findViewById<android.view.View>(androidx.media3.ui.R.id.exo_prev)?.visibility = android.view.View.GONE
-                                            findViewById<android.view.View>(androidx.media3.ui.R.id.exo_next)?.visibility = android.view.View.GONE
-                                            
-                                            // Apply ExoPlayer subtitle customization settings
-                                            subtitleView?.apply {
-                                                val textSizePx = settings.exoSubtitleTextSize.toFloat()
-                                                setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, textSizePx)
-                                                
-                                                setStyle(
-                                                    androidx.media3.ui.CaptionStyleCompat(
-                                                        settings.exoSubtitleTextColor,
-                                                        if (settings.exoSubtitleBgTransparent) android.graphics.Color.TRANSPARENT else settings.exoSubtitleBgColor,
-                                                        android.graphics.Color.TRANSPARENT,
-                                                        androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE,
-                                                        android.graphics.Color.BLACK,
-                                                        null
-                                                    )
-                                                )
-                                            }
-                                            
-                                            setShowSubtitleButton(true)
-                                            
-                                            // Get the PlayerControlView for custom settings button
-                                            val controller = findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
-                                            controller?.let { controlView ->
-                                                // ⭐ CUSTOM SETTINGS BUTTON
-                                                val existingSubtitleButton = controlView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_subtitle)
-                                                existingSubtitleButton?.let { existingBtn ->
-                                                    existingBtn.visibility = android.view.View.GONE
-                                                    
-                                                    val customSettingsButton = android.widget.ImageButton(ctx).apply {
-                                                        setImageResource(android.R.drawable.ic_menu_sort_by_size)
-                                                        background = android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
-                                                        scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
-                                                        setPadding(16, 16, 16, 16)
-                                                        contentDescription = "Player Settings"
-                                                        isFocusable = true
-                                                        isClickable = true
-                                                        layoutParams = android.view.ViewGroup.LayoutParams(
-                                                            resources.getDimensionPixelSize(androidx.media3.ui.R.dimen.exo_small_icon_width),
-                                                            resources.getDimensionPixelSize(androidx.media3.ui.R.dimen.exo_small_icon_height)
-                                                        )
-                                                        setOnClickListener { showSettingsMenu = true }
-                                                    }
-                                                    
-                                                    (existingBtn.parent as? android.view.ViewGroup)?.let { parent ->
-                                                        val existingBtnIndex = parent.indexOfChild(existingBtn)
-                                                        parent.addView(customSettingsButton, existingBtnIndex + 1)
-                                                    }
-                                                }
-                                                
-                                                // ⭐ PURPLE FOCUS STYLING
-                                                val transparentPurple = android.graphics.Color.argb(150, 156, 39, 176)
-                                                
-                                                // Settings button should not be the default focus
-                                                findViewById<android.view.View>(androidx.media3.ui.R.id.exo_settings)?.let { settingsBtn ->
-                                                    // Keep it visible but not the first focus
-                                                    settingsBtn.isFocusable = true
-                                                    settingsBtn.isFocusableInTouchMode = false
-                                                }
-                                                
-                                                val buttonIds = listOf(
-                                                    androidx.media3.ui.R.id.exo_play,
-                                                    androidx.media3.ui.R.id.exo_pause,
-                                                    androidx.media3.ui.R.id.exo_ffwd,
-                                                    androidx.media3.ui.R.id.exo_rew,
-                                                    androidx.media3.ui.R.id.exo_subtitle,
-                                                    androidx.media3.ui.R.id.exo_settings,
-                                                    androidx.media3.ui.R.id.exo_progress,
-                                                    androidx.media3.ui.R.id.exo_position,
-                                                    androidx.media3.ui.R.id.exo_duration,
-                                                    androidx.media3.ui.R.id.exo_repeat_toggle,
-                                                    androidx.media3.ui.R.id.exo_shuffle
-                                                )
-                                                
-                                                fun applyPurpleFocus(view: android.view.View) {
-                                                    val originalBackground = view.background
-                                                    view.setOnFocusChangeListener { v, hasFocus ->
-                                                        if (hasFocus) {
-                                                            v.post {
-                                                                val width = v.width
-                                                                val height = v.height
-                                                                if (width > 0 && height > 0) {
-                                                                    val drawable = android.graphics.drawable.GradientDrawable().apply {
-                                                                        setColor(transparentPurple)
-                                                                        val maxDimension = maxOf(width, height)
-                                                                        val cornerRadius = maxDimension * 0.5f
-                                                                        setCornerRadius(cornerRadius)
-                                                                    }
-                                                                    val padding = (maxOf(width, height) * 0.05f).toInt()
-                                                                    val layerDrawable = android.graphics.drawable.LayerDrawable(arrayOf(drawable))
-                                                                    layerDrawable.setLayerInset(0, -padding, -padding, -padding, -padding)
-                                                                    v.background = layerDrawable
-                                                                } else {
-                                                                    v.setBackgroundColor(transparentPurple)
-                                                                }
-                                                            }
-                                                        } else {
-                                                            v.background = originalBackground
-                                                        }
-                                                    }
-                                                }
-                                                
-                                                buttonIds.forEach { buttonId ->
-                                                    findViewById<android.view.View>(buttonId)?.let { button ->
-                                                        applyPurpleFocus(button)
-                                                    }
-                                                }
-                                                
-                                                fun applyToAllChildren(parent: android.view.ViewGroup) {
-                                                    for (i in 0 until parent.childCount) {
-                                                        val child = parent.getChildAt(i)
-                                                        if (child is android.view.ViewGroup) {
-                                                            applyToAllChildren(child)
-                                                        } else if (child is android.widget.Button || 
-                                                                  child is android.widget.ImageButton ||
-                                                                  (child.isFocusable && child.isClickable)) {
-                                                            applyPurpleFocus(child)
-                                                        }
-                                                    }
-                                                }
-                                                
-                                                applyToAllChildren(controlView)
-                                                controlView.invalidate()
-                                                
-                                                // Auto-focus play/pause button when controller appears
-                                                // Set play/pause button as default next focus to prevent settings button from getting focus
-                                                val pauseButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_pause)
-                                                val playButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_play)
-                                                
-                                                // Make play/pause button the default focus
-                                                playButton?.let { play ->
-                                                    play.nextFocusDownId = android.view.View.NO_ID
-                                                    play.nextFocusUpId = android.view.View.NO_ID
-                                                    play.isFocusedByDefault = true
-                                                }
-                                                pauseButton?.let { pause ->
-                                                    pause.nextFocusDownId = android.view.View.NO_ID
-                                                    pause.nextFocusUpId = android.view.View.NO_ID  
-                                                    pause.isFocusedByDefault = true
-                                                }
-                                                
-                                                // Use postDelayed to ensure controller is fully rendered, then request focus
-                                                controlView.postDelayed({
-                                                    val buttonToFocus = if (player.isPlaying && pauseButton != null) pauseButton else playButton
-                                                    
-                                                    buttonToFocus?.let { button ->
-                                                        button.requestFocus()
-                                                        Log.d("ExoPlayer", "GL Mode: Focused play/pause button (hasFocus=${button.hasFocus()})")
-                                                    }
-                                                }, 200) // 200ms delay to ensure controller is ready
-                                                
-                                                Log.d("ExoPlayer", "GL Mode: PlayerControlView initialized with purple focus styling")
-                                            }
-                                        }
-                                    }
-                                    addView(playerView)
-                                }
-                            } else {
-                                // Standard mode: Regular PlayerView (subtitles only - controls handled by Compose)
-                                PlayerView(ctx).apply {
-                                    this.player = player
-                                    // Keep screen on during playback
-                                    keepScreenOn = true
-                                // DISABLE built-in controller - Compose handles controls
-                                useController = false
-                                // Block focus from going to PlayerView children
-                                descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
-                                isFocusable = false
-                                isFocusableInTouchMode = false
-                                
-                                // Standard mode uses SurfaceView by default which is compatible with all codecs
-                                // including software-decoded AV1. This is the safe path.
-                                // If AV1 is detected at runtime (via onTracksChanged), it will work here.
-                                setShutterBackgroundColor(android.graphics.Color.BLACK)
-                                Log.d("JellyfinPlayer", "📺 Using standard PlayerView (SurfaceView) - compatible with all codecs including AV1")
-                                
-                                // Ensure view is visible and properly sized
-                                visibility = android.view.View.VISIBLE
-                                alpha = 1f
-                                
-                                playerViewRef.value = this
-                                
-                                // Hide next/previous track buttons and ensure subtitle button is visible
-                                post {
-                                    findViewById<android.view.View>(androidx.media3.ui.R.id.exo_prev)?.visibility = android.view.View.GONE
-                                    findViewById<android.view.View>(androidx.media3.ui.R.id.exo_next)?.visibility = android.view.View.GONE
+                                    // DISABLE built-in controller - Compose handles controls
+                                    useController = false
+                                    // Block focus from going to PlayerView children
+                                    descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                                    isFocusable = false
+                                    isFocusableInTouchMode = false
                                     
-                                    // Ensure the view is properly attached and visible
+                                    // Standard mode uses SurfaceView by default which is compatible with all codecs
+                                    // including software-decoded AV1. This is the safe path.
+                                    // If AV1 is detected at runtime (via onTracksChanged), it will work here.
+                                    setShutterBackgroundColor(android.graphics.Color.BLACK)
+                                    Log.d("JellyfinPlayer", "📺 Using standard PlayerView (SurfaceView) - compatible with all codecs including AV1")
+                                    
+                                    // Ensure view is visible and properly sized
                                     visibility = android.view.View.VISIBLE
                                     alpha = 1f
                                     
-                                    // Apply ExoPlayer subtitle customization settings
-                                    subtitleView?.apply {
-                                        // Apply text size
-                                        val textSizePx = settings.exoSubtitleTextSize.toFloat()
-                                        setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, textSizePx)
+                                    playerViewRef.value = this
+                                    
+                                    // Hide next/previous track buttons and ensure subtitle button is visible
+                                    post {
+                                        findViewById<android.view.View>(androidx.media3.ui.R.id.exo_prev)?.visibility = android.view.View.GONE
+                                        findViewById<android.view.View>(androidx.media3.ui.R.id.exo_next)?.visibility = android.view.View.GONE
                                         
-                                        // Apply text color
-                                        setStyle(
-                                            androidx.media3.ui.CaptionStyleCompat(
-                                                settings.exoSubtitleTextColor, // foregroundColor
-                                                if (settings.exoSubtitleBgTransparent) android.graphics.Color.TRANSPARENT else settings.exoSubtitleBgColor, // backgroundColor
-                                                android.graphics.Color.TRANSPARENT, // windowColor
-                                                androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE, // edgeType
-                                                android.graphics.Color.BLACK, // edgeColor
-                                                null // typeface
+                                        // Ensure the view is properly attached and visible
+                                        visibility = android.view.View.VISIBLE
+                                        alpha = 1f
+                                        
+                                        // Apply ExoPlayer subtitle customization settings
+                                        subtitleView?.apply {
+                                            // Apply text size
+                                            val textSizePx = settings.exoSubtitleTextSize.toFloat()
+                                            setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, textSizePx)
+                                            
+                                            // Apply text color
+                                            setStyle(
+                                                androidx.media3.ui.CaptionStyleCompat(
+                                                    settings.exoSubtitleTextColor, // foregroundColor
+                                                    if (settings.exoSubtitleBgTransparent) android.graphics.Color.TRANSPARENT else settings.exoSubtitleBgColor, // backgroundColor
+                                                    android.graphics.Color.TRANSPARENT, // windowColor
+                                                    androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE, // edgeType
+                                                    android.graphics.Color.BLACK, // edgeColor
+                                                    null // typeface
+                                                )
                                             )
-                                        )
+                                            
+                                            Log.d("JellyfinPlayer", "Applied ExoPlayer subtitle customization: size=${settings.exoSubtitleTextSize}, color=${settings.exoSubtitleTextColor}, bgTransparent=${settings.exoSubtitleBgTransparent}")
+                                        }
                                         
-                                        Log.d("JellyfinPlayer", "Applied ExoPlayer subtitle customization: size=${settings.exoSubtitleTextSize}, color=${settings.exoSubtitleTextColor}, bgTransparent=${settings.exoSubtitleBgTransparent}")
+                                        // Explicitly show subtitle button again after view is attached
+                                        setShowSubtitleButton(true)
+                                        
+                                        // Get the PlayerControlView and ensure subtitle button is visible
+                                        val controller = findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
+                                        controller?.let { controlView ->
+                                            // Note: TrackNameProvider customization is done via Format.label in SubtitleMapper.buildLabel()
+                                            // ExoPlayer's track selection dialog will automatically use Format.label when available
+                                            
+                                            // ⭐ CUSTOM SETTINGS BUTTON - Uses clean Jellyfin subtitle list (no duplicates)
+                                            val existingSubtitleButton = controlView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_subtitle)
+                                            existingSubtitleButton?.let { existingBtn ->
+                                                // Hide the default ExoPlayer subtitle button
+                                                existingBtn.visibility = android.view.View.GONE
+                                                
+                                                // Create custom settings button with better icon
+                                                val customSettingsButton = android.widget.ImageButton(ctx).apply {
+                                                    setImageResource(android.R.drawable.ic_menu_sort_by_size) // List icon
+                                                    background = android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
+                                                    scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+                                                    setPadding(16, 16, 16, 16)
+                                                    contentDescription = "Player Settings"
+                                                    isFocusable = true
+                                                    isClickable = true
+                                                    
+                                                    // Set same size as existing subtitle button
+                                                    layoutParams = android.view.ViewGroup.LayoutParams(
+                                                        resources.getDimensionPixelSize(androidx.media3.ui.R.dimen.exo_small_icon_width),
+                                                        resources.getDimensionPixelSize(androidx.media3.ui.R.dimen.exo_small_icon_height)
+                                                    )
+                                                    
+                                                    // Open settings menu on click
+                                                    setOnClickListener {
+                                                        showSettingsMenu = true
+                                                    }
+                                                }
+                                                
+                                                // Find the parent container of the subtitle button and add our custom button next to it
+                                                (existingBtn.parent as? android.view.ViewGroup)?.let { parent ->
+                                                    val existingBtnIndex = parent.indexOfChild(existingBtn)
+                                                    parent.addView(customSettingsButton, existingBtnIndex + 1)
+                                                    
+                                                    Log.d("JellyfinPlayer", "✅ Added custom settings button and hid default ExoPlayer subtitle button")
+                                                }
+                                            }
+                                            
+                                            // Customize control button focus color to purple (transparent)
+                                            val transparentPurple = transparentThemeColorInt // Purple with transparency
+                                            
+                                            // Settings button should not be the default focus
+                                            findViewById<android.view.View>(androidx.media3.ui.R.id.exo_settings)?.let { settingsBtn ->
+                                                // Keep it visible but not the first focus
+                                                settingsBtn.isFocusable = true
+                                                settingsBtn.isFocusableInTouchMode = false
+                                            }
+                                            
+                                            // Apply custom focus color to all control buttons and seekbar
+                                            val buttonIds = listOf(
+                                                androidx.media3.ui.R.id.exo_play,
+                                                androidx.media3.ui.R.id.exo_pause,
+                                                androidx.media3.ui.R.id.exo_ffwd,
+                                                androidx.media3.ui.R.id.exo_rew,
+                                                androidx.media3.ui.R.id.exo_subtitle,
+                                                androidx.media3.ui.R.id.exo_settings,
+                                                androidx.media3.ui.R.id.exo_progress,
+                                                androidx.media3.ui.R.id.exo_position,
+                                                androidx.media3.ui.R.id.exo_duration,
+                                                androidx.media3.ui.R.id.exo_repeat_toggle,
+                                                androidx.media3.ui.R.id.exo_shuffle
+                                            )
+                                            
+                                            // Function to apply purple focus styling with round shape and 10% larger size
+                                            fun applyPurpleFocus(view: android.view.View) {
+                                                // Store original background
+                                                val originalBackground = view.background
+                                                
+                                                view.setOnFocusChangeListener { v, hasFocus ->
+                                                    if (hasFocus) {
+                                                        // Use post to ensure dimensions are available and avoid interfering with focus navigation
+                                                        v.post {
+                                                            val width = v.width
+                                                            val height = v.height
+                                                            
+                                                            if (width > 0 && height > 0) {
+                                                                // Create a round drawable
+                                                                val drawable = android.graphics.drawable.GradientDrawable().apply {
+                                                                    setColor(transparentPurple)
+                                                                    // Make it round by setting corner radius to half of larger dimension
+                                                                    val maxDimension = maxOf(width, height)
+                                                                    val cornerRadius = maxDimension * 0.5f
+                                                                    setCornerRadius(cornerRadius)
+                                                                }
+                                                                
+                                                                // Create a LayerDrawable with the round drawable and add padding to make it appear larger
+                                                                val padding = (maxOf(width, height) * 0.05f).toInt()
+                                                                val layerDrawable = android.graphics.drawable.LayerDrawable(arrayOf(drawable))
+                                                                layerDrawable.setLayerInset(0, -padding, -padding, -padding, -padding)
+                                                                
+                                                                // Set the drawable as background
+                                                                v.background = layerDrawable
+                                                            } else {
+                                                                // Fallback: just set color if dimensions not available
+                                                                v.setBackgroundColor(transparentPurple)
+                                                            }
+                                                        }
+                                                    } else {
+                                                        // Reset to original background immediately (don't use post)
+                                                        v.background = originalBackground
+                                                    }
+                                                }
+                                            }
+                                            
+                                            buttonIds.forEach { buttonId ->
+                                                findViewById<android.view.View>(buttonId)?.let { button ->
+                                                    applyPurpleFocus(button)
+                                                }
+                                            }
+                                            
+                                            // Apply to all child views recursively to catch any other buttons
+                                            fun applyToAllChildren(parent: android.view.ViewGroup) {
+                                                for (i in 0 until parent.childCount) {
+                                                    val child = parent.getChildAt(i)
+                                                    if (child is android.view.ViewGroup) {
+                                                        applyToAllChildren(child)
+                                                    } else if (child is android.widget.Button || 
+                                                              child is android.widget.ImageButton ||
+                                                              (child.isFocusable && child.isClickable)) {
+                                                        applyPurpleFocus(child)
+                                                    }
+                                                }
+                                            }
+                                            
+                                            // Apply styling to all focusable/clickable children
+                                            applyToAllChildren(controlView)
+                                            
+                                            // Force a refresh to ensure subtitle button is visible
+                                            controlView.invalidate()
+                                            
+                                            // Auto-focus play/pause button when controller appears
+                                            // Set play/pause button as default next focus to prevent settings button from getting focus
+                                            val pauseButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_pause)
+                                            val playButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_play)
+                                            
+                                            // Make play/pause button the default focus
+                                            playButton?.let { play ->
+                                                play.nextFocusDownId = android.view.View.NO_ID
+                                                play.nextFocusUpId = android.view.View.NO_ID
+                                                play.isFocusedByDefault = true
+                                            }
+                                            pauseButton?.let { pause ->
+                                                pause.nextFocusDownId = android.view.View.NO_ID
+                                                pause.nextFocusUpId = android.view.View.NO_ID  
+                                                pause.isFocusedByDefault = true
+                                            }
+                                            
+                                            // Use postDelayed to ensure controller is fully rendered, then request focus
+                                            controlView.postDelayed({
+                                                val buttonToFocus = if (player.isPlaying && pauseButton != null) pauseButton else playButton
+                                                
+                                                buttonToFocus?.let { button ->
+                                                    button.requestFocus()
+                                                    Log.d("ExoPlayer", "Standard Mode: Focused play/pause button (hasFocus=${button.hasFocus()})")
+                                                }
+                                            }, 200) // 200ms delay to ensure controller is ready
+                                            
+                                            Log.d("ExoPlayer", "PlayerControlView initialized, subtitle button explicitly enabled, focus color set to purple for all controls")
+                                        }
+                                        
+                                        // Request layout to ensure proper rendering
+                                        requestLayout()
+                                    }
+                                }
+                                } // end else (standard PlayerView mode)
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                            update = { view ->
+                                // Keep references up-to-date on view update/recomposition
+                                val glSurfaceView = if (view is FrameLayout) {
+                                    val gl = view.getChildAt(0) as? GLVideoSurfaceView
+                                    glSurfaceViewRef.value = gl
+                                    playerViewRef.value = view.getChildAt(1) as? PlayerView
+                                    gl
+                                } else {
+                                    val pv = view as? PlayerView
+                                    playerViewRef.value = pv
+                                    null
+                                }
+                                
+                                // Update GL surface with player's current video dimensions to maintain correct aspect ratio
+                                val videoSize = player.videoSize
+                                if (videoSize.width > 0 && videoSize.height > 0) {
+                                    glSurfaceView?.setVideoSize(videoSize.width, videoSize.height)
+                                }
+                                
+                                val playerView = playerViewRef.value
+                                playerView?.let { pv ->
+                                    // Update player reference when view changes
+                                    if (pv.player != player) {
+                                        pv.player = player
                                     }
                                     
-                                    // Explicitly show subtitle button again after view is attached
-                                    setShowSubtitleButton(true)
+                                    // Re-apply current aspect mode / resize mode settings on update
+                                    val contentFrame = pv.findViewById<AspectRatioFrameLayout>(androidx.media3.ui.R.id.exo_content_frame)
+                                    when (currentAspectMode) {
+                                        AspectMode.FIT -> {
+                                            pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                            contentFrame?.setAspectRatio(0f)
+                                        }
+                                        AspectMode.FILL -> {
+                                            pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
+                                            contentFrame?.setAspectRatio(0f)
+                                        }
+                                        AspectMode.LETTERBOX -> {
+                                            pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                            contentFrame?.setAspectRatio(16f / 9f)
+                                        }
+                                        AspectMode.CINEMA -> {
+                                            pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                            contentFrame?.setAspectRatio(2.39f / 1f)
+                                        }
+                                        AspectMode.STRETCH -> {
+                                            pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
+                                            contentFrame?.setAspectRatio(0f)
+                                        }
+                                        AspectMode.ORIGINAL -> {
+                                            pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                            contentFrame?.setAspectRatio(0f)
+                                        }
+                                    }
                                     
-                                    // Get the PlayerControlView and ensure subtitle button is visible
-                                    val controller = findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
+                                    // Ensure view is focusable and can receive key events
+                                    if (!pv.isFocusable) {
+                                        pv.isFocusable = true
+                                    }
+                                    // Ensure view is visible
+                                    if (pv.visibility != android.view.View.VISIBLE) {
+                                        pv.visibility = android.view.View.VISIBLE
+                                    }
+                                    if (pv.alpha != 1f) {
+                                        pv.alpha = 1f
+                                    }
+                                    // Explicitly show subtitle button - this ensures it's visible when tracks are available
+                                    pv.setShowSubtitleButton(true)
+                                    
+                                    // Hide next/previous track buttons whenever controller is shown
+                                    pv.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_prev)?.visibility = android.view.View.GONE
+                                    pv.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_next)?.visibility = android.view.View.GONE
+                                    
+                                    // Ensure subtitle button is visible when tracks are available
+                                    val controller = pv.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
                                     controller?.let { controlView ->
-                                        // Note: TrackNameProvider customization is done via Format.label in SubtitleMapper.buildLabel()
-                                        // ExoPlayer's track selection dialog will automatically use Format.label when available
-                                        
-                                        // ⭐ CUSTOM SETTINGS BUTTON - Uses clean Jellyfin subtitle list (no duplicates)
-                                        val existingSubtitleButton = controlView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_subtitle)
-                                        existingSubtitleButton?.let { existingBtn ->
-                                            // Hide the default ExoPlayer subtitle button
-                                            existingBtn.visibility = android.view.View.GONE
-                                            
-                                            // Create custom settings button with better icon
-                                            val customSettingsButton = android.widget.ImageButton(ctx).apply {
-                                                setImageResource(android.R.drawable.ic_menu_sort_by_size) // List icon
-                                                background = android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
-                                                scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
-                                                setPadding(16, 16, 16, 16)
-                                                contentDescription = "Player Settings"
-                                                isFocusable = true
-                                                isClickable = true
-                                                
-                                                // Set same size as existing subtitle button
-                                                layoutParams = android.view.ViewGroup.LayoutParams(
-                                                    resources.getDimensionPixelSize(androidx.media3.ui.R.dimen.exo_small_icon_width),
-                                                    resources.getDimensionPixelSize(androidx.media3.ui.R.dimen.exo_small_icon_height)
-                                                )
-                                                
-                                                // Open settings menu on click
-                                                setOnClickListener {
-                                                    showSettingsMenu = true
-                                                }
-                                            }
-                                            
-                                            // Find the parent container of the subtitle button and add our custom button next to it
-                                            (existingBtn.parent as? android.view.ViewGroup)?.let { parent ->
-                                                val existingBtnIndex = parent.indexOfChild(existingBtn)
-                                                parent.addView(customSettingsButton, existingBtnIndex + 1)
-                                                
-                                                Log.d("JellyfinPlayer", "✅ Added custom settings button and hid default ExoPlayer subtitle button")
-                                            }
-                                        }
-                                        
-                                        // Customize control button focus color to purple (transparent)
-                                        val transparentPurple = android.graphics.Color.argb(150, 156, 39, 176) // Purple with transparency
-                                        
-                                        // Settings button should not be the default focus
-                                        findViewById<android.view.View>(androidx.media3.ui.R.id.exo_settings)?.let { settingsBtn ->
-                                            // Keep it visible but not the first focus
-                                            settingsBtn.isFocusable = true
-                                            settingsBtn.isFocusableInTouchMode = false
-                                        }
-                                        
-                                        // Apply custom focus color to all control buttons and seekbar
-                                        val buttonIds = listOf(
-                                            androidx.media3.ui.R.id.exo_play,
-                                            androidx.media3.ui.R.id.exo_pause,
-                                            androidx.media3.ui.R.id.exo_ffwd,
-                                            androidx.media3.ui.R.id.exo_rew,
-                                            androidx.media3.ui.R.id.exo_subtitle,
-                                            androidx.media3.ui.R.id.exo_settings,
-                                            androidx.media3.ui.R.id.exo_progress,
-                                            androidx.media3.ui.R.id.exo_position,
-                                            androidx.media3.ui.R.id.exo_duration,
-                                            androidx.media3.ui.R.id.exo_repeat_toggle,
-                                            androidx.media3.ui.R.id.exo_shuffle
-                                        )
-                                        
-                                        // Function to apply purple focus styling with round shape and 10% larger size
-                                        fun applyPurpleFocus(view: android.view.View) {
-                                            // Store original background
-                                            val originalBackground = view.background
-                                            
-                                            view.setOnFocusChangeListener { v, hasFocus ->
-                                                if (hasFocus) {
-                                                    // Use post to ensure dimensions are available and avoid interfering with focus navigation
-                                                    v.post {
-                                                        val width = v.width
-                                                        val height = v.height
-                                                        
-                                                        if (width > 0 && height > 0) {
-                                                            // Create a round drawable
-                                                            val drawable = android.graphics.drawable.GradientDrawable().apply {
-                                                                setColor(transparentPurple)
-                                                                // Make it round by setting corner radius to half of larger dimension
-                                                                val maxDimension = maxOf(width, height)
-                                                                val cornerRadius = maxDimension * 0.5f
-                                                                setCornerRadius(cornerRadius)
-                                                            }
-                                                            
-                                                            // Create a LayerDrawable with the round drawable and add padding to make it appear larger
-                                                            val padding = (maxOf(width, height) * 0.05f).toInt()
-                                                            val layerDrawable = android.graphics.drawable.LayerDrawable(arrayOf(drawable))
-                                                            layerDrawable.setLayerInset(0, -padding, -padding, -padding, -padding)
-                                                            
-                                                            // Set the drawable as background
-                                                            v.background = layerDrawable
-                                                        } else {
-                                                            // Fallback: just set color if dimensions not available
-                                                            v.setBackgroundColor(transparentPurple)
-                                                        }
-                                                    }
-                                                } else {
-                                                    // Reset to original background immediately (don't use post)
-                                                    v.background = originalBackground
-                                                }
-                                            }
-                                        }
-                                        
-                                        buttonIds.forEach { buttonId ->
-                                            findViewById<android.view.View>(buttonId)?.let { button ->
-                                                applyPurpleFocus(button)
-                                            }
-                                        }
-                                        
-                                        // Apply to all child views recursively to catch any other buttons
-                                        fun applyToAllChildren(parent: android.view.ViewGroup) {
-                                            for (i in 0 until parent.childCount) {
-                                                val child = parent.getChildAt(i)
-                                                if (child is android.view.ViewGroup) {
-                                                    applyToAllChildren(child)
-                                                } else if (child is android.widget.Button || 
-                                                          child is android.widget.ImageButton ||
-                                                          (child.isFocusable && child.isClickable)) {
-                                                    applyPurpleFocus(child)
-                                                }
-                                            }
-                                        }
-                                        
-                                        // Apply styling to all focusable/clickable children
-                                        applyToAllChildren(controlView)
-                                        
-                                        // Force a refresh to ensure subtitle button is visible
+                                        // Force refresh to show subtitle button
                                         controlView.invalidate()
                                         
-                                        // Auto-focus play/pause button when controller appears
-                                        // Set play/pause button as default next focus to prevent settings button from getting focus
-                                        val pauseButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_pause)
-                                        val playButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_play)
-                                        
-                                        // Make play/pause button the default focus
-                                        playButton?.let { play ->
-                                            play.nextFocusDownId = android.view.View.NO_ID
-                                            play.nextFocusUpId = android.view.View.NO_ID
-                                            play.isFocusedByDefault = true
-                                        }
-                                        pauseButton?.let { pause ->
-                                            pause.nextFocusDownId = android.view.View.NO_ID
-                                            pause.nextFocusUpId = android.view.View.NO_ID  
-                                            pause.isFocusedByDefault = true
-                                        }
-                                        
-                                        // Use postDelayed to ensure controller is fully rendered, then request focus
-                                        controlView.postDelayed({
-                                            val buttonToFocus = if (player.isPlaying && pauseButton != null) pauseButton else playButton
-                                            
-                                            buttonToFocus?.let { button ->
-                                                button.requestFocus()
-                                                Log.d("ExoPlayer", "Standard Mode: Focused play/pause button (hasFocus=${button.hasFocus()})")
-                                            }
-                                        }, 200) // 200ms delay to ensure controller is ready
-                                        
-                                        Log.d("ExoPlayer", "PlayerControlView initialized, subtitle button explicitly enabled, focus color set to purple for all controls")
+                                        // ⚠️ Keep default subtitle button hidden (we're using custom settings button)
+                                        val subtitleButton = controlView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_subtitle)
+                                        subtitleButton?.visibility = android.view.View.GONE
                                     }
-                                    
-                                    // Request layout to ensure proper rendering
-                                    requestLayout()
                                 }
-                            }
-                            } // end else (standard PlayerView mode)
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                        update = { view ->
-                            // Handle both FrameLayout (GL mode) and PlayerView (standard mode)
-                            val playerView = if (view is FrameLayout) {
-                                // GL mode: find the PlayerView inside the FrameLayout
-                                view.getChildAt(1) as? PlayerView
-                            } else {
-                                // Standard mode: view is the PlayerView
-                                view as? PlayerView
-                            }
-                            
-                            playerView?.let { pv ->
-                                // Update player reference when view changes
-                                if (pv.player != player) {
-                                    pv.player = player
-                                }
-                                // Ensure view is focusable and can receive key events
-                                if (!pv.isFocusable) {
-                                    pv.isFocusable = true
-                                }
-                                // Ensure view is visible
-                                if (pv.visibility != android.view.View.VISIBLE) {
-                                    pv.visibility = android.view.View.VISIBLE
-                                }
-                                if (pv.alpha != 1f) {
-                                    pv.alpha = 1f
-                                }
-                                // Explicitly show subtitle button - this ensures it's visible when tracks are available
-                                pv.setShowSubtitleButton(true)
-                                
-                                // Hide next/previous track buttons whenever controller is shown
-                                pv.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_prev)?.visibility = android.view.View.GONE
-                                pv.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_next)?.visibility = android.view.View.GONE
-                                
-                                // Ensure subtitle button is visible when tracks are available
-                                val controller = pv.findViewById<androidx.media3.ui.PlayerControlView>(androidx.media3.ui.R.id.exo_controller)
-                                controller?.let { controlView ->
-                                    // Force refresh to show subtitle button
-                                    controlView.invalidate()
-                                    
-                                    // ⚠️ Keep default subtitle button hidden (we're using custom settings button)
-                                    val subtitleButton = controlView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_subtitle)
-                                    subtitleButton?.visibility = android.view.View.GONE
-                                }
-                            }
-                        }
-                    )
-                    
-                    // Skip Intro Button
-                    if (showSkipIntroButton && skipMarkers.introEndMs != null) {
-                        SkipButton(
-                            text = "Skip Intro",
-                            onClick = {
-                                player.seekTo(skipMarkers.introEndMs!!)
-                                showSkipIntroButton = false
-                                Log.d("JellyfinPlayer", "Skipping intro to ${skipMarkers.introEndMs}ms")
                             }
                         )
-                    }
-                    
-                    // Skip Credits Button
-                    if (showSkipCreditsButton && !showNextUpOverlay) {
-                        SkipButton(
-                            text = "Skip Credits",
-                            onClick = {
-                                // Seek to near the end to trigger next episode
-                                val duration = player.duration
-                                if (duration > 0) {
-                                    player.seekTo(duration - 2000) // 2 seconds before end
+                        
+                        // Skip Intro Button
+                        if (showSkipIntroButton && skipMarkers.introEndMs != null) {
+                            SkipButton(
+                                text = "Skip Intro",
+                                onClick = {
+                                    player.seekTo(skipMarkers.introEndMs!!)
+                                    showSkipIntroButton = false
+                                    Log.d("JellyfinPlayer", "Skipping intro to ${skipMarkers.introEndMs}ms")
                                 }
-                                showSkipCreditsButton = false
-                                Log.d("JellyfinPlayer", "Skipping credits")
-                            }
-                        )
-                    }
-                    
-                    // Next Up Overlay
-                    if (showNextUpOverlay && nextEpisodeDetails != null) {
-                        NextUpOverlay(
-                            nextEpisode = nextEpisodeDetails!!,
-                            countdown = autoplayCountdown,
-                            onCancel = {
-                                autoplayCancelled = true
-                                showNextUpOverlay = false
-                            }
-                        )
-                    }
-                    
-                    // Title overlay at the top - shows on initial load (10 seconds) OR when controls are visible
-                    val displayName = itemDetails?.Name ?: item.Name
-                    val isEpisode = itemDetails?.Type == "Episode"
-                    // Show title when: initial overlay is visible OR custom controls are showing
-                    val showTitle = (titleOverlayVisible || showControls) && (displayName.isNotEmpty() || (isEpisode && seriesName != null))
-                    
-                    if (showTitle) {
-                        androidx.tv.material3.Surface(
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .padding(start = 24.dp, top = 24.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = androidx.tv.material3.SurfaceDefaults.colors(
-                                containerColor = Color.Black.copy(alpha = 0.5f),
-                                contentColor = Color.White
                             )
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                        }
+                        
+                        // Skip Credits Button
+                        if (showSkipCreditsButton && !showNextUpOverlay) {
+                            SkipButton(
+                                text = "Skip Credits",
+                                onClick = {
+                                    // Seek to near the end to trigger next episode
+                                    val duration = player.duration
+                                    if (duration > 0) {
+                                        player.seekTo(duration - 2000) // 2 seconds before end
+                                    }
+                                    showSkipCreditsButton = false
+                                    Log.d("JellyfinPlayer", "Skipping credits")
+                                }
+                            )
+                        }
+                        
+                        // Next Up Overlay
+                        if (showNextUpOverlay && nextEpisodeDetails != null) {
+                            NextUpOverlay(
+                                nextEpisode = nextEpisodeDetails!!,
+                                countdown = autoplayCountdown,
+                                onCancel = {
+                                    autoplayCancelled = true
+                                    showNextUpOverlay = false
+                                }
+                            )
+                        }
+                        
+                        // Title overlay at the top - shows on initial load (10 seconds) OR when controls are visible
+                        val displayName = itemDetails?.Name ?: item.Name
+                        val isEpisode = itemDetails?.Type == "Episode"
+                        // Show title when: initial overlay is visible OR custom controls are showing
+                        val showTitle = (titleOverlayVisible || showControls) && (displayName.isNotEmpty() || (isEpisode && seriesName != null))
+                        
+                        if (showTitle) {
+                            androidx.tv.material3.Surface(
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(start = 24.dp, top = 24.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = androidx.tv.material3.SurfaceDefaults.colors(
+                                    containerColor = Color.Black.copy(alpha = 0.5f),
+                                    contentColor = Color.White
+                                )
                             ) {
-                                // Show series name for episodes, or movie/show name for others
-                                if (isEpisode && seriesName != null) {
-                                    androidx.tv.material3.Text(
-                                        text = seriesName!!,
-                                        style = androidx.tv.material3.MaterialTheme.typography.titleLarge,
-                                        color = Color.White,
-                                        modifier = Modifier.padding(bottom = 4.dp)
-                                    )
-                                } else if (!isEpisode && displayName.isNotEmpty()) {
-                                    androidx.tv.material3.Text(
-                                        text = displayName,
-                                        style = androidx.tv.material3.MaterialTheme.typography.titleLarge,
-                                        color = Color.White,
-                                        modifier = Modifier.padding(bottom = 4.dp)
-                                    )
-                                    
-                                    // Show metadata for movies (Year - Runtime)
-                                    val year = itemDetails?.ProductionYear ?: item.ProductionYear
-                                    val runtime = (itemDetails ?: item).formattedRuntime
-                                    if (year != null || runtime != null) {
-                                        val metadata = buildString {
-                                            if (year != null) append(year)
-                                            if (year != null && runtime != null) append(" · ")
-                                            if (runtime != null) append(runtime)
-                                        }
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                                ) {
+                                    // Show series name for episodes, or movie/show name for others
+                                    if (isEpisode && seriesName != null) {
                                         androidx.tv.material3.Text(
-                                            text = metadata,
-                                            style = androidx.tv.material3.MaterialTheme.typography.bodyMedium,
-                                            color = Color.White.copy(alpha = 0.7f),
+                                            text = seriesName!!,
+                                            style = androidx.tv.material3.MaterialTheme.typography.titleLarge,
+                                            color = Color.White,
                                             modifier = Modifier.padding(bottom = 4.dp)
                                         )
-                                    }
-                                }
-                                
-                                // Show season/episode number and episode name for episodes
-                                if (isEpisode) {
-                                    val seasonNum = itemDetails?.ParentIndexNumber ?: item.ParentIndexNumber
-                                    val episodeNum = itemDetails?.IndexNumber ?: item.IndexNumber
-                                    
-                                    // Build episode info string: "S1 E5 - Episode Name" or "S1 E5" or just episode name
-                                    val episodeInfo = buildString {
-                                        if (seasonNum != null && episodeNum != null) {
-                                            append("S${seasonNum} E${episodeNum}")
-                                            if (displayName.isNotEmpty()) {
-                                                append(" · ")
-                                                append(displayName)
-                                            }
-                                        } else if (episodeNum != null) {
-                                            append("Episode ${episodeNum}")
-                                            if (displayName.isNotEmpty()) {
-                                                append(" · ")
-                                                append(displayName)
-                                            }
-                                        } else if (displayName.isNotEmpty()) {
-                                            append(displayName)
-                                        }
-                                    }
-                                    
-                                    if (episodeInfo.isNotEmpty()) {
+                                    } else if (!isEpisode && displayName.isNotEmpty()) {
                                         androidx.tv.material3.Text(
-                                            text = episodeInfo,
-                                            style = androidx.tv.material3.MaterialTheme.typography.titleMedium,
-                                            color = Color.White.copy(alpha = 0.9f)
+                                            text = displayName,
+                                            style = androidx.tv.material3.MaterialTheme.typography.titleLarge,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(bottom = 4.dp)
                                         )
                                         
-                                        // Show metadata for episodes (Year - Runtime)
+                                        // Show metadata for movies (Year - Runtime)
                                         val year = itemDetails?.ProductionYear ?: item.ProductionYear
                                         val runtime = (itemDetails ?: item).formattedRuntime
                                         if (year != null || runtime != null) {
@@ -3163,198 +3284,686 @@ fun JellyfinVideoPlayerScreen(
                                             }
                                             androidx.tv.material3.Text(
                                                 text = metadata,
-                                                style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
+                                                style = androidx.tv.material3.MaterialTheme.typography.bodyMedium,
                                                 color = Color.White.copy(alpha = 0.7f),
-                                                modifier = Modifier.padding(top = 2.dp)
+                                                modifier = Modifier.padding(bottom = 4.dp)
+                                            )
+                                        }
+                                    }
+                                    
+                                    // Show season/episode number and episode name for episodes
+                                    if (isEpisode) {
+                                        val seasonNum = itemDetails?.ParentIndexNumber ?: item.ParentIndexNumber
+                                        val episodeNum = itemDetails?.IndexNumber ?: item.IndexNumber
+                                        
+                                        // Build episode info string: "S1 E5 - Episode Name" or "S1 E5" or just episode name
+                                        val episodeInfo = buildString {
+                                            if (seasonNum != null && episodeNum != null) {
+                                                append("S${seasonNum} E${episodeNum}")
+                                                if (displayName.isNotEmpty()) {
+                                                    append(" · ")
+                                                    append(displayName)
+                                                }
+                                            } else if (episodeNum != null) {
+                                                append("Episode ${episodeNum}")
+                                                if (displayName.isNotEmpty()) {
+                                                    append(" · ")
+                                                    append(displayName)
+                                                }
+                                            } else if (displayName.isNotEmpty()) {
+                                                append(displayName)
+                                            }
+                                        }
+                                        
+                                        if (episodeInfo.isNotEmpty()) {
+                                            androidx.tv.material3.Text(
+                                                text = episodeInfo,
+                                                style = androidx.tv.material3.MaterialTheme.typography.titleMedium,
+                                                color = Color.White.copy(alpha = 0.9f)
+                                            )
+                                            
+                                            // Show metadata for episodes (Year - Runtime)
+                                            val year = itemDetails?.ProductionYear ?: item.ProductionYear
+                                            val runtime = (itemDetails ?: item).formattedRuntime
+                                            if (year != null || runtime != null) {
+                                                val metadata = buildString {
+                                                    if (year != null) append(year)
+                                                    if (year != null && runtime != null) append(" · ")
+                                                    if (runtime != null) append(runtime)
+                                                }
+                                                androidx.tv.material3.Text(
+                                                    text = metadata,
+                                                    style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
+                                                    color = Color.White.copy(alpha = 0.7f),
+                                                    modifier = Modifier.padding(top = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // === CUSTOM COMPOSE CONTROLS OVERLAY ===
+                        AnimatedVisibility(
+                            visible = showControls,
+                            enter = fadeIn(),
+                            exit = fadeOut()
+                        ) {
+                            // FocusRequester for play/pause button - ALWAYS gets focus first
+                            val playPauseFocusRequester = remember { FocusRequester() }
+                            
+                            // Request focus on play/pause button when controls appear (TV only)
+                            LaunchedEffect(Unit) {
+                                if (!isMobile) playPauseFocusRequester.requestFocus()
+                            }
+                            
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.4f))
+                                    .then(
+                                        if (isMobile) {
+                                            // On mobile, tapping the scrim (not on a button) hides controls
+                                            Modifier.pointerInput(Unit) {
+                                                detectTapGestures(onTap = { showControls = false })
+                                            }
+                                        } else Modifier
+                                    )
+                                    .onPreviewKeyEvent { event ->
+                                        // Reset auto-hide timer on any key press
+                                        if (event.type == KeyEventType.KeyDown) {
+                                            controlsInteractionKey++
+                                        }
+                                        
+                                        if (event.type == KeyEventType.KeyUp && event.key == Key.Back) {
+                                            showControls = false
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
+                            ) {
+                                // Mobile: back arrow + title at top
+                                if (isMobile && !isPortraitMode) {
+                                    Row(
+                                        modifier = Modifier
+                                            .align(Alignment.TopStart)
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .background(
+                                                    color = Color.Black.copy(alpha = 0.5f),
+                                                    shape = RoundedCornerShape(50)
+                                                )
+                                                .clickable { onBack() },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            androidx.compose.material3.Icon(
+                                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                                contentDescription = "Back",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        val mobileTitle = seriesName
+                                            ?: itemDetails?.Name
+                                            ?: item.Name
+                                            ?: ""
+                                        if (mobileTitle.isNotEmpty()) {
+                                            androidx.compose.material3.Text(
+                                                text = mobileTitle,
+                                                color = Color.White,
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 16.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f)
                                             )
                                         }
                                     }
                                 }
-                            }
-                        }
-                    }
-                    
-                    // === CUSTOM COMPOSE CONTROLS OVERLAY ===
-                    AnimatedVisibility(
-                        visible = showControls,
-                        enter = fadeIn(),
-                        exit = fadeOut()
-                    ) {
-                        // FocusRequester for play/pause button - ALWAYS gets focus first
-                        val playPauseFocusRequester = remember { FocusRequester() }
-                        
-                        // Request focus on play/pause button when controls appear
-                        LaunchedEffect(Unit) {
-                            playPauseFocusRequester.requestFocus()
-                        }
-                        
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.4f))
-                                .onPreviewKeyEvent { event ->
-                                    // Reset auto-hide timer on any key press
-                                    if (event.type == KeyEventType.KeyDown) {
-                                        controlsInteractionKey++
-                                    }
-                                    
-                                    if (event.type == KeyEventType.KeyUp && event.key == Key.Back) {
-                                        showControls = false
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
-                        ) {
-                            // Progress bar at the bottom
-                            Column(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 48.dp, vertical = 32.dp)
-                            ) {
-                                // Time display
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                
+                                // Progress bar at the bottom
+                                Column(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .fillMaxWidth()
+                                        .padding(
+                                            horizontal = if (isMobile) 16.dp else 48.dp,
+                                            vertical = if (isMobile) 16.dp else 32.dp
+                                        )
                                 ) {
-                                    Text(
-                                        text = formatTime(currentPosition),
-                                        color = Color.White,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Text(
-                                        text = formatTime(duration),
-                                        color = Color.White,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                }
-                                
-                                Spacer(modifier = Modifier.height(8.dp))
-                                
-                                // Focusable Seekbar - user can select and use left/right to seek
-                                PlayerSeekBar(
-                                    currentPosition = currentPosition,
-                                    duration = duration,
-                                    onSeek = { newPosition ->
-                                        player.seekTo(newPosition)
-                                    }
-                                )
-                                
-                                if (videoResolution.isNotEmpty()) {
-                                    androidx.tv.material3.Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = androidx.tv.material3.SurfaceDefaults.colors(
-                                            containerColor = Color.Black.copy(alpha = 0.5f),
-                                            contentColor = Color.White
-                                        ),
-                                        modifier = Modifier.padding(top = 8.dp)
+                                    // Time display
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
-                                            text = videoResolution,
-                                            color = Color.White.copy(alpha = 0.9f),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            text = formatTime(currentPosition),
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Text(
+                                            text = formatTime(duration),
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                    }
+                                    
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    
+                                    // Seekbar — D-pad focusable on TV, touch-draggable on mobile
+                                    PlayerSeekBar(
+                                        currentPosition = currentPosition,
+                                        duration = duration,
+                                        onSeek = { newPosition ->
+                                            player.seekTo(newPosition)
+                                        },
+                                        isMobile = isMobile
+                                    )
+                                    
+                                    if (videoResolution.isNotEmpty()) {
+                                        androidx.tv.material3.Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = androidx.tv.material3.SurfaceDefaults.colors(
+                                                containerColor = Color.Black.copy(alpha = 0.5f),
+                                                contentColor = Color.White
+                                            ),
+                                            modifier = Modifier.padding(top = 8.dp)
+                                        ) {
+                                            Text(
+                                                text = videoResolution,
+                                                color = Color.White.copy(alpha = 0.9f),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+                                    
+                                    Spacer(modifier = Modifier.height(24.dp))
+                                    
+                                    // Control buttons row
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Rewind button
+                                        PlayerControlButton(
+                                            icon = Icons.Filled.FastRewind,
+                                            contentDescription = "Rewind 15s",
+                                            size = if (isMobile) 52.dp else 48.dp,
+                                            iconSize = if (isMobile) 26.dp else 24.dp,
+                                            onClick = {
+                                                val seekTo = (player.currentPosition - 15000).coerceAtLeast(0)
+                                                player.seekTo(seekTo)
+                                            }
+                                        )
+                                        
+                                        Spacer(modifier = Modifier.width(if (isMobile) 24.dp else 32.dp))
+                                        
+                                        // Play/Pause button - DEFAULT FOCUS TARGET
+                                        PlayerControlButton(
+                                            icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                            contentDescription = if (isPlaying) "Pause" else "Play",
+                                            size = if (isMobile) 64.dp else 48.dp,
+                                            iconSize = if (isMobile) 32.dp else 24.dp,
+                                            onClick = {
+                                                if (isPlaying) player.pause() else player.play()
+                                                if (isMobile) controlsInteractionKey++ // keep controls visible
+                                            },
+                                            modifier = Modifier.focusRequester(playPauseFocusRequester)
+                                        )
+                                        
+                                        Spacer(modifier = Modifier.width(if (isMobile) 24.dp else 32.dp))
+                                        
+                                        // Fast forward button
+                                        PlayerControlButton(
+                                            icon = Icons.Filled.FastForward,
+                                            contentDescription = "Forward 15s",
+                                            size = if (isMobile) 52.dp else 48.dp,
+                                            iconSize = if (isMobile) 26.dp else 24.dp,
+                                            onClick = {
+                                                val dur = player.duration
+                                                val seekTo = if (dur > 0) {
+                                                    (player.currentPosition + 15000).coerceAtMost(dur)
+                                                } else {
+                                                    player.currentPosition + 15000
+                                                }
+                                                player.seekTo(seekTo)
+                                            }
+                                        )
+                                        
+                                        Spacer(modifier = Modifier.width(if (isMobile) 24.dp else 32.dp))
+                                        
+                                        // Picture Mode / Aspect Ratio button
+                                        AspectModeButton(
+                                            currentMode = currentAspectMode,
+                                            onClick = {
+                                                currentAspectMode = currentAspectMode.next()
+                                            }
+                                        )
+                                        
+                                        Spacer(modifier = Modifier.width(if (isMobile) 24.dp else 32.dp))
+                                        
+                                        // CC (Subtitles) button
+                                        PlayerControlButton(
+                                            icon = Icons.Filled.ClosedCaption,
+                                            contentDescription = "Subtitles",
+                                            onClick = {
+                                                showControls = false
+                                                settingsMenuInitialLevel = "subtitles"
+                                                showSettingsMenu = true
+                                            }
                                         )
                                     }
                                 }
-                                
-                                Spacer(modifier = Modifier.height(24.dp))
-                                
-                                // Control buttons row
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Rewind button
-                                    PlayerControlButton(
-                                        icon = Icons.Filled.FastRewind,
-                                        contentDescription = "Rewind 15s",
-                                        onClick = {
-                                            val seekTo = (player.currentPosition - 15000).coerceAtLeast(0)
-                                            player.seekTo(seekTo)
-                                        }
+                            }
+                        }
+                    }
+                }
+                isLoading -> {
+                    // Loading indicator could go here
+                }
+            }
+        }
+    }
+
+    if (isPortraitMode) {
+        Column(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+            // Top black bar with back arrow and status bars padding (prevents notch/camera crop)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black)
+                    .statusBarsPadding()
+                    .height(56.dp)
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                androidx.compose.material3.IconButton(onClick = { onBack() }) {
+                    androidx.compose.material3.Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color.White
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                val titleText = itemDetails?.Name ?: item.Name ?: ""
+                androidx.compose.material3.Text(
+                    text = titleText,
+                    style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+            }
+
+            // Player at the top in 16:9 aspect ratio
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+            ) {
+                playerContent(Modifier.fillMaxSize())
+            }
+            
+            // Scrollable details section underneath
+            androidx.compose.foundation.lazy.LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .background(Color(0xFF141414)),
+                contentPadding = PaddingValues(bottom = 24.dp)
+            ) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        // Title / Series Name
+                        val itemTitle = itemDetails?.Name ?: item.Name
+                        val parentTitle = itemDetails?.SeriesName ?: item.SeriesName
+                        
+                        if (parentTitle != null) {
+                            Text(
+                                text = parentTitle,
+                                style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                                color = Color.White.copy(alpha = 0.6f)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                        }
+                        
+                        Text(
+                            text = itemTitle,
+                            style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        
+                        Spacer(modifier = Modifier.height(4.dp))
+                        
+                        // Metadata (Maturity Rating, Year, Runtime, Resolution)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            itemDetails?.ProductionYear?.let { year ->
+                                Text(
+                                    text = year.toString(),
+                                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                                    color = Color.White.copy(alpha = 0.6f)
+                                )
+                            }
+                            
+                            itemDetails?.OfficialRating?.let { rating ->
+                                if (rating.isNotBlank()) {
+                                    Text(
+                                        text = rating,
+                                        style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                                        color = Color.White.copy(alpha = 0.6f),
+                                        modifier = Modifier
+                                            .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 4.dp, vertical = 2.dp)
                                     )
+                                }
+                            }
+                            
+                            val runtime = itemDetails?.RunTimeTicks?.let { ticks ->
+                                val minutes = ticks / 10_000L / 1000 / 60
+                                if (minutes > 0) "${minutes}m" else null
+                            }
+                            if (runtime != null) {
+                                Text(
+                                    text = runtime,
+                                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                                    color = Color.White.copy(alpha = 0.6f)
+                                )
+                            }
+                            
+                            if (videoResolution.isNotEmpty()) {
+                                Text(
+                                    text = videoResolution,
+                                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                                    color = Color.White.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // Overview
+                        itemDetails?.Overview?.let { overview ->
+                            if (overview.isNotBlank()) {
+                                Text(
+                                    text = overview,
+                                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                                    color = Color.White.copy(alpha = 0.8f),
+                                    lineHeight = 20.sp
+                                )
+                            }
+                        }
+                    }
+                }
+                
+                // Cast members
+                val castMembers = itemDetails?.People?.filter { it.Type == "Actor" || it.Type == "GuestStar" } ?: emptyList()
+                if (castMembers.isNotEmpty()) {
+                    item {
+                        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                            Text(
+                                text = "Cast",
+                                style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+                            )
+                            
+                            androidx.compose.foundation.lazy.LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                items(castMembers.size) { index ->
+                                    val person = castMembers[index]
+                                    val personTag = person.PrimaryImageTag
+                                    val imageUrl = remember(person.Id, personTag) {
+                                        if (personTag != null && person.Id != null) {
+                                            apiService.getImageUrl(
+                                                itemId = person.Id!!,
+                                                imageType = "Primary",
+                                                imageTag = personTag,
+                                                maxWidth = 200,
+                                                quality = 70
+                                            )
+                                        } else ""
+                                    }
                                     
-                                    Spacer(modifier = Modifier.width(32.dp))
-                                    
-                                    // Play/Pause button - DEFAULT FOCUS TARGET
-                                    PlayerControlButton(
-                                        icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                        contentDescription = if (isPlaying) "Pause" else "Play",
-                                        onClick = {
-                                            if (isPlaying) player.pause() else player.play()
-                                        },
-                                        modifier = Modifier.focusRequester(playPauseFocusRequester)
-                                    )
-                                    
-                                    Spacer(modifier = Modifier.width(32.dp))
-                                    
-                                    // Fast forward button
-                                    PlayerControlButton(
-                                        icon = Icons.Filled.FastForward,
-                                        contentDescription = "Forward 15s",
-                                        onClick = {
-                                            val dur = player.duration
-                                            val seekTo = if (dur > 0) {
-                                                (player.currentPosition + 15000).coerceAtMost(dur)
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.width(80.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(60.dp)
+                                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                                .background(Color.Gray.copy(alpha = 0.2f))
+                                        ) {
+                                            if (imageUrl.isNotEmpty()) {
+                                                AsyncImage(
+                                                    model = ImageRequest.Builder(context)
+                                                        .data(imageUrl)
+                                                        .crossfade(true)
+                                                        .build(),
+                                                    contentDescription = person.Name ?: "",
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentScale = ContentScale.Crop
+                                                )
                                             } else {
-                                                player.currentPosition + 15000
+                                                Box(
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(
+                                                        text = person.Name?.take(1) ?: "",
+                                                        style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                                                        color = Color.White
+                                                    )
+                                                }
                                             }
-                                            player.seekTo(seekTo)
                                         }
-                                    )
-                                    
-                                    Spacer(modifier = Modifier.width(32.dp))
-                                    
-                                    // Picture Mode / Aspect Ratio button
-                                    AspectModeButton(
-                                        currentMode = currentAspectMode,
-                                        onClick = {
-                                            currentAspectMode = currentAspectMode.next()
-                                        }
-                                    )
-                                    
-                                    Spacer(modifier = Modifier.width(32.dp))
-                                    
-                                    // CC (Subtitles) button - quick access to subtitles menu
-                                    PlayerControlButton(
-                                        icon = Icons.Filled.ClosedCaption,
-                                        contentDescription = "Subtitles",
-                                        onClick = {
-                                            showControls = false
-                                            settingsMenuInitialLevel = "subtitles"
-                                            showSettingsMenu = true
-                                        }
-                                    )
-                                    
-                                    Spacer(modifier = Modifier.width(32.dp))
-                                    
-                                    // Settings button
-                                    PlayerControlButton(
-                                        icon = Icons.Filled.Settings,
-                                        contentDescription = "Settings",
-                                        onClick = {
-                                            showControls = false
-                                            settingsMenuInitialLevel = "main"
-                                            showSettingsMenu = true
-                                        }
-                                    )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = person.Name,
+                                            style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                                            color = Color.White,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // TV Show specific: Seasons & Episodes
+                if (itemDetails?.Type == "Episode" && itemDetails?.SeriesId != null && seasons.isNotEmpty()) {
+                    item {
+                        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                            Text(
+                                text = "Seasons",
+                                style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            
+                            androidx.compose.foundation.lazy.LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                items(seasons.size) { index ->
+                                    val season = seasons[index]
+                                    val isSelected = index == selectedSeasonIndex
+                                    androidx.compose.material3.Button(
+                                        onClick = { selectedSeasonIndex = index },
+                                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                            containerColor = if (isSelected) themeColor else Color.White.copy(alpha = 0.1f),
+                                            contentColor = Color.White
+                                        ),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            text = season.Name,
+                                            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                     
+                    if (isLoadingEpisodes) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(100.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                androidx.compose.material3.CircularProgressIndicator(color = themeColor)
+                            }
+                        }
+                    } else if (episodes.isNotEmpty()) {
+                        items(episodes.size) { index ->
+                            val ep = episodes[index]
+                            val isCurrentPlaying = ep.Id == (itemDetails?.Id ?: item.Id)
+                            val episodePlayResumeMs = ep.UserData?.PositionTicks?.let { it / 10_000 } ?: 0L
+                            
+                            androidx.compose.material3.Card(
+                                onClick = { playClickedEpisode(ep, episodePlayResumeMs) },
+                                colors = androidx.compose.material3.CardDefaults.cardColors(
+                                    containerColor = if (isCurrentPlaying) themeColor.copy(alpha = 0.2f) else Color.Transparent
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val epTag = ep.ImageTags?.get("Primary")
+                                    val epImageUrl = remember(ep.Id, epTag) {
+                                        if (epTag != null) {
+                                            apiService.getImageUrl(
+                                                itemId = ep.Id,
+                                                imageType = "Primary",
+                                                imageTag = epTag,
+                                                maxWidth = 300,
+                                                quality = 70
+                                            )
+                                        } else ""
+                                    }
+                                    
+                                    Box(
+                                        modifier = Modifier
+                                            .size(width = 110.dp, height = 62.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(Color.Gray.copy(alpha = 0.1f))
+                                    ) {
+                                        if (epImageUrl.isNotEmpty()) {
+                                            AsyncImage(
+                                                model = ImageRequest.Builder(context)
+                                                    .data(epImageUrl)
+                                                    .crossfade(true)
+                                                    .build(),
+                                                contentDescription = ep.Name,
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        } else {
+                                            Box(
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Tv,
+                                                    contentDescription = null,
+                                                    tint = Color.White.copy(alpha = 0.3f)
+                                                )
+                                            }
+                                        }
+                                        
+                                        // Position indicator / played percentage
+                                        ep.UserData?.PlayedPercentage?.let { pct ->
+                                            if (pct > 0 && pct < 100) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(4.dp)
+                                                        .background(Color.White.copy(alpha = 0.3f))
+                                                        .align(Alignment.BottomStart)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth(pct.toFloat() / 100f)
+                                                            .fillMaxHeight()
+                                                            .background(themeColor)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "${ep.IndexNumber}. ${ep.Name}",
+                                            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                                            color = if (isCurrentPlaying) themeColor else Color.White,
+                                            fontWeight = if (isCurrentPlaying) FontWeight.Bold else FontWeight.Normal,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        
+                                        ep.RunTimeTicks?.let { ticks ->
+                                            val minutes = ticks / 10_000L / 1000 / 60
+                                            if (minutes > 0) {
+                                                Text(
+                                                    text = "${minutes} min",
+                                                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                                                    color = Color.White.copy(alpha = 0.5f),
+                                                    modifier = Modifier.padding(top = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
-            isLoading -> {
-                // Loading indicator could go here
-            }
         }
-        
-        // Settings menu with subtitle picker
-        if (showSettingsMenu) {
+    } else {
+        // Fullscreen mode
+        playerContent(Modifier.fillMaxSize())
+    }
+
+    // Settings menu with subtitle picker
+    if (showSettingsMenu) {
             ExoPlayerSettingsMenu(
                 item = itemDetails ?: item,
                 apiService = apiService,
@@ -3367,6 +3976,7 @@ fun JellyfinVideoPlayerScreen(
                 jellyfinSubtitleStreams = jellyfinSubtitleStreams, // Pass for composite key registration
                 downloadedSubtitles = downloadedSubtitles, // Downloaded OpenSubtitles
                 initialMenuLevel = settingsMenuInitialLevel, // Open to subtitles if CC button was pressed
+                isMobile = isMobile,
                 onDownloadedSubtitleSelected = { filePath ->
                     // Select downloaded subtitle by finding its ExoPlayer track
                     scope.launch(Dispatchers.Main) {
@@ -3628,7 +4238,6 @@ fun JellyfinVideoPlayerScreen(
             }
         }
     }
-}
 
 // Data class to hold audio track information
 data class AudioTrackInfo(
@@ -3653,7 +4262,8 @@ fun ExoPlayerSettingsMenu(
     jellyfinSubtitleStreams: List<MediaStream> = emptyList(), // For composite key registration
     downloadedSubtitles: List<com.flex.elefin.subtitles.DownloadedSubtitle> = emptyList(), // Downloaded OpenSubtitles
     onDownloadedSubtitleSelected: ((String) -> Unit)? = null, // Callback for selecting downloaded subtitle by file path
-    initialMenuLevel: String = "main" // "main", "subtitles", "audio", "speed" - allows opening directly to a submenu
+    initialMenuLevel: String = "main", // "main", "subtitles", "audio", "speed" - allows opening directly to a submenu
+    isMobile: Boolean = false
 ) {
     var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     var isLoadingSubtitles by remember { mutableStateOf(true) }
@@ -3888,7 +4498,10 @@ fun ExoPlayerSettingsMenu(
                                             },
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .focusRequester(mainMenuFirstItemFocusRequester)
+                                                .then(
+                                                    if (isMobile) Modifier.clickable { currentMenuLevel = "audio" }
+                                                    else Modifier.focusRequester(mainMenuFirstItemFocusRequester)
+                                                )
                                         )
                                     }
                                     isFirstMainMenuItem = false
@@ -3927,7 +4540,8 @@ fun ExoPlayerSettingsMenu(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .then(
-                                                if (isFirstMainMenuItem) Modifier.focusRequester(mainMenuFirstItemFocusRequester)
+                                                if (isMobile) Modifier.clickable { currentMenuLevel = "subtitles" }
+                                                else if (isFirstMainMenuItem) Modifier.focusRequester(mainMenuFirstItemFocusRequester)
                                                 else Modifier
                                             )
                                     )
@@ -3964,7 +4578,12 @@ fun ExoPlayerSettingsMenu(
                                                     style = MaterialTheme.typography.titleMedium
                                                 )
                                             },
-                                            modifier = Modifier.fillMaxWidth()
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .then(
+                                                    if (isMobile) Modifier.clickable { currentMenuLevel = "speed" }
+                                                    else Modifier
+                                                )
                                         )
                                     }
                                 }
@@ -4043,11 +4662,29 @@ fun ExoPlayerSettingsMenu(
                                         }
                                     },
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .then(
-                                            if (index == 0) Modifier.focusRequester(audioFirstItemFocusRequester)
-                                            else Modifier
-                                        )
+                                    .fillMaxWidth()
+                                    .then(
+                                        if (isMobile) Modifier.clickable {
+                                            player?.let { exoPlayer ->
+                                                try {
+                                                    val trackSelectionOverride = TrackSelectionOverride(
+                                                        track.group.mediaTrackGroup,
+                                                        0
+                                                    )
+                                                    val updatedParameters = exoPlayer.trackSelectionParameters
+                                                        .buildUpon()
+                                                        .addOverride(trackSelectionOverride)
+                                                        .build()
+                                                    exoPlayer.trackSelectionParameters = updatedParameters
+                                                    Log.d("ExoPlayerSettingsMenu", "Selected audio track: $trackTitle")
+                                                } catch (e: Exception) {
+                                                    Log.e("ExoPlayerSettingsMenu", "Error selecting audio track", e)
+                                                }
+                                            }
+                                        }
+                                        else if (index == 0) Modifier.focusRequester(audioFirstItemFocusRequester)
+                                        else Modifier
+                                    )
                                 )
                             }
                         }
@@ -4092,9 +4729,14 @@ fun ExoPlayerSettingsMenu(
                                             )
                                         )
                                     },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .focusRequester(subtitlesFirstItemFocusRequester)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(
+                                        if (isMobile) Modifier.clickable {
+                                            onSubtitleSelected(null)
+                                        }
+                                        else Modifier.focusRequester(subtitlesFirstItemFocusRequester)
+                                    )
                                 )
                             }
                             
@@ -4146,7 +4788,16 @@ fun ExoPlayerSettingsMenu(
                                             }
                                         }
                                     },
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .then(
+                                            if (isMobile) Modifier.clickable {
+                                                stream.Index?.let { index ->
+                                                    Log.d("ExoPlayerSettingsMenu", "📺 User clicked: $subtitleTitle (Jellyfin Index=$index)")
+                                                    onSubtitleSelected(index)
+                                                }
+                                            } else Modifier
+                                        )
                                 )
                             }
                             
@@ -4201,7 +4852,14 @@ fun ExoPlayerSettingsMenu(
                                                 modifier = Modifier.size(20.dp)
                                             )
                                         },
-                                        modifier = Modifier.fillMaxWidth()
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .then(
+                                                if (isMobile) Modifier.clickable {
+                                                    Log.d("ExoPlayerSettingsMenu", "📺 User clicked downloaded subtitle: ${downloadedSub.fileName}")
+                                                    onDownloadedSubtitleSelected?.invoke(downloadedSub.filePath)
+                                                } else Modifier
+                                            )
                                     )
                                 }
                             }
@@ -4243,7 +4901,11 @@ fun ExoPlayerSettingsMenu(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .then(
-                                            if (index == 0) Modifier.focusRequester(speedFirstItemFocusRequester)
+                                            if (isMobile) Modifier.clickable {
+                                                exoPlayer.playbackParameters = androidx.media3.common.PlaybackParameters(speed)
+                                                Log.d("ExoPlayerSettingsMenu", "Changed playback speed to ${speed}x")
+                                            }
+                                            else if (index == 0) Modifier.focusRequester(speedFirstItemFocusRequester)
                                             else Modifier
                                         )
                                 )
@@ -4494,7 +5156,7 @@ fun SubtitleSelectionDialog(
             
             if (isLoading) {
                 androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(32.dp))
-                androidx.compose.material3.CircularProgressIndicator(color = Color(0xFF9C27B0))
+                androidx.compose.material3.CircularProgressIndicator(color = androidx.compose.material3.MaterialTheme.colorScheme.primary)
             } else {
                 // Get subtitle streams
                 val subtitleStreams = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams
@@ -4547,7 +5209,7 @@ fun SubtitleSelectionDialog(
             androidx.compose.material3.Button(
                 onClick = onDismiss,
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF9C27B0)
+                    containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
                 ),
                 modifier = Modifier.focusable()
             ) {
@@ -4571,15 +5233,15 @@ fun SubtitleOptionItem(
             .padding(vertical = 4.dp)
             .background(
                 when {
-                    isSelected -> Color(0xFF9C27B0).copy(alpha = 0.3f)
-                    isFocused -> Color(0xFF9C27B0).copy(alpha = 0.2f)
+                    isSelected -> androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                    isFocused -> androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
                     else -> Color.Transparent
                 },
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
             )
             .border(
                 width = if (isFocused) 2.dp else 0.dp,
-                color = if (isFocused) Color(0xFF9C27B0) else Color.Transparent,
+                color = if (isFocused) androidx.compose.material3.MaterialTheme.colorScheme.primary else Color.Transparent,
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
             )
             .clickable(onClick = onClick)
@@ -4592,7 +5254,7 @@ fun SubtitleOptionItem(
             androidx.compose.material3.Icon(
                 imageVector = androidx.compose.material.icons.Icons.Default.Check,
                 contentDescription = "Selected",
-                tint = Color(0xFF9C27B0),
+                tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp).padding(end = 8.dp)
             )
         }
@@ -4688,7 +5350,7 @@ fun AudioSelectionDialog(
             androidx.compose.material3.Button(
                 onClick = onDismiss,
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF9C27B0)
+                    containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
                 ),
                 modifier = Modifier.focusable()
             ) {
@@ -4764,7 +5426,7 @@ fun SpeedSelectionDialog(
             androidx.compose.material3.Button(
                 onClick = onDismiss,
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF9C27B0)
+                    containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
                 ),
                 modifier = Modifier.focusable()
             ) {
@@ -4789,15 +5451,15 @@ fun SimpleOptionItem(
             .padding(vertical = 4.dp)
             .background(
                 when {
-                    isSelected -> Color(0xFF9C27B0).copy(alpha = 0.3f)
-                    isFocused -> Color(0xFF9C27B0).copy(alpha = 0.2f)
+                    isSelected -> androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                    isFocused -> androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
                     else -> Color.Transparent
                 },
                 shape = RoundedCornerShape(4.dp)
             )
             .border(
                 width = if (isFocused) 2.dp else 0.dp,
-                color = if (isFocused) Color(0xFF9C27B0) else Color.Transparent,
+                color = if (isFocused) androidx.compose.material3.MaterialTheme.colorScheme.primary else Color.Transparent,
                 shape = RoundedCornerShape(4.dp)
             )
             .clickable(onClick = onClick)
@@ -4810,7 +5472,7 @@ fun SimpleOptionItem(
             androidx.compose.material3.Icon(
                 imageVector = Icons.Default.Check,
                 contentDescription = "Selected",
-                tint = Color(0xFF9C27B0),
+                tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp).padding(end = 8.dp)
             )
         }
@@ -4890,17 +5552,17 @@ fun SkipButton(
     }
 }
 
-// YouTube TV-style player control button
+// YouTube TV-style player control button — now supports custom size for mobile
 @Composable
 private fun PlayerControlButton(
     icon: ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = 48.dp,
+    iconSize: androidx.compose.ui.unit.Dp = 24.dp
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val size = 48.dp
-    val iconSize = 24.dp
     
     Box(
         modifier = modifier
@@ -4946,13 +5608,14 @@ private fun formatTime(ms: Long): String {
     }
 }
 
-// Focusable seekbar that allows manual seeking with D-pad
+// Seekbar that supports D-pad (TV) and touch drag (mobile)
 @Composable
 private fun PlayerSeekBar(
     currentPosition: Long,
     duration: Long,
     onSeek: (Long) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isMobile: Boolean = false
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val progress = if (duration > 0) currentPosition.toFloat() / duration.toFloat() else 0f
@@ -4971,12 +5634,36 @@ private fun PlayerSeekBar(
     val barHeight = if (isFocused) 12.dp else 6.dp
     val thumbSize = if (isFocused) 18.dp else 0.dp
     
+    // Track whether user is dragging (mobile only)
+    var isDragging by remember { mutableStateOf(false) }
+    var dragProgress by remember { mutableStateOf(0f) }
+
     androidx.compose.foundation.layout.BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .height(24.dp) // Fixed height to accommodate thumb
+            .height(if (isMobile) 36.dp else 24.dp) // Taller touch target on mobile
             .onFocusChanged { isFocused = it.isFocused }
             .focusable()
+            .then(
+                if (isMobile && duration > 0) {
+                    Modifier.pointerInput(duration) {
+                        detectTapGestures(
+                            onPress = { offset ->
+                                isDragging = true
+                                dragProgress = (offset.x / size.width).coerceIn(0f, 1f)
+                                try {
+                                    val position = awaitRelease()
+                                    if (duration > 0) {
+                                        onSeek((dragProgress * duration).toLong())
+                                    }
+                                } finally {
+                                    isDragging = false
+                                }
+                            }
+                        )
+                    }
+                } else Modifier
+            )
             .onPreviewKeyEvent { event ->
                 if (isFocused && event.type == KeyEventType.KeyDown) {
                     when (event.key) {
@@ -5004,45 +5691,56 @@ private fun PlayerSeekBar(
             },
         contentAlignment = Alignment.Center
     ) {
+        // Use drag progress while dragging, otherwise actual position
+        val displayProgress = if (isDragging) dragProgress
+            else if (duration > 0) currentPosition.toFloat() / duration.toFloat() else 0f
         val trackWidth = maxWidth
-        
+        val showThumb = isFocused || isDragging
+        val thumbSizeActual = if (showThumb) (if (isMobile) 20.dp else 18.dp) else 0.dp
+        val barHeightActual = when {
+            isMobile && isDragging -> 10.dp
+            isMobile -> 6.dp
+            isFocused -> 12.dp
+            else -> 6.dp
+        }
+
         // Track background
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(barHeight)
+                .height(barHeightActual)
                 .background(
                     color = Color.White.copy(alpha = 0.3f),
-                    shape = RoundedCornerShape(barHeight / 2)
+                    shape = RoundedCornerShape(barHeightActual / 2)
                 )
                 .border(
                     width = if (isFocused) 2.dp else 0.dp,
-                    color = if (isFocused) Color(0xFF9C27B0) else Color.Transparent,
-                    shape = RoundedCornerShape(barHeight / 2)
+                    color = if (isFocused) androidx.compose.material3.MaterialTheme.colorScheme.primary else Color.Transparent,
+                    shape = RoundedCornerShape(barHeightActual / 2)
                 )
         ) {
             // Progress fill
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(progress.coerceIn(0f, 1f))
+                    .fillMaxWidth(displayProgress.coerceIn(0f, 1f))
                     .fillMaxHeight()
                     .background(
-                        color = if (isFocused) Color(0xFF9C27B0) else Color.White,
-                        shape = RoundedCornerShape(barHeight / 2)
+                        color = if (isFocused || isDragging) androidx.compose.material3.MaterialTheme.colorScheme.primary else Color.White,
+                        shape = RoundedCornerShape(barHeightActual / 2)
                     )
             )
         }
         
-        // Thumb indicator - only show when focused
-        if (isFocused && thumbSize > 0.dp) {
+        // Thumb indicator — show when focused (TV) or dragging (mobile)
+        if (showThumb && thumbSizeActual > 0.dp) {
             val thumbOffset = with(androidx.compose.ui.platform.LocalDensity.current) {
-                (trackWidth.toPx() * progress.coerceIn(0f, 1f) - thumbSize.toPx() / 2).toDp()
+                (trackWidth.toPx() * displayProgress.coerceIn(0f, 1f) - thumbSizeActual.toPx() / 2).toDp()
             }
             
             Box(
                 modifier = Modifier
                     .offset(x = thumbOffset)
-                    .size(thumbSize)
+                    .size(thumbSizeActual)
                     .align(Alignment.CenterStart)
                     .background(
                         color = Color.White,
@@ -5050,7 +5748,7 @@ private fun PlayerSeekBar(
                     )
                     .border(
                         width = 2.dp,
-                        color = Color(0xFF9C27B0),
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                         shape = RoundedCornerShape(50)
                     )
             )

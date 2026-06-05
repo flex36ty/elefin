@@ -60,10 +60,22 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 
+                var activeTabAction by remember { mutableStateOf<String?>(null) }
+                
+                LaunchedEffect(intent) {
+                    val action = intent.getStringExtra("select_tab_action")
+                    if (action != null) {
+                        activeTabAction = action
+                        intent.removeExtra("select_tab_action")
+                    }
+                }
+                
                 Surface(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     JellyfinHomeScreen(
+                        initialTabAction = activeTabAction,
+                        onTabActionHandled = { activeTabAction = null },
                         onItemClick = { item: JellyfinItem, resumePositionMs: Long ->
                             // Check if this is a Jellyseerr item
                             if (item.Id.startsWith("jellyseerr_")) {
@@ -144,6 +156,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
     }
 }
 

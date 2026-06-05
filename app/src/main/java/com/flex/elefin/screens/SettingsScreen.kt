@@ -75,6 +75,7 @@ import com.flex.elefin.updater.UpdateService
 import android.content.pm.PackageManager
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
@@ -259,96 +260,16 @@ fun SettingsScreen(
     var rowCardCount by remember { mutableStateOf(settings.rowCardCount) }
     var downloadedSubtitlesCount by remember { mutableStateOf(0) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // Header with back button
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 48.dp, vertical = 24.dp),
-                horizontalArrangement = Arrangement.Start,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = onBack,
-                    colors = IconButtonDefaults.colors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
-                        contentColor = MaterialTheme.colorScheme.onSurface
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back"
-                    )
-                }
+    val isTv = remember(context) { com.flex.elefin.ui.DeviceUtils.isTvDevice(context) }
+    var activeCategoryDetail by remember { mutableStateOf<SettingsCategory?>(null) }
 
-                Text(
-                    text = "Settings",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(start = 16.dp)
-                )
-            }
+    BackHandler(enabled = !isTv && activeCategoryDetail != null) {
+        activeCategoryDetail = null
+    }
 
-            // Main content: Categories on left, Settings on right
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 48.dp)
-                    .padding(bottom = 24.dp)
-            ) {
-                // Left column: Categories
-                Column(
-                    modifier = Modifier
-                        .width(280.dp)
-                        .fillMaxHeight()
-                        .padding(end = 24.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    SettingsCategory.entries.forEach { category ->
-                        CategoryItem(
-                            category = category,
-                            isSelected = selectedCategory == category,
-                            onClick = { selectedCategory = category },
-                            onFocused = { selectedCategory = category }
-                        )
-                    }
-                }
-                
-                // Vertical divider
-                Box(
-                    modifier = Modifier
-                        .width(1.dp)
-                        .fillMaxHeight()
-                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
-                )
-                
-                // Right panel: Settings for selected category
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .padding(start = 32.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // Category title
-                    Text(
-                        text = selectedCategory.title,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                    
-                    when (selectedCategory) {
+    @Composable
+    fun SettingsOptions(category: SettingsCategory) {
+        when (category) {
                         SettingsCategory.PLAYBACK -> {
                             // MPV Player Toggle
                             SettingToggle(
@@ -924,28 +845,22 @@ fun SettingsScreen(
                                             .background(Color.Black.copy(alpha = 0.7f)),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Surface(
-                                            modifier = Modifier.width(500.dp),
-                                            shape = RoundedCornerShape(16.dp),
-                                            colors = SurfaceDefaults.colors(
-                                                containerColor = MaterialTheme.colorScheme.surface,
-                                                contentColor = MaterialTheme.colorScheme.onSurface
-                                            )
-                                        ) {
+                                        val content = @Composable {
                                             Column(
-                                                modifier = Modifier.padding(32.dp),
+                                                modifier = Modifier.padding(if (isTv) 32.dp else 24.dp),
                                                 verticalArrangement = Arrangement.spacedBy(24.dp)
                                             ) {
                                                 Text(
                                                     text = "Jellyseerr URL",
-                                                    style = MaterialTheme.typography.headlineSmall
+                                                    style = if (isTv) MaterialTheme.typography.headlineSmall else androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                                                    color = if (isTv) MaterialTheme.colorScheme.onSurface else androidx.compose.material3.MaterialTheme.colorScheme.onSurface
                                                 )
                                                 
                                                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                                     Text(
                                                         text = "Enter the full URL of your Jellyseerr instance (e.g., http://192.168.1.50:5055)",
-                                                        style = MaterialTheme.typography.bodyMedium,
-                                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                                        style = if (isTv) MaterialTheme.typography.bodyMedium else androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                                                        color = if (isTv) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f) else androidx.compose.material3.MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                                     )
                                                     
                                                     OutlinedTextField(
@@ -960,10 +875,10 @@ fun SettingsScreen(
                                                              unfocusedTextColor = Color.White,
                                                              focusedContainerColor = Color.Transparent,
                                                              unfocusedContainerColor = Color.Transparent,
-                                                             cursorColor = MaterialTheme.colorScheme.primary,
-                                                             focusedLabelColor = MaterialTheme.colorScheme.primary,
+                                                             cursorColor = if (isTv) MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                                                             focusedLabelColor = if (isTv) MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.primary,
                                                              unfocusedLabelColor = Color.White.copy(alpha = 0.7f),
-                                                             focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                                                             focusedIndicatorColor = if (isTv) MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.primary,
                                                              unfocusedIndicatorColor = Color.White.copy(alpha = 0.3f)
                                                          )
                                                      )
@@ -973,28 +888,71 @@ fun SettingsScreen(
                                                     modifier = Modifier.fillMaxWidth(),
                                                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                                                 ) {
-                                                    Button(
-                                                        onClick = { showJellyseerrUrlDialog = false },
-                                                        modifier = Modifier.weight(1f),
-                                                        colors = ButtonDefaults.colors(
-                                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                                        )
-                                                    ) {
-                                                        Text("Cancel")
-                                                    }
-                                                    
-                                                    Button(
-                                                        onClick = {
-                                                            jellyseerrUrl = urlInput
-                                                            settings.jellyseerrUrl = urlInput
-                                                            showJellyseerrUrlDialog = false
-                                                        },
-                                                        modifier = Modifier.weight(1f)
-                                                    ) {
-                                                        Text("Save")
+                                                    if (isTv) {
+                                                        Button(
+                                                            onClick = { showJellyseerrUrlDialog = false },
+                                                            modifier = Modifier.weight(1f),
+                                                            colors = ButtonDefaults.colors(
+                                                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                                            )
+                                                        ) {
+                                                            Text("Cancel")
+                                                        }
+                                                        
+                                                        Button(
+                                                            onClick = {
+                                                                jellyseerrUrl = urlInput
+                                                                settings.jellyseerrUrl = urlInput
+                                                                showJellyseerrUrlDialog = false
+                                                            },
+                                                            modifier = Modifier.weight(1f)
+                                                        ) {
+                                                            Text("Save")
+                                                        }
+                                                    } else {
+                                                        androidx.compose.material3.Button(
+                                                            onClick = { showJellyseerrUrlDialog = false },
+                                                            modifier = Modifier.weight(1f),
+                                                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                                containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
+                                                            )
+                                                        ) {
+                                                            androidx.compose.material3.Text("Cancel", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                                                        }
+                                                        
+                                                        androidx.compose.material3.Button(
+                                                            onClick = {
+                                                                jellyseerrUrl = urlInput
+                                                                settings.jellyseerrUrl = urlInput
+                                                                showJellyseerrUrlDialog = false
+                                                            },
+                                                            modifier = Modifier.weight(1f)
+                                                        ) {
+                                                            androidx.compose.material3.Text("Save")
+                                                        }
                                                     }
                                                 }
                                             }
+                                        }
+
+                                        if (isTv) {
+                                            Surface(
+                                                modifier = Modifier.width(500.dp),
+                                                shape = RoundedCornerShape(16.dp),
+                                                colors = SurfaceDefaults.colors(
+                                                    containerColor = MaterialTheme.colorScheme.surface,
+                                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                                ),
+                                                content = { content() }
+                                            )
+                                        } else {
+                                            androidx.compose.material3.Surface(
+                                                modifier = Modifier.fillMaxWidth(0.9f).padding(16.dp),
+                                                shape = RoundedCornerShape(16.dp),
+                                                color = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                                                contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                                                content = { content() }
+                                            )
                                         }
                                     }
                                 }
@@ -1051,28 +1009,22 @@ fun SettingsScreen(
                                                 .background(Color.Black.copy(alpha = 0.7f)),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            Surface(
-                                                modifier = Modifier.width(500.dp),
-                                                shape = RoundedCornerShape(16.dp),
-                                                colors = SurfaceDefaults.colors(
-                                                    containerColor = MaterialTheme.colorScheme.surface,
-                                                    contentColor = MaterialTheme.colorScheme.onSurface
-                                                )
-                                            ) {
+                                            val content = @Composable {
                                                 Column(
-                                                    modifier = Modifier.padding(32.dp),
+                                                    modifier = Modifier.padding(if (isTv) 32.dp else 24.dp),
                                                     verticalArrangement = Arrangement.spacedBy(24.dp)
                                                 ) {
                                                     Text(
                                                         text = "Jellyseerr API Key",
-                                                        style = MaterialTheme.typography.headlineSmall
+                                                        style = if (isTv) MaterialTheme.typography.headlineSmall else androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                                                        color = if (isTv) MaterialTheme.colorScheme.onSurface else androidx.compose.material3.MaterialTheme.colorScheme.onSurface
                                                     )
                                                     
                                                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                                         Text(
                                                             text = "Enter your Jellyseerr API key. Find it in Jellyseerr: Settings > General > API Key",
-                                                            style = MaterialTheme.typography.bodyMedium,
-                                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                                            style = if (isTv) MaterialTheme.typography.bodyMedium else androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                                                            color = if (isTv) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f) else androidx.compose.material3.MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                                         )
                                                         
                                                         OutlinedTextField(
@@ -1086,10 +1038,10 @@ fun SettingsScreen(
                                                                  unfocusedTextColor = Color.White,
                                                                  focusedContainerColor = Color.Transparent,
                                                                  unfocusedContainerColor = Color.Transparent,
-                                                                 cursorColor = MaterialTheme.colorScheme.primary,
-                                                                 focusedLabelColor = MaterialTheme.colorScheme.primary,
+                                                                 cursorColor = if (isTv) MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                                                                 focusedLabelColor = if (isTv) MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.primary,
                                                                  unfocusedLabelColor = Color.White.copy(alpha = 0.7f),
-                                                                 focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                                                                 focusedIndicatorColor = if (isTv) MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.primary,
                                                                  unfocusedIndicatorColor = Color.White.copy(alpha = 0.3f)
                                                              )
                                                          )
@@ -1099,28 +1051,71 @@ fun SettingsScreen(
                                                         modifier = Modifier.fillMaxWidth(),
                                                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                                                     ) {
-                                                        Button(
-                                                            onClick = { showJellyseerrApiKeyDialog = false },
-                                                            modifier = Modifier.weight(1f),
-                                                            colors = ButtonDefaults.colors(
-                                                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                                            )
-                                                        ) {
-                                                            Text("Cancel")
-                                                        }
-                                                        
-                                                        Button(
-                                                            onClick = {
-                                                                jellyseerrApiKey = apiKeyInput
-                                                                settings.jellyseerrApiKey = apiKeyInput
-                                                                showJellyseerrApiKeyDialog = false
-                                                            },
-                                                            modifier = Modifier.weight(1f)
-                                                        ) {
-                                                            Text("Save")
+                                                        if (isTv) {
+                                                            Button(
+                                                                onClick = { showJellyseerrApiKeyDialog = false },
+                                                                modifier = Modifier.weight(1f),
+                                                                colors = ButtonDefaults.colors(
+                                                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                                                )
+                                                            ) {
+                                                                Text("Cancel")
+                                                            }
+                                                            
+                                                            Button(
+                                                                onClick = {
+                                                                    jellyseerrApiKey = apiKeyInput
+                                                                    settings.jellyseerrApiKey = apiKeyInput
+                                                                    showJellyseerrApiKeyDialog = false
+                                                                },
+                                                                modifier = Modifier.weight(1f)
+                                                            ) {
+                                                                Text("Save")
+                                                            }
+                                                        } else {
+                                                            androidx.compose.material3.Button(
+                                                                onClick = { showJellyseerrApiKeyDialog = false },
+                                                                modifier = Modifier.weight(1f),
+                                                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                                    containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
+                                                                )
+                                                            ) {
+                                                                androidx.compose.material3.Text("Cancel", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                                                            }
+                                                            
+                                                            androidx.compose.material3.Button(
+                                                                onClick = {
+                                                                    jellyseerrApiKey = apiKeyInput
+                                                                    settings.jellyseerrApiKey = apiKeyInput
+                                                                    showJellyseerrApiKeyDialog = false
+                                                                },
+                                                                modifier = Modifier.weight(1f)
+                                                            ) {
+                                                                androidx.compose.material3.Text("Save")
+                                                            }
                                                         }
                                                     }
                                                 }
+                                            }
+
+                                            if (isTv) {
+                                                Surface(
+                                                    modifier = Modifier.width(500.dp),
+                                                    shape = RoundedCornerShape(16.dp),
+                                                    colors = SurfaceDefaults.colors(
+                                                        containerColor = MaterialTheme.colorScheme.surface,
+                                                        contentColor = MaterialTheme.colorScheme.onSurface
+                                                    ),
+                                                    content = { content() }
+                                                )
+                                            } else {
+                                                androidx.compose.material3.Surface(
+                                                    modifier = Modifier.fillMaxWidth(0.9f).padding(16.dp),
+                                                    shape = RoundedCornerShape(16.dp),
+                                                    color = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                                                    contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                                                    content = { content() }
+                                                )
                                             }
                                         }
                                     }
@@ -1176,28 +1171,22 @@ fun SettingsScreen(
                                                 .background(Color.Black.copy(alpha = 0.7f)),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            Surface(
-                                                modifier = Modifier.width(500.dp),
-                                                shape = RoundedCornerShape(16.dp),
-                                                colors = SurfaceDefaults.colors(
-                                                    containerColor = MaterialTheme.colorScheme.surface,
-                                                    contentColor = MaterialTheme.colorScheme.onSurface
-                                                )
-                                            ) {
+                                            val content = @Composable {
                                                 Column(
-                                                    modifier = Modifier.padding(32.dp),
+                                                    modifier = Modifier.padding(if (isTv) 32.dp else 24.dp),
                                                     verticalArrangement = Arrangement.spacedBy(24.dp)
                                                 ) {
                                                     Text(
                                                         text = "Jellyseerr Login",
-                                                        style = MaterialTheme.typography.headlineSmall
+                                                        style = if (isTv) MaterialTheme.typography.headlineSmall else androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                                                        color = if (isTv) MaterialTheme.colorScheme.onSurface else androidx.compose.material3.MaterialTheme.colorScheme.onSurface
                                                     )
                                                     
                                                     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                                         Text(
                                                             text = "Sign in with your credentials.",
-                                                            style = MaterialTheme.typography.bodyMedium,
-                                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                                            style = if (isTv) MaterialTheme.typography.bodyMedium else androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                                                            color = if (isTv) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f) else androidx.compose.material3.MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                                         )
                                                         
                                                         // Auth type selector
@@ -1205,27 +1194,52 @@ fun SettingsScreen(
                                                             modifier = Modifier.fillMaxWidth(),
                                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                                                         ) {
-                                                            Button(
-                                                                onClick = { useJellyfinAuth = true },
-                                                                modifier = Modifier.weight(1f),
-                                                                colors = ButtonDefaults.colors(
-                                                                    containerColor = if (useJellyfinAuth) 
-                                                                        MaterialTheme.colorScheme.primary 
-                                                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                                                )
-                                                            ) {
-                                                                Text("Jellyfin")
-                                                            }
-                                                            Button(
-                                                                onClick = { useJellyfinAuth = false },
-                                                                modifier = Modifier.weight(1f),
-                                                                colors = ButtonDefaults.colors(
-                                                                    containerColor = if (!useJellyfinAuth) 
-                                                                        MaterialTheme.colorScheme.primary 
-                                                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                                                )
-                                                            ) {
-                                                                Text("Local/Email")
+                                                            if (isTv) {
+                                                                Button(
+                                                                    onClick = { useJellyfinAuth = true },
+                                                                    modifier = Modifier.weight(1f),
+                                                                    colors = ButtonDefaults.colors(
+                                                                        containerColor = if (useJellyfinAuth) 
+                                                                            MaterialTheme.colorScheme.primary 
+                                                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                                                    )
+                                                                ) {
+                                                                    Text("Jellyfin")
+                                                                }
+                                                                Button(
+                                                                    onClick = { useJellyfinAuth = false },
+                                                                    modifier = Modifier.weight(1f),
+                                                                    colors = ButtonDefaults.colors(
+                                                                        containerColor = if (!useJellyfinAuth) 
+                                                                            MaterialTheme.colorScheme.primary 
+                                                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                                                    )
+                                                                ) {
+                                                                    Text("Local/Email")
+                                                                }
+                                                            } else {
+                                                                androidx.compose.material3.Button(
+                                                                    onClick = { useJellyfinAuth = true },
+                                                                    modifier = Modifier.weight(1f),
+                                                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                                        containerColor = if (useJellyfinAuth) 
+                                                                            androidx.compose.material3.MaterialTheme.colorScheme.primary 
+                                                                        else androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
+                                                                    )
+                                                                ) {
+                                                                    androidx.compose.material3.Text("Jellyfin", color = if (useJellyfinAuth) Color.White else androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                                                                }
+                                                                androidx.compose.material3.Button(
+                                                                    onClick = { useJellyfinAuth = false },
+                                                                    modifier = Modifier.weight(1f),
+                                                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                                        containerColor = if (!useJellyfinAuth) 
+                                                                            androidx.compose.material3.MaterialTheme.colorScheme.primary 
+                                                                        else androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
+                                                                    )
+                                                                ) {
+                                                                    androidx.compose.material3.Text("Local/Email", color = if (!useJellyfinAuth) Color.White else androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                                                                }
                                                             }
                                                         }
                                                         
@@ -1241,10 +1255,10 @@ fun SettingsScreen(
                                                                  unfocusedTextColor = Color.White,
                                                                  focusedContainerColor = Color.Transparent,
                                                                  unfocusedContainerColor = Color.Transparent,
-                                                                 cursorColor = MaterialTheme.colorScheme.primary,
-                                                                 focusedLabelColor = MaterialTheme.colorScheme.primary,
+                                                                 cursorColor = if (isTv) MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                                                                 focusedLabelColor = if (isTv) MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.primary,
                                                                  unfocusedLabelColor = Color.White.copy(alpha = 0.7f),
-                                                                 focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                                                                 focusedIndicatorColor = if (isTv) MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.primary,
                                                                  unfocusedIndicatorColor = Color.White.copy(alpha = 0.3f)
                                                              )
                                                          )
@@ -1262,10 +1276,10 @@ fun SettingsScreen(
                                                                  unfocusedTextColor = Color.White,
                                                                  focusedContainerColor = Color.Transparent,
                                                                  unfocusedContainerColor = Color.Transparent,
-                                                                 cursorColor = MaterialTheme.colorScheme.primary,
-                                                                 focusedLabelColor = MaterialTheme.colorScheme.primary,
+                                                                 cursorColor = if (isTv) MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                                                                 focusedLabelColor = if (isTv) MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.primary,
                                                                  unfocusedLabelColor = Color.White.copy(alpha = 0.7f),
-                                                                 focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                                                                 focusedIndicatorColor = if (isTv) MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.primary,
                                                                  unfocusedIndicatorColor = Color.White.copy(alpha = 0.3f)
                                                              )
                                                          )
@@ -1281,15 +1295,15 @@ fun SettingsScreen(
                                                                     strokeWidth = 2.dp
                                                                 )
                                                                 Spacer(modifier = Modifier.width(12.dp))
-                                                                Text("Signing in...", style = MaterialTheme.typography.bodyMedium)
+                                                                Text("Signing in...", style = if (isTv) MaterialTheme.typography.bodyMedium else androidx.compose.material3.MaterialTheme.typography.bodyMedium)
                                                             }
                                                         }
                                                         
                                                         loginError?.let { error ->
                                                             Text(
                                                                 text = error,
-                                                                color = MaterialTheme.colorScheme.error,
-                                                                style = MaterialTheme.typography.bodySmall
+                                                                color = if (isTv) MaterialTheme.colorScheme.error else androidx.compose.material3.MaterialTheme.colorScheme.error,
+                                                                style = if (isTv) MaterialTheme.typography.bodySmall else androidx.compose.material3.MaterialTheme.typography.bodySmall
                                                             )
                                                         }
                                                     }
@@ -1298,71 +1312,157 @@ fun SettingsScreen(
                                                         modifier = Modifier.fillMaxWidth(),
                                                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                                                     ) {
-                                                        Button(
-                                                            onClick = { showJellyseerrLoginDialog = false },
-                                                            enabled = !isLoggingIn,
-                                                            modifier = Modifier.weight(1f),
-                                                            colors = ButtonDefaults.colors(
-                                                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                                            )
-                                                        ) {
-                                                            Text("Cancel")
-                                                        }
-                                                        
-                                                        Button(
-                                                            onClick = {
-                                                                if (jellyseerrUrl.isBlank()) {
-                                                                    loginError = "Please set Jellyseerr URL first"
-                                                                    return@Button
-                                                                }
-                                                                if (usernameInput.isBlank() || passwordInput.isBlank()) {
-                                                                    loginError = "Please enter username and password"
-                                                                    return@Button
-                                                                }
-                                                                
-                                                                isLoggingIn = true
-                                                                loginError = null
-                                                                
-                                                                scope.launch {
-                                                                    val result = if (useJellyfinAuth) {
-                                                                        com.flex.elefin.jellyseerr.JellyseerrApiService.loginWithJellyfin(
-                                                                            jellyseerrUrl,
-                                                                            usernameInput,
-                                                                            passwordInput
-                                                                        )
-                                                                    } else {
-                                                                        com.flex.elefin.jellyseerr.JellyseerrApiService.loginWithEmail(
-                                                                            jellyseerrUrl,
-                                                                            usernameInput,
-                                                                            passwordInput
-                                                                        )
+                                                        if (isTv) {
+                                                            Button(
+                                                                onClick = { showJellyseerrLoginDialog = false },
+                                                                enabled = !isLoggingIn,
+                                                                modifier = Modifier.weight(1f),
+                                                                colors = ButtonDefaults.colors(
+                                                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                                                )
+                                                            ) {
+                                                                Text("Cancel")
+                                                            }
+                                                            
+                                                            Button(
+                                                                onClick = {
+                                                                    if (jellyseerrUrl.isBlank()) {
+                                                                        loginError = "Please set Jellyseerr URL first"
+                                                                        return@Button
+                                                                    }
+                                                                    if (usernameInput.isBlank() || passwordInput.isBlank()) {
+                                                                        loginError = "Please enter username and password"
+                                                                        return@Button
                                                                     }
                                                                     
-                                                                    isLoggingIn = false
+                                                                    isLoggingIn = true
+                                                                    loginError = null
                                                                     
-                                                                    result.fold(
-                                                                        onSuccess = { cookie ->
-                                                                            jellyseerrSessionCookie = cookie
-                                                                            jellyseerrUsername = usernameInput
-                                                                            settings.jellyseerrSessionCookie = cookie
-                                                                            settings.jellyseerrUsername = usernameInput
-                                                                            settings.jellyseerrAuthType = "credentials"
-                                                                            showJellyseerrLoginDialog = false
-                                                                            Toast.makeText(context, "Signed in successfully!", Toast.LENGTH_SHORT).show()
-                                                                        },
-                                                                        onFailure = { error ->
-                                                                            loginError = "Login failed: ${error.message}"
+                                                                    scope.launch {
+                                                                        val result = if (useJellyfinAuth) {
+                                                                            com.flex.elefin.jellyseerr.JellyseerrApiService.loginWithJellyfin(
+                                                                                jellyseerrUrl,
+                                                                                usernameInput,
+                                                                                passwordInput
+                                                                            )
+                                                                        } else {
+                                                                            com.flex.elefin.jellyseerr.JellyseerrApiService.loginWithEmail(
+                                                                                jellyseerrUrl,
+                                                                                usernameInput,
+                                                                                passwordInput
+                                                                            )
                                                                         }
-                                                                    )
-                                                                }
-                                                            },
-                                                            enabled = !isLoggingIn,
-                                                            modifier = Modifier.weight(1f)
-                                                        ) {
-                                                            Text("Sign In")
+                                                                        
+                                                                        isLoggingIn = false
+                                                                        
+                                                                        result.fold(
+                                                                            onSuccess = { cookie ->
+                                                                                jellyseerrSessionCookie = cookie
+                                                                                jellyseerrUsername = usernameInput
+                                                                                settings.jellyseerrSessionCookie = cookie
+                                                                                settings.jellyseerrUsername = usernameInput
+                                                                                settings.jellyseerrAuthType = "credentials"
+                                                                                showJellyseerrLoginDialog = false
+                                                                                Toast.makeText(context, "Signed in successfully!", Toast.LENGTH_SHORT).show()
+                                                                            },
+                                                                            onFailure = { error ->
+                                                                                loginError = "Login failed: ${error.message}"
+                                                                            }
+                                                                        )
+                                                                    }
+                                                                },
+                                                                enabled = !isLoggingIn,
+                                                                modifier = Modifier.weight(1f)
+                                                            ) {
+                                                                Text("Sign In")
+                                                            }
+                                                        } else {
+                                                            androidx.compose.material3.Button(
+                                                                onClick = { showJellyseerrLoginDialog = false },
+                                                                enabled = !isLoggingIn,
+                                                                modifier = Modifier.weight(1f),
+                                                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                                    containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
+                                                                )
+                                                            ) {
+                                                                androidx.compose.material3.Text("Cancel", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                                                            }
+                                                            
+                                                            androidx.compose.material3.Button(
+                                                                onClick = {
+                                                                    if (jellyseerrUrl.isBlank()) {
+                                                                        loginError = "Please set Jellyseerr URL first"
+                                                                        return@Button
+                                                                    }
+                                                                    if (usernameInput.isBlank() || passwordInput.isBlank()) {
+                                                                        loginError = "Please enter username and password"
+                                                                        return@Button
+                                                                    }
+                                                                    
+                                                                    isLoggingIn = true
+                                                                    loginError = null
+                                                                    
+                                                                    scope.launch {
+                                                                        val result = if (useJellyfinAuth) {
+                                                                            com.flex.elefin.jellyseerr.JellyseerrApiService.loginWithJellyfin(
+                                                                                jellyseerrUrl,
+                                                                                usernameInput,
+                                                                                passwordInput
+                                                                            )
+                                                                        } else {
+                                                                            com.flex.elefin.jellyseerr.JellyseerrApiService.loginWithEmail(
+                                                                                jellyseerrUrl,
+                                                                                usernameInput,
+                                                                                passwordInput
+                                                                            )
+                                                                        }
+                                                                        
+                                                                        isLoggingIn = false
+                                                                        
+                                                                        result.fold(
+                                                                            onSuccess = { cookie ->
+                                                                                jellyseerrSessionCookie = cookie
+                                                                                jellyseerrUsername = usernameInput
+                                                                                settings.jellyseerrSessionCookie = cookie
+                                                                                settings.jellyseerrUsername = usernameInput
+                                                                                settings.jellyseerrAuthType = "credentials"
+                                                                                showJellyseerrLoginDialog = false
+                                                                                Toast.makeText(context, "Signed in successfully!", Toast.LENGTH_SHORT).show()
+                                                                            },
+                                                                            onFailure = { error ->
+                                                                                loginError = "Login failed: ${error.message}"
+                                                                            }
+                                                                        )
+                                                                    }
+                                                                },
+                                                                enabled = !isLoggingIn,
+                                                                modifier = Modifier.weight(1f)
+                                                            ) {
+                                                                androidx.compose.material3.Text("Sign In")
+                                                            }
                                                         }
                                                     }
                                                 }
+                                            }
+
+                                            if (isTv) {
+                                                Surface(
+                                                    modifier = Modifier.width(500.dp),
+                                                    shape = RoundedCornerShape(16.dp),
+                                                    colors = SurfaceDefaults.colors(
+                                                        containerColor = MaterialTheme.colorScheme.surface,
+                                                        contentColor = MaterialTheme.colorScheme.onSurface
+                                                    ),
+                                                    content = { content() }
+                                                )
+                                            } else {
+                                                androidx.compose.material3.Surface(
+                                                    modifier = Modifier.fillMaxWidth(0.9f).padding(16.dp),
+                                                    shape = RoundedCornerShape(16.dp),
+                                                    color = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                                                    contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                                                    content = { content() }
+                                                )
                                             }
                                         }
                                     }
@@ -1611,6 +1711,57 @@ fun SettingsScreen(
                                     settings.navigationSoundsEnabled = navigationSoundsEnabled
                                 }
                             )
+
+                            if (!isTv) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = "Theme Accent Color",
+                                    style = androidx.compose.material3.MaterialTheme.typography.titleSmall,
+                                    color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                )
+
+                                var selectedThemeColorHex by remember { mutableStateOf(settings.themeColorHex) }
+
+                                val colorPresets = listOf(
+                                    Pair("White", "#FFFFFF"),
+                                    Pair("Yellow", "#ECC564"),
+                                    Pair("Blue", "#2196F3"),
+                                    Pair("Green", "#4CAF50"),
+                                    Pair("Red", "#F44336"),
+                                    Pair("Purple", "#9C27B0"),
+                                    Pair("Orange", "#FF9800")
+                                )
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    colorPresets.forEach { (name, hex) ->
+                                        val color = Color(android.graphics.Color.parseColor(hex))
+                                        val isSelected = selectedThemeColorHex.equals(hex, ignoreCase = true)
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(RoundedCornerShape(50.dp))
+                                                .background(color)
+                                                .border(
+                                                    width = if (isSelected) 3.dp else 1.dp,
+                                                    color = if (isSelected) Color.White else Color.White.copy(alpha = 0.3f),
+                                                    shape = RoundedCornerShape(50.dp)
+                                                )
+                                                .clickable {
+                                                    selectedThemeColorHex = hex
+                                                    settings.themeColorHex = hex
+                                                    com.flex.elefin.theme.JetcasterPrimaryColorState = color
+                                                }
+                                        )
+                                    }
+                                }
+                            }
                         }
                         
                         SettingsCategory.PERFORMANCE -> {
@@ -1964,10 +2115,183 @@ fun SettingsScreen(
                                 )
                             }
                         }
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // Responsive Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = if (isTv) 48.dp else 16.dp,
+                        vertical = if (isTv) 24.dp else 16.dp
+                    ),
+                horizontalArrangement = Arrangement.Start,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (isTv) {
+                    IconButton(
+                        onClick = onBack,
+                        colors = IconButtonDefaults.colors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back"
+                        )
                     }
-                    
-                    // Add some bottom padding
-                    Spacer(modifier = Modifier.height(48.dp))
+
+                    Text(
+                        text = "Settings",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(start = 16.dp)
+                    )
+                } else {
+                    androidx.compose.material3.IconButton(
+                        onClick = {
+                            if (activeCategoryDetail != null) {
+                                activeCategoryDetail = null
+                            } else {
+                                onBack()
+                            }
+                        }
+                    ) {
+                        androidx.compose.material3.Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back"
+                        )
+                    }
+
+                    androidx.compose.material3.Text(
+                        text = if (activeCategoryDetail != null) activeCategoryDetail!!.title else "Settings",
+                        style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+            }
+
+            if (!isTv && activeCategoryDetail == null) {
+                // Mobile category list
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    SettingsCategory.entries.forEach { category ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { activeCategoryDetail = category }
+                                .padding(horizontal = 16.dp, vertical = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            androidx.compose.material3.Icon(
+                                imageVector = category.icon,
+                                contentDescription = null,
+                                tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            androidx.compose.material3.Text(
+                                text = category.title,
+                                style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+                                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        androidx.compose.material3.HorizontalDivider(
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                        )
+                    }
+                }
+            } else {
+                val categoryToRender = if (isTv) selectedCategory else activeCategoryDetail!!
+
+                if (isTv) {
+                    // TV content
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 48.dp)
+                            .padding(bottom = 24.dp)
+                    ) {
+                        // Left column: Categories
+                        Column(
+                            modifier = Modifier
+                                .width(280.dp)
+                                .fillMaxHeight()
+                                .padding(end = 24.dp)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            SettingsCategory.entries.forEach { category ->
+                                CategoryItem(
+                                    category = category,
+                                    isSelected = selectedCategory == category,
+                                    onClick = { selectedCategory = category },
+                                    onFocused = { selectedCategory = category }
+                                )
+                            }
+                        }
+                        
+                        // Vertical divider
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .fillMaxHeight()
+                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+                        )
+                        
+                        // Right panel: Settings for selected category
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .padding(start = 32.dp)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            // Category title
+                            Text(
+                                text = selectedCategory.title,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            
+                            SettingsOptions(categoryToRender)
+                        }
+                    }
+                } else {
+                    // Mobile content panel
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        SettingsOptions(categoryToRender)
+                        
+                        // Add some bottom padding
+                        Spacer(modifier = Modifier.height(48.dp))
+                    }
                 }
             }
         }
@@ -1985,33 +2309,24 @@ fun SettingsScreen(
                         .background(Color.Black.copy(alpha = 0.7f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Surface(
-                        modifier = Modifier
-                            .width(500.dp)
-                            .heightIn(max = 300.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = SurfaceDefaults.colors(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            contentColor = MaterialTheme.colorScheme.onSurface
-                        )
-                    ) {
+                    val content = @Composable {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(32.dp),
+                                .padding(if (isTv) 32.dp else 24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(24.dp)
                         ) {
                             Text(
                                 text = "Log Out?",
-                                style = MaterialTheme.typography.headlineSmall,
-                                color = MaterialTheme.colorScheme.onSurface
+                                style = if (isTv) MaterialTheme.typography.headlineSmall else androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                                color = if (isTv) MaterialTheme.colorScheme.onSurface else androidx.compose.material3.MaterialTheme.colorScheme.onSurface
                             )
                             
                             Text(
                                 text = "Are you sure you want to log out? You will need to sign in again to access your media.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                                style = if (isTv) MaterialTheme.typography.bodyMedium else androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                                color = if (isTv) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f) else androidx.compose.material3.MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
                             
@@ -2019,35 +2334,89 @@ fun SettingsScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                Button(
-                                    onClick = { showLogoutConfirmation = false },
-                                    modifier = Modifier.weight(1f),
-                                    colors = ButtonDefaults.colors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                    )
-                                ) {
-                                    Text("Cancel")
-                                }
-                                
-                                Button(
-                                    onClick = {
-                                        showLogoutConfirmation = false
-                                        val config = JellyfinConfig(context)
-                                        config.clearAuth()
-                                        val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-                                        intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                                        context.startActivity(intent)
-                                        (context as? android.app.Activity)?.finish()
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    colors = ButtonDefaults.colors(
-                                        containerColor = MaterialTheme.colorScheme.error
-                                    )
-                                ) {
-                                    Text("Log Out")
+                                if (isTv) {
+                                    Button(
+                                        onClick = { showLogoutConfirmation = false },
+                                        modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.colors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                        )
+                                    ) {
+                                        Text("Cancel")
+                                    }
+                                    
+                                    Button(
+                                        onClick = {
+                                            showLogoutConfirmation = false
+                                            val config = JellyfinConfig(context)
+                                            config.clearAuth()
+                                            val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                                            intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                                            context.startActivity(intent)
+                                            (context as? android.app.Activity)?.finish()
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.colors(
+                                            containerColor = MaterialTheme.colorScheme.error
+                                        )
+                                    ) {
+                                        Text("Log Out")
+                                    }
+                                } else {
+                                    androidx.compose.material3.Button(
+                                        onClick = { showLogoutConfirmation = false },
+                                        modifier = Modifier.weight(1f),
+                                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                            containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
+                                        )
+                                    ) {
+                                        androidx.compose.material3.Text("Cancel", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    
+                                    androidx.compose.material3.Button(
+                                        onClick = {
+                                            showLogoutConfirmation = false
+                                            val config = JellyfinConfig(context)
+                                            config.clearAuth()
+                                            val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                                            intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                                            context.startActivity(intent)
+                                            (context as? android.app.Activity)?.finish()
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                            containerColor = androidx.compose.material3.MaterialTheme.colorScheme.error
+                                        )
+                                    ) {
+                                        androidx.compose.material3.Text("Log Out", color = Color.White)
+                                    }
                                 }
                             }
                         }
+                    }
+
+                    if (isTv) {
+                        Surface(
+                            modifier = Modifier
+                                .width(500.dp)
+                                .heightIn(max = 300.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = SurfaceDefaults.colors(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            ),
+                            content = { content() }
+                        )
+                    } else {
+                        androidx.compose.material3.Surface(
+                            modifier = Modifier
+                                .fillMaxWidth(0.9f)
+                                .padding(16.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                            contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                            content = { content() }
+                        )
                     }
                 }
             }
@@ -2162,8 +2531,14 @@ private fun SettingToggle(
     enabledText: String = "ON",
     disabledText: String = "OFF"
 ) {
+    val context = LocalContext.current
+    val isTv = remember(context) { com.flex.elefin.ui.DeviceUtils.isTvDevice(context) }
+
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(!isTv) { onToggle() }
+            .padding(vertical = if (isTv) 0.dp else 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -2181,13 +2556,20 @@ private fun SettingToggle(
             )
         }
         
-        Button(
-            onClick = onToggle,
-            colors = ButtonDefaults.colors(
-                containerColor = if (isEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+        if (isTv) {
+            Button(
+                onClick = onToggle,
+                colors = ButtonDefaults.colors(
+                    containerColor = if (isEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Text(if (isEnabled) enabledText else disabledText)
+            }
+        } else {
+            androidx.compose.material3.Switch(
+                checked = isEnabled,
+                onCheckedChange = { onToggle() }
             )
-        ) {
-            Text(if (isEnabled) enabledText else disabledText)
         }
     }
 }
@@ -2201,6 +2583,9 @@ private fun SettingSlider(
     canDecrease: Boolean,
     canIncrease: Boolean
 ) {
+    val context = LocalContext.current
+    val isTv = remember(context) { com.flex.elefin.ui.DeviceUtils.isTvDevice(context) }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -2221,11 +2606,38 @@ private fun SettingSlider(
         }
         
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onDecrease, enabled = canDecrease) {
-                Text("-")
-            }
-            Button(onClick = onIncrease, enabled = canIncrease) {
-                Text("+")
+            if (isTv) {
+                Button(onClick = onDecrease, enabled = canDecrease) {
+                    Text("-")
+                }
+                Button(onClick = onIncrease, enabled = canIncrease) {
+                    Text("+")
+                }
+            } else {
+                androidx.compose.material3.IconButton(
+                    onClick = onDecrease,
+                    enabled = canDecrease
+                ) {
+                    androidx.compose.material3.Text(
+                        text = "-",
+                        style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = if (canDecrease) androidx.compose.material3.MaterialTheme.colorScheme.primary 
+                                else androidx.compose.material3.MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    )
+                }
+                androidx.compose.material3.IconButton(
+                    onClick = onIncrease,
+                    enabled = canIncrease
+                ) {
+                    androidx.compose.material3.Text(
+                        text = "+",
+                        style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = if (canIncrease) androidx.compose.material3.MaterialTheme.colorScheme.primary 
+                                else androidx.compose.material3.MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    )
+                }
             }
         }
     }
@@ -2238,8 +2650,14 @@ private fun SettingCycle(
     currentValue: String,
     onCycle: () -> Unit
 ) {
+    val context = LocalContext.current
+    val isTv = remember(context) { com.flex.elefin.ui.DeviceUtils.isTvDevice(context) }
+
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(!isTv) { onCycle() }
+            .padding(vertical = if (isTv) 0.dp else 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -2257,11 +2675,21 @@ private fun SettingCycle(
             )
         }
         
-        Button(
-            onClick = onCycle,
-            colors = ButtonDefaults.colors(containerColor = MaterialTheme.colorScheme.primary)
-        ) {
-            Text(currentValue)
+        if (isTv) {
+            Button(
+                onClick = onCycle,
+                colors = ButtonDefaults.colors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Text(currentValue)
+            }
+        } else {
+            androidx.compose.material3.TextButton(onClick = onCycle) {
+                androidx.compose.material3.Text(
+                    text = currentValue,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }
@@ -2274,8 +2702,14 @@ private fun SettingButton(
     onClick: () -> Unit,
     enabled: Boolean = true
 ) {
+    val context = LocalContext.current
+    val isTv = remember(context) { com.flex.elefin.ui.DeviceUtils.isTvDevice(context) }
+
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(!isTv && enabled) { onClick() }
+            .padding(vertical = if (isTv) 0.dp else 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -2293,12 +2727,24 @@ private fun SettingButton(
             )
         }
         
-        Button(
-            onClick = onClick,
-            enabled = enabled,
-            colors = ButtonDefaults.colors(containerColor = MaterialTheme.colorScheme.primary)
-        ) {
-            Text(buttonText)
+        if (isTv) {
+            Button(
+                onClick = onClick,
+                enabled = enabled,
+                colors = ButtonDefaults.colors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Text(buttonText)
+            }
+        } else {
+            androidx.compose.material3.Button(
+                onClick = onClick,
+                enabled = enabled,
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
+                )
+            ) {
+                androidx.compose.material3.Text(buttonText)
+            }
         }
     }
 }
@@ -2311,6 +2757,9 @@ fun SubtitleColorPickerDialog(
     onColorSelected: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    val isTv = remember(context) { com.flex.elefin.ui.DeviceUtils.isTvDevice(context) }
+
     val colorOptions = listOf(
         "White" to 0xFFFFFFFF.toInt(),
         "Black" to 0xFF000000.toInt(),
@@ -2332,82 +2781,152 @@ fun SubtitleColorPickerDialog(
                 .background(Color.Black.copy(alpha = 0.7f)),
             contentAlignment = Alignment.Center
         ) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth(0.35f)
-                    .fillMaxHeight(0.7f),
-                shape = RoundedCornerShape(16.dp),
-                colors = SurfaceDefaults.colors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.onSurface
-                )
-            ) {
-                Column(
+            if (isTv) {
+                Surface(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp)
+                        .fillMaxWidth(0.35f)
+                        .fillMaxHeight(0.7f),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = SurfaceDefaults.colors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    )
                 ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.7f
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-
-                    val listItemColors = ListItemDefaults.colors(
-                        containerColor = Color.Transparent,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                        focusedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                        focusedContentColor = Color.White,
-                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                        selectedContentColor = Color.White
-                    )
-
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp),
-                        modifier = Modifier.weight(1f)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp)
                     ) {
-                        items(colorOptions) { (name, color) ->
-                            val isSelected = color == currentColor
-                            ListItem(
-                                selected = isSelected,
-                                onClick = { onColorSelected(color) },
-                                headlineContent = {
-                                    Text(
-                                        text = name,
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.9f
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.headlineMedium.copy(
+                                fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.7f
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+
+                        val listItemColors = ListItemDefaults.colors(
+                            containerColor = Color.Transparent,
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                            focusedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                            focusedContentColor = Color.White,
+                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                            selectedContentColor = Color.White
+                        )
+
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            items(colorOptions) { (name, color) ->
+                                val isSelected = color == currentColor
+                                ListItem(
+                                    selected = isSelected,
+                                    onClick = { onColorSelected(color) },
+                                    headlineContent = {
+                                        Text(
+                                            text = name,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.9f
+                                            )
                                         )
+                                    },
+                                    trailingContent = {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(20.dp)
+                                                .background(Color(color), RoundedCornerShape(4.dp))
+                                                .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                                        )
+                                    },
+                                    colors = listItemColors,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Button(
+                            onClick = onDismiss,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.colors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            )
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
+                }
+            } else {
+                androidx.compose.material3.Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(0.85f)
+                        .fillMaxHeight(0.6f),
+                    shape = RoundedCornerShape(16.dp),
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                    contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(20.dp)
+                    ) {
+                        androidx.compose.material3.Text(
+                            text = title,
+                            style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            items(colorOptions) { (name, color) ->
+                                val isSelected = color == currentColor
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(
+                                            if (isSelected) androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                                            else Color.Transparent
+                                        )
+                                        .clickable { onColorSelected(color) }
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    androidx.compose.material3.Text(
+                                        text = name,
+                                        style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+                                        color = if (isSelected) androidx.compose.material3.MaterialTheme.colorScheme.primary
+                                                else androidx.compose.material3.MaterialTheme.colorScheme.onSurface
                                     )
-                                },
-                                trailingContent = {
                                     Box(
                                         modifier = Modifier
-                                            .size(20.dp)
+                                            .size(24.dp)
                                             .background(Color(color), RoundedCornerShape(4.dp))
                                             .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
                                     )
-                                },
-                                colors = listItemColors,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                                }
+                            }
                         }
-                    }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
 
-                    Button(
-                        onClick = onDismiss,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.colors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            contentColor = MaterialTheme.colorScheme.onSurface
-                        )
-                    ) {
-                        Text("Cancel")
+                        androidx.compose.material3.Button(
+                            onClick = onDismiss,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            androidx.compose.material3.Text("Cancel")
+                        }
                     }
                 }
             }

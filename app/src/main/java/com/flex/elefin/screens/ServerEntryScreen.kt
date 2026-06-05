@@ -52,7 +52,10 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button as MobileButton
+import androidx.compose.material3.Text as MobileText
 import com.flex.elefin.components.TvTextField
+import com.flex.elefin.ui.DeviceUtils
 import com.flex.elefin.jellyfin.JellyfinAuthService
 import com.flex.elefin.jellyfin.JellyfinConfig
 import com.flex.elefin.jellyfin.ServerDiscovery
@@ -161,17 +164,23 @@ fun ServerEntryScreen(
         }
     }
     
+    val isTv = remember(context) { DeviceUtils.isTvDevice(context) }
+    val widthFraction = if (isTv) 0.5f else 0.9f
+    val horizontalPadding = if (isTv) 48.dp else 24.dp
+    val verticalPadding = if (isTv) 27.dp else 16.dp
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
+            .background(MaterialTheme.colorScheme.surface),
+        contentAlignment = if (isTv) Alignment.TopStart else Alignment.Center
     ) {
-        // Left side content area (50% width, matches Jellyfin AndroidTV layout)
+        // Left side content area (50% width on TV, centered on mobile)
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.5f)
+                .fillMaxWidth(widthFraction)
                 .fillMaxSize()
-                .padding(horizontal = 48.dp, vertical = 27.dp),
+                .padding(horizontal = horizontalPadding, vertical = verticalPadding),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Title
@@ -217,73 +226,96 @@ fun ServerEntryScreen(
                 modifier = Modifier.fillMaxWidth()
             )
             
-            // Connect and Auto Detect buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Button(
-                    onClick = { connect() },
-                    enabled = !isConnecting && !isScanning && prefillAddress == null,
-                    modifier = Modifier
-                        .focusRequester(connectButtonFocusRequester)
-                        .onFocusChanged { connectButtonFocused = it.isFocused }
-                        .onKeyEvent { keyEvent ->
-                            if (keyEvent.type == KeyEventType.KeyUp && keyEvent.key == Key.Enter && !isConnecting && !isScanning && prefillAddress == null) {
-                                connect()
-                                true
-                            } else {
-                                false
-                            }
-                        },
-                    colors = ButtonDefaults.colors(
-                        containerColor = if (connectButtonFocused) 
-                            MaterialTheme.colorScheme.primary 
-                        else 
-                            MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = if (connectButtonFocused)
-                            MaterialTheme.colorScheme.onPrimary
-                        else
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                ) {
-                    Text(
-                        text = "Connect",
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                }
-                
-                // Auto Detect button
-                Button(
-                    onClick = { autoDetect() },
-                    enabled = !isConnecting && !isScanning && prefillAddress == null,
-                    modifier = Modifier
-                        .focusRequester(autoDetectButtonFocusRequester)
-                        .onFocusChanged { autoDetectButtonFocused = it.isFocused }
-                        .onKeyEvent { keyEvent ->
-                            if (keyEvent.type == KeyEventType.KeyUp && keyEvent.key == Key.Enter && !isConnecting && !isScanning && prefillAddress == null) {
-                                autoDetect()
-                                true
-                            } else {
-                                false
-                            }
-                        },
-                    colors = ButtonDefaults.colors(
-                        containerColor = if (autoDetectButtonFocused) 
-                            MaterialTheme.colorScheme.secondary
-                        else 
-                            MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = if (autoDetectButtonFocused)
-                            MaterialTheme.colorScheme.onSecondary
-                        else
-                            MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                ) {
-                    Text(
-                        text = if (isScanning) "Scanning..." else "Auto Detect",
-                        style = MaterialTheme.typography.labelLarge
-                    )
+                if (isTv) {
+                    Button(
+                        onClick = { connect() },
+                        enabled = !isConnecting && !isScanning && prefillAddress == null,
+                        modifier = Modifier
+                            .focusRequester(connectButtonFocusRequester)
+                            .onFocusChanged { connectButtonFocused = it.isFocused }
+                            .onKeyEvent { keyEvent ->
+                                if (keyEvent.type == KeyEventType.KeyUp && keyEvent.key == Key.Enter && !isConnecting && !isScanning && prefillAddress == null) {
+                                    connect()
+                                    true
+                                } else {
+                                    false
+                                }
+                            },
+                        colors = ButtonDefaults.colors(
+                            containerColor = if (connectButtonFocused) 
+                                MaterialTheme.colorScheme.primary 
+                            else 
+                                MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = if (connectButtonFocused)
+                                MaterialTheme.colorScheme.onPrimary
+                            else
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    ) {
+                        Text(
+                            text = "Connect",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                    
+                    // Auto Detect button
+                    Button(
+                        onClick = { autoDetect() },
+                        enabled = !isConnecting && !isScanning && prefillAddress == null,
+                        modifier = Modifier
+                            .focusRequester(autoDetectButtonFocusRequester)
+                            .onFocusChanged { autoDetectButtonFocused = it.isFocused }
+                            .onKeyEvent { keyEvent ->
+                                if (keyEvent.type == KeyEventType.KeyUp && keyEvent.key == Key.Enter && !isConnecting && !isScanning && prefillAddress == null) {
+                                    autoDetect()
+                                    true
+                                } else {
+                                    false
+                                }
+                            },
+                        colors = ButtonDefaults.colors(
+                            containerColor = if (autoDetectButtonFocused) 
+                                MaterialTheme.colorScheme.secondary
+                            else 
+                                MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = if (autoDetectButtonFocused)
+                                MaterialTheme.colorScheme.onSecondary
+                            else
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    ) {
+                        Text(
+                            text = if (isScanning) "Scanning..." else "Auto Detect",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                } else {
+                    MobileButton(
+                        onClick = { connect() },
+                        enabled = !isConnecting && !isScanning && prefillAddress == null,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        MobileText(
+                            text = "Connect",
+                            style = androidx.compose.material3.MaterialTheme.typography.labelLarge
+                        )
+                    }
+                    
+                    MobileButton(
+                        onClick = { autoDetect() },
+                        enabled = !isConnecting && !isScanning && prefillAddress == null,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        MobileText(
+                            text = if (isScanning) "Scanning..." else "Auto Detect",
+                            style = androidx.compose.material3.MaterialTheme.typography.labelLarge
+                        )
+                    }
                 }
             }
             

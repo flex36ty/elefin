@@ -147,6 +147,8 @@ enum class SortType {
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun JellyfinHomeScreen(
+    initialTabAction: String? = null,
+    onTabActionHandled: () -> Unit = {},
     onItemClick: (JellyfinItem, Long) -> Unit = { _, _ -> },
     onMusicClick: () -> Unit = {},
     onMoviesLibraryClick: (libraryId: String, libraryName: String) -> Unit = { _, _ -> },
@@ -226,6 +228,23 @@ fun JellyfinHomeScreen(
     
     val repository = remember(apiService) {
         apiService?.let { JellyfinRepository(it, settings) }
+    }
+
+    val isTv = remember(context) { com.flex.elefin.ui.DeviceUtils.isTvDevice(context) }
+    if (!isTv && repository != null && !showServerEntry && !showLoginScreen) {
+        JellyfinMobileHomeScreen(
+            initialTabAction = initialTabAction,
+            onTabActionHandled = onTabActionHandled,
+            repository = repository,
+            onItemClick = onItemClick,
+            onMusicClick = onMusicClick,
+            onMoviesLibraryClick = onMoviesLibraryClick,
+            onTvShowsLibraryClick = onTvShowsLibraryClick,
+            preloadLibraryImages = preloadLibraryImages,
+            cacheLibraryImages = cacheLibraryImages,
+            reducePosterResolution = reducePosterResolution
+        )
+        return
     }
     
     // Show server entry screen if server URL is not configured

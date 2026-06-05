@@ -52,6 +52,8 @@ import com.flex.elefin.jellyseerr.JellyseerrMovie
 import com.flex.elefin.jellyseerr.JellyseerrTvShow
 import kotlinx.coroutines.launch
 
+import com.flex.elefin.ui.DeviceUtils
+
 @Composable
 fun JellyseerrDetailsScreen(
     tmdbId: Int,
@@ -61,6 +63,7 @@ fun JellyseerrDetailsScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val isTv = remember(context) { DeviceUtils.isTvDevice(context) }
     
     var movieDetails by remember { mutableStateOf<JellyseerrMovie?>(null) }
     var tvDetails by remember { mutableStateOf<JellyseerrTvShow?>(null) }
@@ -120,8 +123,14 @@ fun JellyseerrDetailsScreen(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(text = error ?: "Unknown error", color = Color.Red)
                 Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = onBackPressed) {
-                    Text("Go Back")
+                if (isTv) {
+                    Button(onClick = onBackPressed) {
+                        Text("Go Back")
+                    }
+                } else {
+                    androidx.compose.material3.Button(onClick = onBackPressed) {
+                        androidx.compose.material3.Text("Go Back")
+                    }
                 }
             }
         }
@@ -140,10 +149,7 @@ fun JellyseerrDetailsScreen(
     // 1=Pending, 2=Approved, 3=Declined, 4=Partially Available, 5=Available
     val status = mediaInfo?.status ?: 0 // 0 = Unknown/Not Requested
     val isAvailable = status == 5 || status == 4
-    val isPending = status == 1 || status == 2 // 2 is Approved but maybe not processed? Jellyseerr status codes: 2 is APPROVED.
-    // Actually: 1=PENDING APPROVAL, 2=APPROVED, 3=DECLINED.
-    // 4=PARTIALLY AVAILABLE, 5=AVAILABLE are separate media availability statuses usually, but Jellyseerr mixes them in MediaInfo sometimes depending on context.
-    // Let's rely on mediaInfo.status generally.
+    val isPending = status == 1 || status == 2
     
     val backdropUrl = JellyseerrImageUrl.backdrop(backdropPath)
     val posterUrl = JellyseerrImageUrl.poster(posterPath)
@@ -189,11 +195,11 @@ fun JellyseerrDetailsScreen(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(48.dp),
+                .padding(if (isTv) 48.dp else 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Poster
-            if (posterUrl != null) {
+            if (posterUrl != null && isTv) {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(posterUrl)
@@ -219,7 +225,7 @@ fun JellyseerrDetailsScreen(
             ) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.displayMedium,
+                    style = if (isTv) MaterialTheme.typography.displayMedium else androidx.compose.material3.MaterialTheme.typography.headlineLarge,
                     color = Color.White,
                     fontWeight = FontWeight.Bold
                 )
@@ -227,7 +233,7 @@ fun JellyseerrDetailsScreen(
                 if (year.isNotEmpty()) {
                     Text(
                         text = year,
-                        style = MaterialTheme.typography.titleLarge,
+                        style = if (isTv) MaterialTheme.typography.titleLarge else androidx.compose.material3.MaterialTheme.typography.titleMedium,
                         color = Color.White.copy(alpha = 0.8f),
                         modifier = Modifier.padding(top = 8.dp)
                     )
@@ -237,7 +243,7 @@ fun JellyseerrDetailsScreen(
                 
                 Text(
                     text = overview,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = if (isTv) MaterialTheme.typography.bodyLarge else androidx.compose.material3.MaterialTheme.typography.bodyMedium,
                     color = Color.White.copy(alpha = 0.8f),
                     modifier = Modifier.padding(bottom = 24.dp)
                 )
@@ -245,67 +251,114 @@ fun JellyseerrDetailsScreen(
                 // Action Button
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     if (isAvailable) {
-                        Button(
-                            onClick = { /* Could launch Jellyfin details/play if we can map it back */ },
-                            colors = ButtonDefaults.colors(containerColor = Color(0xFF4CAF50)), // Green
-                            enabled = false // For now, just show it's available
-                        ) {
-                            Icon(Icons.Default.Check, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Available on Jellyfin")
+                        if (isTv) {
+                            Button(
+                                onClick = { },
+                                colors = ButtonDefaults.colors(containerColor = Color(0xFF4CAF50)), // Green
+                                enabled = false
+                            ) {
+                                Icon(Icons.Default.Check, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Available on Jellyfin")
+                            }
+                        } else {
+                            androidx.compose.material3.Button(
+                                onClick = { },
+                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                                enabled = false
+                            ) {
+                                androidx.compose.material3.Icon(Icons.Default.Check, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                androidx.compose.material3.Text("Available on Jellyfin")
+                            }
                         }
                     } else if (isPending) {
-                        Button(
-                            onClick = { },
-                            colors = ButtonDefaults.colors(containerColor = Color(0xFFFFC107)), // Amber
-                            enabled = false
-                        ) {
-                            Icon(Icons.Default.HourglassEmpty, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Request Pending")
+                        if (isTv) {
+                            Button(
+                                onClick = { },
+                                colors = ButtonDefaults.colors(containerColor = Color(0xFFFFC107)), // Amber
+                                enabled = false
+                            ) {
+                                Icon(Icons.Default.HourglassEmpty, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Request Pending")
+                            }
+                        } else {
+                            androidx.compose.material3.Button(
+                                onClick = { },
+                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFFFFC107)),
+                                enabled = false
+                            ) {
+                                androidx.compose.material3.Icon(Icons.Default.HourglassEmpty, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                androidx.compose.material3.Text("Request Pending")
+                            }
                         }
                     } else {
-                        // Request Button
-                        Button(
-                            onClick = {
-                                if (!isRequesting && apiService != null) {
-                                    isRequesting = true
-                                    scope.launch {
-                                        val result = if (mediaType == "movie") {
-                                            apiService.requestMovie(tmdbId)
-                                        } else {
-                                            apiService.requestTvShow(tmdbId) // Request all seasons by default
-                                        }
-                                        
-                                        if (result.isSuccess) {
-                                            Toast.makeText(context, "Request sent successfully!", Toast.LENGTH_SHORT).show()
-                                            // Refresh details to update status
-                                            if (mediaType == "movie") {
-                                                movieDetails = apiService.getMovieDetails(tmdbId)
-                                            } else {
-                                                tvDetails = apiService.getTvShowDetails(tmdbId)
-                                            }
-                                        } else {
-                                            Toast.makeText(context, "Request failed", Toast.LENGTH_SHORT).show()
-                                        }
-                                        isRequesting = false
+                        val requestAction = {
+                            if (!isRequesting && apiService != null) {
+                                isRequesting = true
+                                scope.launch {
+                                    val result = if (mediaType == "movie") {
+                                        apiService.requestMovie(tmdbId)
+                                    } else {
+                                        apiService.requestTvShow(tmdbId)
                                     }
+                                    
+                                    if (result.isSuccess) {
+                                        Toast.makeText(context, "Request sent successfully!", Toast.LENGTH_SHORT).show()
+                                        if (mediaType == "movie") {
+                                            movieDetails = apiService.getMovieDetails(tmdbId)
+                                        } else {
+                                            tvDetails = apiService.getTvShowDetails(tmdbId)
+                                        }
+                                    } else {
+                                        Toast.makeText(context, "Request failed", Toast.LENGTH_SHORT).show()
+                                    }
+                                    isRequesting = false
                                 }
-                            },
-                            enabled = !isRequesting,
-                            colors = ButtonDefaults.colors(containerColor = MaterialTheme.colorScheme.primary)
-                        ) {
-                            if (isRequesting) {
-                                androidx.compose.material3.CircularProgressIndicator(
-                                    modifier = Modifier.size(24.dp),
-                                    color = Color.White
+                            }
+                        }
+
+                        if (isTv) {
+                            Button(
+                                onClick = requestAction,
+                                enabled = !isRequesting,
+                                colors = ButtonDefaults.colors(containerColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                if (isRequesting) {
+                                    androidx.compose.material3.CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        color = Color.White
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Requesting...")
+                                } else {
+                                    Icon(Icons.Default.Download, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Request on Jellyseerr")
+                                }
+                            }
+                        } else {
+                            androidx.compose.material3.Button(
+                                onClick = requestAction,
+                                enabled = !isRequesting,
+                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                    containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Requesting...")
-                            } else {
-                                Icon(Icons.Default.Download, contentDescription = null)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Request on Jellyseerr")
+                            ) {
+                                if (isRequesting) {
+                                    androidx.compose.material3.CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        color = Color.White
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    androidx.compose.material3.Text("Requesting...")
+                                } else {
+                                    androidx.compose.material3.Icon(Icons.Default.Download, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    androidx.compose.material3.Text("Request on Jellyseerr")
+                                }
                             }
                         }
                     }
@@ -316,15 +369,25 @@ fun JellyseerrDetailsScreen(
         // Back Button overlay
         Box(
             modifier = Modifier
-                .padding(32.dp)
+                .padding(if (isTv) 32.dp else 16.dp)
                 .align(Alignment.TopStart)
         ) {
-            IconButton(onClick = onBackPressed) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = Color.White
-                )
+            if (isTv) {
+                IconButton(onClick = onBackPressed) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color.White
+                    )
+                }
+            } else {
+                androidx.compose.material3.IconButton(onClick = onBackPressed) {
+                    androidx.compose.material3.Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color.White
+                    )
+                }
             }
         }
     }

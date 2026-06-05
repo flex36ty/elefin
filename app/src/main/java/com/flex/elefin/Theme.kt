@@ -48,14 +48,14 @@ fun JellyfinAppTheme(
         view.isSoundEffectsEnabled = settings.navigationSoundsEnabled
     }
     
-    // Default theme values
+    // Default theme values (Cohesive Premium Dark & Gold Theme)
     val defaultDarkColorScheme = darkColorScheme(
-        primary = Color(0xFF5E44D3),
-        background = Color(0xFF000000),
-        surface = Color(0xFF1C1B1F),
-        onPrimary = Color(0xFFFFFFFF),
-        onBackground = Color(0xFFFFFFFF),
-        onSurface = Color(0xFFFFFFFF)
+        primary = Color(0xFFECC564),
+        background = Color(0xFF09090B),
+        surface = Color(0xFF18181B),
+        onPrimary = Color(0xFF2E2200),
+        onBackground = Color(0xFFECEFF1),
+        onSurface = Color(0xFFF8F9FA)
     )
     
     var themeConfig by remember { mutableStateOf<ThemeConfig?>(null) }
