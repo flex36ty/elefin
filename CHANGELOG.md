@@ -3,7 +3,38 @@
 All notable changes to Elefin will be documented in this file.
 
 ---
- 
+
+## 2026-06-06
+
+### Added
+
+- **Android Mobile & Tablet Support**
+  - Expanded compatibility to fully support Android mobile phones and tablets.
+  - Implemented automatic device detection to dynamically adapt layouts, navigation structures, and touch vs. remote controls based on whether the app is running on a TV, mobile, or tablet device.
+
+- **YouTube-Style Portrait Video Player (Mobile/Tablet)**
+  - Introduced a YouTube-style portrait viewing mode for mobile devices and tablets, allowing users to watch content vertically with details, status, and player controls shown below the video.
+  - Seamlessly handles rotation between standard landscape fullscreen playback and portrait metadata layout.
+
+- **Android TV Settings Color Picker**
+  - Added the Accent Color picker to the Settings screen on Android TV.
+  - Features high-contrast D-pad focus borders and remote-friendly selection states.
+
+### Improved
+
+- **Android TV Home Screen Scroll Performance**
+  - Refactored the Home Screen layout on Android TV to decompose row structures into a single unified vertical scroll layout (`LazyColumn`), enabling item recycling and improving performance on budget hardware.
+  - Implemented a 250ms focus debounce mechanism for metadata/synopsis header updates, preventing rendering lag and image loading spikes when rapidly navigating TV cards.
+
+### Fixed
+
+- **Mobile UI & Interaction**
+  - Fixed touch response issues where TMDB API key buttons in Mobile Settings were not responding to taps.
+  - Corrected landscape letterboxing (16:9 clamping) issues when rotating between portrait and landscape modes on mobile.
+  - Added notch protection padding (system bar spacers) to prevent layout overlapping on mobile info and home screens.
+
+---
+
  ## 2026-03-10
  
  ### Added
