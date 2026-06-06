@@ -12,6 +12,10 @@ All notable changes to Elefin will be documented in this file.
   - Expanded compatibility to fully support Android mobile phones and tablets.
   - Implemented automatic device detection to dynamically adapt layouts, navigation structures, and touch vs. remote controls based on whether the app is running on a TV, mobile, or tablet device.
 
+- **Mobile Discover Screen Pagination**
+  - Added a "View More" card at the far right of each movie and TV show category row on the mobile Discover tab.
+  - Clicking "View More" requests the next page of categories from Jellyseerr/Overseerr, appending results seamlessly into the horizontal lists.
+
 - **YouTube-Style Portrait Video Player (Mobile/Tablet)**
   - Introduced a YouTube-style portrait viewing mode for mobile devices and tablets, allowing users to watch content vertically with details, status, and player controls shown below the video.
   - Seamlessly handles rotation between standard landscape fullscreen playback and portrait metadata layout.
