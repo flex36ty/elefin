@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.util.Log
 import com.flex.elefin.jellyfin.JellyfinConfig
+import com.flex.elefin.BuildConfig
 
 /**
  * Helper to launch the mpv-elefin external player.
@@ -27,7 +28,7 @@ object MpvElefinLauncher {
     fun isInstalled(context: Context): Boolean {
         return true
     }
-
+ 
     /**
      * Build a direct stream URL for Jellyfin.
      */
@@ -53,17 +54,17 @@ object MpvElefinLauncher {
             append("&allowVideoStreamCopy=true")
             append("&allowAudioStreamCopy=true")
         }
-    }
-
-    /**
-     * Build HTTP headers for Jellyfin authentication.
-     */
-    fun buildHeaders(
-        accessToken: String,
-        deviceId: String,
-        clientName: String = "Elefin",
-        version: String = "1.1.10"
-    ): String = buildString {
+     }
+ 
+     /**
+      * Build HTTP headers for Jellyfin authentication.
+      */
+     fun buildHeaders(
+         accessToken: String,
+         deviceId: String,
+         clientName: String = "Elefin",
+         version: String = BuildConfig.VERSION_NAME
+     ): String = buildString {
         append("User-Agent: $clientName/MPV\r\n")
         append("Authorization: MediaBrowser Token=\"$accessToken\"\r\n")
         append("X-Emby-Authorization: MediaBrowser ")

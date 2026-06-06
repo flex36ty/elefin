@@ -3,6 +3,8 @@ package com.flex.elefin.screens
 import coil.annotation.ExperimentalCoilApi
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -1530,29 +1532,37 @@ fun SettingsScreen(
                                             .background(Color.Black.copy(alpha = 0.7f)),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Surface(
-                                            modifier = Modifier.width(500.dp),
-                                            shape = RoundedCornerShape(16.dp),
-                                            colors = SurfaceDefaults.colors(
-                                                containerColor = MaterialTheme.colorScheme.surface,
-                                                contentColor = MaterialTheme.colorScheme.onSurface
-                                            )
-                                        ) {
+                                        val content = @Composable {
                                             Column(
-                                                modifier = Modifier.padding(32.dp),
+                                                modifier = Modifier.padding(if (isTv) 32.dp else 24.dp),
                                                 verticalArrangement = Arrangement.spacedBy(24.dp)
                                             ) {
-                                                Text(
-                                                    text = "TMDB API Key",
-                                                    style = MaterialTheme.typography.headlineSmall
-                                                )
+                                                if (isTv) {
+                                                    Text(
+                                                        text = "TMDB API Key",
+                                                        style = MaterialTheme.typography.headlineSmall
+                                                    )
+                                                } else {
+                                                    androidx.compose.material3.Text(
+                                                        text = "TMDB API Key",
+                                                        style = androidx.compose.material3.MaterialTheme.typography.headlineSmall
+                                                    )
+                                                }
                                                 
                                                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                    Text(
-                                                        text = "Enter your TMDB API Key to fetch trailers directly from The Movie Database.",
-                                                        style = MaterialTheme.typography.bodyMedium,
-                                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                                    )
+                                                    if (isTv) {
+                                                        Text(
+                                                            text = "Enter your TMDB API Key to fetch trailers directly from The Movie Database.",
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                                        )
+                                                    } else {
+                                                        androidx.compose.material3.Text(
+                                                            text = "Enter your TMDB API Key to fetch trailers directly from The Movie Database.",
+                                                            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                                                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                                        )
+                                                    }
                                                     
                                                     OutlinedTextField(
                                                          value = apiKeyInput,
@@ -1577,14 +1587,14 @@ fun SettingsScreen(
                                                              unfocusedTextColor = Color.White,
                                                              focusedContainerColor = Color.Transparent,
                                                              unfocusedContainerColor = Color.Transparent,
-                                                             cursorColor = MaterialTheme.colorScheme.primary,
-                                                             focusedLabelColor = MaterialTheme.colorScheme.primary,
+                                                             cursorColor = if (isTv) MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                                                             focusedLabelColor = if (isTv) MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.primary,
                                                              unfocusedLabelColor = Color.White.copy(alpha = 0.7f),
-                                                             focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                                                             focusedIndicatorColor = if (isTv) MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.primary,
                                                              unfocusedIndicatorColor = Color.White.copy(alpha = 0.3f),
-                                                             errorLabelColor = MaterialTheme.colorScheme.error,
-                                                             errorIndicatorColor = MaterialTheme.colorScheme.error,
-                                                             errorSupportingTextColor = MaterialTheme.colorScheme.error
+                                                             errorLabelColor = if (isTv) MaterialTheme.colorScheme.error else androidx.compose.material3.MaterialTheme.colorScheme.error,
+                                                             errorIndicatorColor = if (isTv) MaterialTheme.colorScheme.error else androidx.compose.material3.MaterialTheme.colorScheme.error,
+                                                             errorSupportingTextColor = if (isTv) MaterialTheme.colorScheme.error else androidx.compose.material3.MaterialTheme.colorScheme.error
                                                          )
                                                      )
                                                 }
@@ -1593,51 +1603,122 @@ fun SettingsScreen(
                                                     modifier = Modifier.fillMaxWidth(),
                                                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                                                 ) {
-                                                    Button(
-                                                        onClick = { showTmdbKeyDialog = false },
-                                                        modifier = Modifier.weight(1f),
-                                                        enabled = !isVerifying,
-                                                        colors = ButtonDefaults.colors(
-                                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                                        )
-                                                    ) {
-                                                        Text("Cancel")
+                                                    if (isTv) {
+                                                        Button(
+                                                            onClick = { showTmdbKeyDialog = false },
+                                                            modifier = Modifier.weight(1f),
+                                                            enabled = !isVerifying,
+                                                            colors = ButtonDefaults.colors(
+                                                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                                            )
+                                                        ) {
+                                                            Text("Cancel")
+                                                        }
+                                                    } else {
+                                                        androidx.compose.material3.Button(
+                                                            onClick = { showTmdbKeyDialog = false },
+                                                            modifier = Modifier.weight(1f),
+                                                            enabled = !isVerifying,
+                                                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                                containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
+                                                            )
+                                                        ) {
+                                                            androidx.compose.material3.Text(
+                                                                text = "Cancel",
+                                                                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                                                            )
+                                                        }
                                                     }
                                                     
-                                                    Button(
-                                                        onClick = {
-                                                            isVerifying = true
-                                                            verificationError = null
-                                                            scope.launch {
-                                                                val result = com.flex.elefin.tmdb.TmdbApiService.verifyKey(apiKeyInput)
-                                                                isVerifying = false
-                                                                when (result) {
-                                                                    is com.flex.elefin.tmdb.TmdbApiService.VerificationResult.Success -> {
-                                                                        settings.tmdbApiKey = apiKeyInput.trim()
-                                                                        showTmdbKeyDialog = false
-                                                                        Toast.makeText(context, "TMDB Key Verified ✓", Toast.LENGTH_SHORT).show()
-                                                                    }
-                                                                    is com.flex.elefin.tmdb.TmdbApiService.VerificationResult.Error -> {
-                                                                        verificationError = result.message
+                                                    if (isTv) {
+                                                        Button(
+                                                            onClick = {
+                                                                isVerifying = true
+                                                                verificationError = null
+                                                                scope.launch {
+                                                                    val result = com.flex.elefin.tmdb.TmdbApiService.verifyKey(apiKeyInput)
+                                                                    isVerifying = false
+                                                                    when (result) {
+                                                                        is com.flex.elefin.tmdb.TmdbApiService.VerificationResult.Success -> {
+                                                                            settings.tmdbApiKey = apiKeyInput.trim()
+                                                                            showTmdbKeyDialog = false
+                                                                            Toast.makeText(context, "TMDB Key Verified ✓", Toast.LENGTH_SHORT).show()
+                                                                        }
+                                                                        is com.flex.elefin.tmdb.TmdbApiService.VerificationResult.Error -> {
+                                                                            verificationError = result.message
+                                                                        }
                                                                     }
                                                                 }
+                                                            },
+                                                            modifier = Modifier.weight(1f),
+                                                            enabled = !isVerifying
+                                                        ) {
+                                                            if (isVerifying) {
+                                                                CircularProgressIndicator(
+                                                                    modifier = Modifier.size(24.dp),
+                                                                    color = MaterialTheme.colorScheme.onPrimary,
+                                                                    strokeWidth = 2.dp
+                                                                )
+                                                            } else {
+                                                                Text("Save")
                                                             }
-                                                        },
-                                                        modifier = Modifier.weight(1f),
-                                                        enabled = !isVerifying
-                                                    ) {
-                                                        if (isVerifying) {
-                                                            CircularProgressIndicator(
-                                                                modifier = Modifier.size(24.dp),
-                                                                color = MaterialTheme.colorScheme.onPrimary,
-                                                                strokeWidth = 2.dp
-                                                            )
-                                                        } else {
-                                                            Text("Save")
+                                                        }
+                                                    } else {
+                                                        androidx.compose.material3.Button(
+                                                            onClick = {
+                                                                isVerifying = true
+                                                                verificationError = null
+                                                                scope.launch {
+                                                                    val result = com.flex.elefin.tmdb.TmdbApiService.verifyKey(apiKeyInput)
+                                                                    isVerifying = false
+                                                                    when (result) {
+                                                                        is com.flex.elefin.tmdb.TmdbApiService.VerificationResult.Success -> {
+                                                                            settings.tmdbApiKey = apiKeyInput.trim()
+                                                                            showTmdbKeyDialog = false
+                                                                            Toast.makeText(context, "TMDB Key Verified ✓", Toast.LENGTH_SHORT).show()
+                                                                        }
+                                                                        is com.flex.elefin.tmdb.TmdbApiService.VerificationResult.Error -> {
+                                                                            verificationError = result.message
+                                                                        }
+                                                                    }
+                                                                }
+                                                            },
+                                                            modifier = Modifier.weight(1f),
+                                                            enabled = !isVerifying
+                                                        ) {
+                                                            if (isVerifying) {
+                                                                androidx.compose.material3.CircularProgressIndicator(
+                                                                    modifier = Modifier.size(24.dp),
+                                                                    color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary,
+                                                                    strokeWidth = 2.dp
+                                                                )
+                                                            } else {
+                                                                androidx.compose.material3.Text("Save")
+                                                            }
                                                         }
                                                     }
                                                 }
                                             }
+                                        }
+
+                                        if (isTv) {
+                                            Surface(
+                                                modifier = Modifier.width(500.dp),
+                                                shape = RoundedCornerShape(16.dp),
+                                                colors = SurfaceDefaults.colors(
+                                                    containerColor = MaterialTheme.colorScheme.surface,
+                                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                                ),
+                                                content = { content() }
+                                            )
+                                        } else {
+                                            androidx.compose.material3.Surface(
+                                                modifier = Modifier.fillMaxWidth(0.9f).padding(16.dp),
+                                                shape = RoundedCornerShape(16.dp),
+                                                color = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                                                contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                                                content = { content() }
+                                            )
                                         }
                                     }
                                 }
@@ -1712,37 +1793,74 @@ fun SettingsScreen(
                                 }
                             )
 
-                            if (!isTv) {
-                                Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
+                            if (isTv) {
+                                Text(
+                                    text = "Theme Accent Color",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                )
+                            } else {
                                 Text(
                                     text = "Theme Accent Color",
                                     style = androidx.compose.material3.MaterialTheme.typography.titleSmall,
                                     color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                                 )
+                            }
 
-                                var selectedThemeColorHex by remember { mutableStateOf(settings.themeColorHex) }
+                            var selectedThemeColorHex by remember { mutableStateOf(settings.themeColorHex) }
 
-                                val colorPresets = listOf(
-                                    Pair("White", "#FFFFFF"),
-                                    Pair("Yellow", "#ECC564"),
-                                    Pair("Blue", "#2196F3"),
-                                    Pair("Green", "#4CAF50"),
-                                    Pair("Red", "#F44336"),
-                                    Pair("Purple", "#9C27B0"),
-                                    Pair("Orange", "#FF9800")
-                                )
+                            val colorPresets = listOf(
+                                Pair("White", "#FFFFFF"),
+                                Pair("Yellow", "#ECC564"),
+                                Pair("Blue", "#2196F3"),
+                                Pair("Green", "#4CAF50"),
+                                Pair("Red", "#F44336"),
+                                Pair("Purple", "#9C27B0"),
+                                Pair("Orange", "#FF9800")
+                            )
 
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    colorPresets.forEach { (name, hex) ->
-                                        val color = Color(android.graphics.Color.parseColor(hex))
-                                        val isSelected = selectedThemeColorHex.equals(hex, ignoreCase = true)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                colorPresets.forEach { (name, hex) ->
+                                    val color = Color(android.graphics.Color.parseColor(hex))
+                                    val isSelected = selectedThemeColorHex.equals(hex, ignoreCase = true)
+                                    if (isTv) {
+                                        val interactionSource = remember { MutableInteractionSource() }
+                                        val isFocused by interactionSource.collectIsFocusedAsState()
+                                        Box(
+                                            modifier = Modifier
+                                                .size(44.dp)
+                                                .clip(RoundedCornerShape(50.dp))
+                                                .background(color)
+                                                .border(
+                                                    width = if (isSelected || isFocused) 3.dp else 1.dp,
+                                                    color = if (isSelected) {
+                                                        Color.White
+                                                    } else if (isFocused) {
+                                                        MaterialTheme.colorScheme.primary
+                                                    } else {
+                                                        Color.White.copy(alpha = 0.3f)
+                                                    },
+                                                    shape = RoundedCornerShape(50.dp)
+                                                )
+                                                .clickable(
+                                                    interactionSource = interactionSource,
+                                                    indication = null
+                                                ) {
+                                                    selectedThemeColorHex = hex
+                                                    settings.themeColorHex = hex
+                                                    com.flex.elefin.theme.JetcasterPrimaryColorState = color
+                                                }
+                                        )
+                                    } else {
                                         Box(
                                             modifier = Modifier
                                                 .size(36.dp)

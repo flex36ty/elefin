@@ -1,5 +1,7 @@
 package com.flex.elefin.player.mpv
 
+import com.flex.elefin.BuildConfig
+
 /**
  * Builds Jellyfin-compatible URLs for MPV playback.
  * 
@@ -15,7 +17,7 @@ object MpvUrlBuilder {
         accessToken: String,
         deviceId: String,
         clientName: String = "Elefin",
-        version: String = "1.1.10"
+        version: String = BuildConfig.VERSION_NAME
     ): String = buildString {
         append("User-Agent: $clientName/MPV\r\n")
         append("Authorization: MediaBrowser Token=\"$accessToken\"\r\n")

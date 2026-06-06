@@ -25,6 +25,8 @@ All notable changes to Elefin will be documented in this file.
 - **Android TV Home Screen Scroll Performance**
   - Refactored the Home Screen layout on Android TV to decompose row structures into a single unified vertical scroll layout (`LazyColumn`), enabling item recycling and improving performance on budget hardware.
   - Implemented a 250ms focus debounce mechanism for metadata/synopsis header updates, preventing rendering lag and image loading spikes when rapidly navigating TV cards.
+  - Resolved vertical scrolling lag when navigating down the home screen by adding stable keys (`key = { it.Id }`) and contentTypes to all dynamic library rows (`LazyRow` lists for movies, shows, and episodes), enabling efficient view reuse and skipping unnecessary recompositions.
+  - Isolated the metadata/synopsis header layout into a separate standalone Composable (`MetadataSection`) and deferred state reads using lambda providers. This ensures focus updates only recompose the metadata panel, leaving the rest of the home screen and its lazy rows completely untouched during scrolling.
 
 ### Fixed
 
@@ -32,6 +34,7 @@ All notable changes to Elefin will be documented in this file.
   - Fixed touch response issues where TMDB API key buttons in Mobile Settings were not responding to taps.
   - Corrected landscape letterboxing (16:9 clamping) issues when rotating between portrait and landscape modes on mobile.
   - Added notch protection padding (system bar spacers) to prevent layout overlapping on mobile info and home screens.
+  - Resolved empty vertical spaces above and below images in the mobile home screen featured carousel by dynamically adjusting the container height to match the 16:9 aspect ratio based on device width (handles phone vs. tablet sizing) and prioritizing landscape `Thumb`/`Backdrop` images with full `Crop` scaling.
 
 ---
 
