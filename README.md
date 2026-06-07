@@ -39,18 +39,21 @@ Elefin is a modern Android TV Jellyfin client built from the ground up using Jet
 
 ## Screenshots
 
-### TV screenshots
+### Android TV screenshots
 
 <p align="center">
-  <img src="screenshots/home.png" alt="Home screen" width="420" />
-  <img src="screenshots/watched.png" alt="Watched screen" width="420" />
-  <img src="screenshots/series.png" alt="Series screen" width="420" />
+  <img src="screenshots/tv-home.webp" alt="Android TV home screen" width="420" />
+  <img src="screenshots/tv-movies-library.webp" alt="Android TV movies library" width="420" />
+  <img src="screenshots/tv-movie-details.webp" alt="Android TV movie details" width="420" />
+  <img src="screenshots/tv-series-spider-noir.webp" alt="Android TV series details" width="420" />
+  <img src="screenshots/tv-series-pluribus.webp" alt="Android TV season details" width="420" />
+  <img src="screenshots/tv-spiderverse.webp" alt="Android TV movie backdrop" width="420" />
 </p>
 
-### Dark mode
+### Settings tour
 
 <p align="center">
-  <img src="screenshots/darkmode.png" alt="Dark mode" width="420" />
+  <img src="screenshots/settings-tour.webp" alt="Settings tour" width="700" />
 </p>
 
 ### Mobile screenshots
