@@ -3241,7 +3241,7 @@ fun JellyfinVideoPlayerScreen(
                         val displayName = itemDetails?.Name ?: item.Name
                         val isEpisode = itemDetails?.Type == "Episode"
                         // Show title when: initial overlay is visible OR custom controls are showing
-                        val showTitle = (titleOverlayVisible || showControls) && (displayName.isNotEmpty() || (isEpisode && seriesName != null))
+                        val showTitle = !isMobile && (titleOverlayVisible || showControls) && (displayName.isNotEmpty() || (isEpisode && seriesName != null))
                         
                         if (showTitle) {
                             androidx.tv.material3.Surface(

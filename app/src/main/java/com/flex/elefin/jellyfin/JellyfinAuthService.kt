@@ -81,7 +81,7 @@ class JellyfinAuthService(
             }
             
             val deviceId = getDeviceId()
-            val deviceName = "Android TV"
+            val deviceName = com.flex.elefin.ui.DeviceUtils.getDeviceName()
             val clientName = "Elefin"
             val clientVersion = BuildConfig.VERSION_NAME
             

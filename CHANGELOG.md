@@ -17,12 +17,16 @@ All notable changes to Elefin will be documented in this file.
   - Restructured the TV Home Screen layout to completely eliminate vertical scrolling lag.
   - Optimized background image rendering and color transitions to prevent interface stutter when switching selections.
   - Streamlined library filtering and scrolling behavior to ensure a smooth, stable frame rate.
+- **Jellyfin Device Name Reporting**
+  - Replaced hardcoded "Android TV" / "AndroidTV" client device name reporting with the device's actual make and model (e.g. "Google Pixel 8", "NVIDIA Shield TV") to show correct info in the Jellyfin Server Dashboard.
 
 ### Fixed
 
 - **Android TV Theme Accent Color Picker**
   - Fixed an issue where changing the accent color in Settings on Android TV would not update the app theme, causing it to remain stuck on the default yellow.
   - Added dynamic text contrast checks that automatically switch text/icon overlays to white when using dark accent colors like Matte Black, ensuring readable menus.
+- **Mobile Video Player Title Overlay**
+  - Suppressed the startup video title overlay on mobile devices because the title is already shown in the mobile player's top bar, keeping it active on Android TV.
 
 ---
 

@@ -45,7 +45,7 @@ class ThemeLoader(
                 
                 val cssResponse: HttpResponse = client.get(cssUrl) {
                     header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                    header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"${BuildConfig.VERSION_NAME}\"")
+                    header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"${com.flex.elefin.ui.DeviceUtils.getDeviceName()}\", DeviceId=\"\", Version=\"${BuildConfig.VERSION_NAME}\"")
                 }
                 
                 val cssStatus = cssResponse.status
