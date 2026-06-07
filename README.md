@@ -21,7 +21,20 @@ Elefin is a modern Android TV Jellyfin client built from the ground up using Jet
 - Fake HDR and video sharpening options
 - Auto refresh media
 - Hide shows with empty folders (maintainneerr users will love this)
-
+- Android mobile and tablet support with automatic TV/mobile/tablet layout detection
+- YouTube-style portrait video player mode on mobile/tablet
+- Automatic audio language selection based on system language
+- MPV AI super resolution / high-quality upscaling
+- HDR++ dynamic tone mapping shader profile
+- MPV post-processing shader profiles: Cinema, HDR-Boost, Sports, Crisp
+- Universal Search that queries both the Jellyfin server and Overseerr
+- Jellyseerr Discover requests
+- Collections support
+- Redesigned YouTube TV-style video player controls
+- Audio track selector on movie and series info screens
+- AAC-to-AC3 transcoding option
+- AV1 software decoder support, 8-bit only
+- TV series cards showing unwatched episode count
 - **and a lot more (see changelog for detailed features list)
 
 ## Screenshots
