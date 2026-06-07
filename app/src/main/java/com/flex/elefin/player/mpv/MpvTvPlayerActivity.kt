@@ -12,16 +12,31 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.platform.LocalConfiguration
+import android.content.res.Configuration
+import androidx.compose.ui.text.style.TextOverflow
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.flex.elefin.jellyfin.JellyfinItem
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusTarget
@@ -222,6 +237,12 @@ private fun MpvPlayerScreen(
     var videoResolution by remember { mutableStateOf("") }
     var productionYear by remember { mutableStateOf<Int?>(null) }
     var runtimeText by remember { mutableStateOf<String?>(null) }
+    var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
+
+    val isMobile = remember { !com.flex.elefin.ui.DeviceUtils.isTvDevice(context) }
+    val configuration = LocalConfiguration.current
+    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+    val isPortraitMode = isMobile && isPortrait
     
     // Aspect mode
     var currentAspectMode by remember { mutableStateOf(AspectMode.FIT) }
@@ -254,14 +275,16 @@ private fun MpvPlayerScreen(
     val rootFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
-        rootFocusRequester.requestFocus()
+        if (!isPortraitMode) {
+            rootFocusRequester.requestFocus()
+        }
     }
 
     LaunchedEffect(mpvViewRef) {
         if (mpvViewRef != null) {
             // once MPVView exists, steal focus back to Compose
             delay(50)
-            if (!controlsVisible) {
+            if (!controlsVisible && !isPortraitMode) {
                 rootFocusRequester.requestFocus()
             }
         }
@@ -396,6 +419,9 @@ private fun MpvPlayerScreen(
                 try {
                     val item = apiService.getItemDetails(itemId)
                     if (item != null) {
+                        withContext(Dispatchers.Main) {
+                            itemDetails = item
+                        }
                         val source = item.MediaSources?.firstOrNull()
                         val streams = source?.MediaStreams ?: emptyList()
                         mediaStreams = streams
@@ -475,7 +501,7 @@ private fun MpvPlayerScreen(
 
     // Capture focus when controls are hidden so we can show them again
     LaunchedEffect(controlsVisible) {
-        if (!controlsVisible) {
+        if (!controlsVisible && !isPortraitMode) {
             // Small delay to allow previous focus to be cleared/layout to update
             delay(100)
             try {
@@ -652,14 +678,15 @@ private fun MpvPlayerScreen(
                          }
                          
                          Log.d("MpvTvPlayer", "Fetching item details to match streams. Initial: Sub=$initialSubtitleStreamIndex, Audio=$initialAudioStreamIndex")
-                         val itemDetails = apiService.getItemDetails(itemId)
-                         val streams = itemDetails?.MediaSources?.firstOrNull()?.MediaStreams ?: emptyList()
+                         val fetchedItemDetails = apiService.getItemDetails(itemId)
+                         val streams = fetchedItemDetails?.MediaSources?.firstOrNull()?.MediaStreams ?: emptyList()
                          
                          // Update metadata states
                          withContext(Dispatchers.Main) {
+                             itemDetails = fetchedItemDetails
                              mediaStreams = streams
-                             productionYear = itemDetails?.ProductionYear
-                             runtimeText = itemDetails?.formattedRuntime
+                             productionYear = fetchedItemDetails?.ProductionYear
+                             runtimeText = fetchedItemDetails?.formattedRuntime
                          }
                          
                          // 1. Match Subtitle
@@ -808,335 +835,564 @@ private fun MpvPlayerScreen(
         lastInteractionTime = System.currentTimeMillis()
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .focusRequester(rootFocusRequester)
-            .focusTarget()
-            .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                
-                // Helper to update interaction timer
-                fun consumeAndTouch(): Boolean {
-                    lastInteractionTime = System.currentTimeMillis()
-                    return true
-                }
-
-                if (controlsVisible) {
-                    // When controls are visible, we allow standard navigation (Up/Down/Left/Right/Enter)
-                    // to reach the buttons. We ONLY intercept Back to hide controls.
-                    if (event.key == Key.Back) {
-                        if (showSettingsMenu) {
-                            showSettingsMenu = false
-                            return@onPreviewKeyEvent consumeAndTouch()
-                        } else {
-                            controlsVisible = false
-                            return@onPreviewKeyEvent consumeAndTouch()
-                        }
-                    }
-                    // For all other keys (Arrows, Enter), let Compose FocusManager handle them!
-                    return@onPreviewKeyEvent false
-                }
-
-                // --- CONTROLS HIDDEN LOGIC ---
-                // We capture keys to show controls or seek
-                when (event.key) {
-                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
-                        // Netflix-style: First click shows controls
-                        showControls()
-                        consumeAndTouch()
-                    }
-
-                    Key.DirectionDown -> {
-                        showControls()
-                        consumeAndTouch()
-                    }
-                    
-                    Key.DirectionUp -> {
-                        showControls()
-                        consumeAndTouch()
-                    }
-
-                    Key.DirectionLeft -> {
-                        // Seek when hidden - Offload to background
-                        scope.launch(Dispatchers.IO) {
-                            mpvViewRef?.seek(-10)
-                        }
-                        consumeAndTouch()
-                    }
-
-                    Key.DirectionRight -> {
-                        // Seek when hidden - Offload to background
-                        scope.launch(Dispatchers.IO) {
-                            mpvViewRef?.seek(10)
-                        }
-                        consumeAndTouch()
-                    }
-
-                    Key.MediaPlayPause -> {
-                        // If hidden, show controls. If specific media key, maybe just toggle?
-                        // Let's mirror Netflix: Media Button always acts on media
-                        scope.launch(Dispatchers.IO) {
-                            mpvViewRef?.cyclePause()
-                        }
-                        showControls()
-                        consumeAndTouch()
-                    }
-                    
-                    Key.Back -> {
-                        onBack()
-                        true
-                    }
-
-                    else -> false
-                }
-            }
-            .focusable()
-    ) {
-        // MPV View
-        if (isSubtitleReady) {
-            AndroidView(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .focusable(false),
-                factory = { ctx ->
-                    MPVView(ctx).apply {
-                        layoutParams = ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT
-                        )
-
-                        // Make sure the View can't take focus
-                        isFocusable = false
-                        isFocusableInTouchMode = false
-
-                        val configDir = File(ctx.filesDir, "mpv")
-                        configDir.mkdirs()
-
-                        // ✅ Write TV-hard config files BEFORE initialize()
-                        writeMpvTvConfig(configDir)
-                        
-                        // ✅ Install Shaders
-                        MpvShaderManager.installShaders(ctx)
-
-                        initialize(configDir.absolutePath, ctx.cacheDir.absolutePath)
-                        
-                        // ✅ Apply Shader Profile
-                        val settings = AppSettings(ctx)
-                        try {
-                            val profileName = settings.mpvShaderProfile
-                            val profile = MpvShaderManager.ShaderProfile.fromString(profileName)
-                            Log.d("MpvTvPlayer", "Applying Shader Profile: ${profile.displayName}")
-                            
-                            var shaderPaths = MpvShaderManager.getShadersForProfile(ctx, profile).toMutableList()
-                            
-                            // Logic: If Dynamic Tone Mapping setting is disabled, REMOVE the dynamic shader 
-                            // from the list if it was added (e.g. if user selected HdrBoostPlus)
-                            if (!settings.enableDynamicToneMapping) {
-                                val dynShaderPath = MpvShaderManager.getShaderPath(ctx, MpvShaderManager.SHADER_DYN_TONEMAP)
-                                shaderPaths.remove(dynShaderPath)
-                                Log.d("MpvTvPlayer", "Dynamic Tone Mapping disabled in settings, removing shader.")
-                            }
-
-                            if (shaderPaths.isNotEmpty()) {
-                                // Join with standard path separator (:)
-                                val shaderList = shaderPaths.joinToString(File.pathSeparator)
-                                Log.d("MpvTvPlayer", "Setting glsl-shaders: $shaderList")
-                                MPVLib.setOptionString("glsl-shaders", shaderList)
-                            } else {
-                                // If None, clear shaders just in case (though init should be clean)
-                                MPVLib.setOptionString("glsl-shaders", "")
-                            }
-
-                            // Profile-specific extra settings
-                            when (profile) {
-                                MpvShaderManager.ShaderProfile.Cinema -> {
-                                    MPVLib.setOptionString("deband", "yes")
-                                    MPVLib.setOptionString("deband-iterations", "2")
-                                    MPVLib.setOptionString("deband-threshold", "48")
-                                }
-                                MpvShaderManager.ShaderProfile.Sports -> {
-                                    applySuperResolutionScalers()
-                                }
-                                MpvShaderManager.ShaderProfile.Sharp -> {
-                                    applySuperResolutionScalers()
-                                }
-                                MpvShaderManager.ShaderProfile.HdrBoostPlus -> {
-                                    MPVLib.setOptionString("scale", "bilinear")
-                                    MPVLib.setOptionString("deband", "no")
-                                }
-                                else -> {
-                                    // Default safer scaling
-                                    MPVLib.setOptionString("scale", "bilinear")
-                                    MPVLib.setOptionString("deband", "no")
-                                }
-                            }
-                        } catch (e: Exception) {
-                            Log.e("MpvTvPlayer", "Error applying shader profile", e)
-                        }
-                        
-                        // 🔥 Force-enable subtitle renderer at runtime (REINFORCED FOR SRT)
-                        MPVLib.setPropertyBoolean("sub-ass", true)
-                        MPVLib.setPropertyBoolean("sub-visibility", true)
-                        MPVLib.setPropertyString("sub-ass-override", "force")
-                        MPVLib.setPropertyString("sub-font", "sans")
-                        MPVLib.setPropertyDouble("sub-font-size", 52.0)
-                        MPVLib.setPropertyString("sub-bold", "yes")
-                        MPVLib.setPropertyString("sub-color", "#FFFFFFFF")
-                        MPVLib.setPropertyString("sub-border-color", "#FF000000")
-                        MPVLib.setPropertyDouble("sub-border-size", 3.0)
-                        MPVLib.setPropertyDouble("sub-shadow-offset", 2.0)
-                        MPVLib.setPropertyString("sub-use-margins", "no")
-                        MPVLib.setPropertyString("sub-auto", "fuzzy")
-                        MPVLib.setPropertyString("sub-fix-timing", "yes")
-                        MPVLib.setPropertyBoolean("embeddedfonts", true)
-
-                        // Still keep these as reinforcement
-                        MPVLib.setOptionString("osc", "no")
-                        MPVLib.setOptionString("input-touch", "no")
-                        MPVLib.setOptionString("input-default-bindings", "no")
-                        MPVLib.setOptionString("input-builtin-bindings", "no")
-
-                        if (resumePositionMs > 0) {
-                            val startSeconds = resumePositionMs / 1000.0
-                            MPVLib.setOptionString("start", startSeconds.toString())
-                        }
-
-                        setHttpHeaders(headers)
-
-                        // ✅ INJECT PRIMARY SUBTITLE AS OPTION (ROCK-SOLID METHOD)
-                        if (resolvedSubtitlePath != null) {
-                            Log.d("MpvTvPlayer", "Injecting sub-file (cached): $resolvedSubtitlePath")
-                            MPVLib.setOptionString("sub-file", resolvedSubtitlePath!!)
-                            MPVLib.setOptionString("sid", "auto")
-                        } else if (subtitleFile != null && !subtitleFile.startsWith("http")) {
-                            Log.d("MpvTvPlayer", "Injecting sub-file (provided): $subtitleFile")
-                            // Fallback for local files if any
-                            MPVLib.setOptionString("sub-file", subtitleFile)
-                            MPVLib.setOptionString("sid", "auto")
-                        }
-
-                        // TRAILER OPTIMIZATION
-                        if (isTrailer) {
-                            MPVLib.command(arrayOf("apply-profile", "trailer"))
-                        }
-
-                        playFile(url)
-
-                        // AUDIO TRACK
-                        if (externalAudioUrl != null) {
-                            // Use Handler to ensure the main file load has initialized the player core
-                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                                 Log.d("MpvTvPlayer", "Executing delayed audio-add: $externalAudioUrl")
-                                 MPVLib.command(arrayOf("audio-add", externalAudioUrl, "select"))
-                            }, 500)
-                        }
-
-                        mpvViewRef = this
-                        onMpvViewCreated(this)
-                    }
-                }
-            )
-        }
-
-        AnimatedVisibility(
-            visible = controlsVisible && title.isNotEmpty(),
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.TopStart)
-        ) {
-            androidx.tv.material3.Surface(
-                modifier = Modifier.padding(24.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = androidx.tv.material3.SurfaceDefaults.colors(
-                    containerColor = Color.Black.copy(alpha = 0.5f),
-                    contentColor = Color.White
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+    val playerContent = @Composable { playerModifier: Modifier ->
+        Box(
+            modifier = playerModifier
+                .background(Color.Black)
+                .clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null
                 ) {
-                    Text(
-                        text = title,
-                        color = Color.White,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    
-                    if (productionYear != null || runtimeText != null) {
-                        val metadata = buildString {
-                            if (productionYear != null) append(productionYear)
-                            if (productionYear != null && runtimeText != null) append(" · ")
-                            if (runtimeText != null) append(runtimeText)
+                    showControls()
+                }
+        ) {
+            // MPV View
+            if (isSubtitleReady) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { ctx ->
+                        MPVView(ctx).apply {
+                            layoutParams = ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+
+                            // Make sure the View can't take focus
+                            isFocusable = false
+                            isFocusableInTouchMode = false
+
+                            val configDir = File(ctx.filesDir, "mpv")
+                            configDir.mkdirs()
+
+                            // ✅ Write TV-hard config files BEFORE initialize()
+                            writeMpvTvConfig(configDir)
+                            
+                            // ✅ Install Shaders
+                            MpvShaderManager.installShaders(ctx)
+
+                            initialize(configDir.absolutePath, ctx.cacheDir.absolutePath)
+                            
+                            // ✅ Apply Shader Profile
+                            val settings = AppSettings(ctx)
+                            try {
+                                val profileName = settings.mpvShaderProfile
+                                val profile = MpvShaderManager.ShaderProfile.fromString(profileName)
+                                Log.d("MpvTvPlayer", "Applying Shader Profile: ${profile.displayName}")
+                                
+                                var shaderPaths = MpvShaderManager.getShadersForProfile(ctx, profile).toMutableList()
+                                
+                                // Logic: If Dynamic Tone Mapping setting is disabled, REMOVE the dynamic shader 
+                                // from the list if it was added (e.g. if user selected HdrBoostPlus)
+                                if (!settings.enableDynamicToneMapping) {
+                                    val dynShaderPath = MpvShaderManager.getShaderPath(ctx, MpvShaderManager.SHADER_DYN_TONEMAP)
+                                    shaderPaths.remove(dynShaderPath)
+                                    Log.d("MpvTvPlayer", "Dynamic Tone Mapping disabled in settings, removing shader.")
+                                }
+
+                                if (shaderPaths.isNotEmpty()) {
+                                    // Join with standard path separator (:)
+                                    val shaderList = shaderPaths.joinToString(File.pathSeparator)
+                                    Log.d("MpvTvPlayer", "Setting glsl-shaders: $shaderList")
+                                    MPVLib.setOptionString("glsl-shaders", shaderList)
+                                } else {
+                                    // If None, clear shaders just in case (though init should be clean)
+                                    MPVLib.setOptionString("glsl-shaders", "")
+                                }
+
+                                // Profile-specific extra settings
+                                when (profile) {
+                                    MpvShaderManager.ShaderProfile.Cinema -> {
+                                        MPVLib.setOptionString("deband", "yes")
+                                        MPVLib.setOptionString("deband-iterations", "2")
+                                        MPVLib.setOptionString("deband-threshold", "48")
+                                    }
+                                    MpvShaderManager.ShaderProfile.Sports -> {
+                                        applySuperResolutionScalers()
+                                    }
+                                    MpvShaderManager.ShaderProfile.Sharp -> {
+                                        applySuperResolutionScalers()
+                                    }
+                                    MpvShaderManager.ShaderProfile.HdrBoostPlus -> {
+                                        MPVLib.setOptionString("scale", "bilinear")
+                                        MPVLib.setOptionString("deband", "no")
+                                    }
+                                    else -> {
+                                        // Default safer scaling
+                                        MPVLib.setOptionString("scale", "bilinear")
+                                        MPVLib.setOptionString("deband", "no")
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.e("MpvTvPlayer", "Error applying shader profile", e)
+                            }
+                            
+                            // 🔥 Force-enable subtitle renderer at runtime (REINFORCED FOR SRT)
+                            MPVLib.setPropertyBoolean("sub-ass", true)
+                            MPVLib.setPropertyBoolean("sub-visibility", true)
+                            MPVLib.setPropertyString("sub-ass-override", "force")
+                            MPVLib.setPropertyString("sub-font", "sans")
+                            MPVLib.setPropertyDouble("sub-font-size", 52.0)
+                            MPVLib.setPropertyString("sub-bold", "yes")
+                            MPVLib.setPropertyString("sub-color", "#FFFFFFFF")
+                            MPVLib.setPropertyString("sub-border-color", "#FF000000")
+                            MPVLib.setPropertyDouble("sub-border-size", 3.0)
+                            MPVLib.setPropertyDouble("sub-shadow-offset", 2.0)
+                            MPVLib.setPropertyString("sub-use-margins", "no")
+                            MPVLib.setPropertyString("sub-auto", "fuzzy")
+                            MPVLib.setPropertyString("sub-fix-timing", "yes")
+                            MPVLib.setPropertyBoolean("embeddedfonts", true)
+
+                            // Still keep these as reinforcement
+                            MPVLib.setOptionString("osc", "no")
+                            MPVLib.setOptionString("input-touch", "no")
+                            MPVLib.setOptionString("input-default-bindings", "no")
+                            MPVLib.setOptionString("input-builtin-bindings", "no")
+
+                            if (resumePositionMs > 0) {
+                                val startSeconds = resumePositionMs / 1000.0
+                                MPVLib.setOptionString("start", startSeconds.toString())
+                            }
+
+                            setHttpHeaders(headers)
+
+                            // ✅ INJECT PRIMARY SUBTITLE AS OPTION (ROCK-SOLID METHOD)
+                            if (resolvedSubtitlePath != null) {
+                                Log.d("MpvTvPlayer", "Injecting sub-file (cached): $resolvedSubtitlePath")
+                                MPVLib.setOptionString("sub-file", resolvedSubtitlePath!!)
+                                MPVLib.setOptionString("sid", "auto")
+                            } else if (subtitleFile != null && !subtitleFile.startsWith("http")) {
+                                Log.d("MpvTvPlayer", "Injecting sub-file (provided): $subtitleFile")
+                                // Fallback for local files if any
+                                MPVLib.setOptionString("sub-file", subtitleFile)
+                                MPVLib.setOptionString("sid", "auto")
+                            }
+
+                            // TRAILER OPTIMIZATION
+                            if (isTrailer) {
+                                MPVLib.command(arrayOf("apply-profile", "trailer"))
+                            }
+
+                            playFile(url)
+
+                            // AUDIO TRACK
+                            if (externalAudioUrl != null) {
+                                // Use Handler to ensure the main file load has initialized the player core
+                                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                     Log.d("MpvTvPlayer", "Executing delayed audio-add: $externalAudioUrl")
+                                     MPVLib.command(arrayOf("audio-add", externalAudioUrl, "select"))
+                                }, 500)
+                            }
+
+                            mpvViewRef = this
+                            onMpvViewCreated(this)
                         }
+                    }
+                )
+            }
+
+            // Buffering indicator
+            if (isBuffering || !isSubtitleReady) {
+                CircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.Center),
+                    color = Color.White
+                )
+            }
+
+            // NEW Controls Overlay
+            MpvControls(
+                isVisible = controlsVisible,
+                isPlaying = isPlaying,
+                currentPosition = currentPositionMs,
+                duration = durationMs,
+                currentAspectMode = currentAspectMode,
+                onPlayPause = { 
+                    scope.launch(Dispatchers.IO) {
+                        mpvViewRef?.cyclePause()
+                    }
+                },
+                onSeek = { pos -> 
+                    scope.launch(Dispatchers.IO) {
+                        mpvViewRef?.timePos = pos / 1000.0 
+                    }
+                    lastInteractionTime = System.currentTimeMillis()
+                },
+                onFastRewind = { 
+                    scope.launch(Dispatchers.IO) {
+                        mpvViewRef?.seek(-15) 
+                    }
+                    lastInteractionTime = System.currentTimeMillis()
+                },
+                onFastForward = { 
+                    scope.launch(Dispatchers.IO) {
+                        mpvViewRef?.seek(15)
+                    }
+                    lastInteractionTime = System.currentTimeMillis()
+                },
+                onAspectModeChange = {
+                    currentAspectMode = currentAspectMode.next()
+                    lastInteractionTime = System.currentTimeMillis()
+                },
+                onOpenSettings = { level ->
+                    if (level == "subtitles") {
+                         settingsInitialLevel = "subtitles"
+                    } else {
+                         settingsInitialLevel = "main"
+                    }
+                    showSettingsMenu = true
+                    controlsVisible = false 
+                },
+                onHide = { controlsVisible = false },
+                onResetHideTimer = { lastInteractionTime = System.currentTimeMillis() },
+                videoResolution = videoResolution,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
+    }
+
+    if (isPortraitMode) {
+        Column(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+            // Top black bar with back arrow and status bars padding
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black)
+                    .statusBarsPadding()
+                    .height(56.dp)
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color.White
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // Player in 16:9 aspect ratio
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+            ) {
+                playerContent(Modifier.fillMaxSize())
+            }
+
+            // Scrollable details section underneath
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .background(Color(0xFF141414)),
+                contentPadding = PaddingValues(bottom = 24.dp)
+            ) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        // Title / Series Name
+                        val itemTitle = itemDetails?.Name ?: title
+                        val parentTitle = itemDetails?.SeriesName
+                        
+                        if (parentTitle != null) {
+                            Text(
+                                text = parentTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.White.copy(alpha = 0.6f)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                        }
+                        
                         Text(
-                            text = metadata,
-                            color = Color.White.copy(alpha = 0.7f),
-                            fontSize = 16.sp,
-                            modifier = Modifier.padding(top = 4.dp)
+                            text = itemTitle,
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
                         )
+                        
+                        Spacer(modifier = Modifier.height(4.dp))
+                        
+                        // Metadata (Year, Rating, Runtime, Resolution)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            productionYear?.let { year ->
+                                Text(
+                                    text = year.toString(),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.White.copy(alpha = 0.6f)
+                                )
+                            }
+                            
+                            itemDetails?.OfficialRating?.let { rating ->
+                                if (rating.isNotBlank()) {
+                                    Text(
+                                        text = rating,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.White.copy(alpha = 0.6f),
+                                        modifier = Modifier
+                                            .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            
+                            runtimeText?.let { rt ->
+                                Text(
+                                    text = rt,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.White.copy(alpha = 0.6f)
+                                )
+                            }
+                            
+                            if (videoResolution.isNotEmpty()) {
+                                Text(
+                                    text = videoResolution,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.White.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // Overview
+                        itemDetails?.Overview?.let { overview ->
+                            if (overview.isNotBlank()) {
+                                Text(
+                                    text = overview,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.White.copy(alpha = 0.8f),
+                                    lineHeight = 20.sp
+                                )
+                            }
+                        }
+                    }
+                }
+                
+                // Cast members
+                val castMembers = itemDetails?.People?.filter { it.Type == "Actor" || it.Type == "GuestStar" } ?: emptyList()
+                if (castMembers.isNotEmpty()) {
+                    item {
+                        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                            Text(
+                                text = "Cast",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+                            )
+                            
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                items(castMembers.size) { index ->
+                                    val person = castMembers[index]
+                                    val personTag = person.PrimaryImageTag
+                                    val imageUrl = if (personTag != null && person.Id != null && apiService != null) {
+                                        apiService.getImageUrl(
+                                            itemId = person.Id!!,
+                                            imageType = "Primary",
+                                            imageTag = personTag,
+                                            maxWidth = 200,
+                                            quality = 70
+                                        )
+                                    } else ""
+                                    
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.width(80.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(60.dp)
+                                                .clip(CircleShape)
+                                                .background(Color.Gray.copy(alpha = 0.2f))
+                                        ) {
+                                            if (imageUrl.isNotEmpty()) {
+                                                AsyncImage(
+                                                    model = ImageRequest.Builder(LocalContext.current)
+                                                        .data(imageUrl)
+                                                        .crossfade(true)
+                                                        .build(),
+                                                    contentDescription = person.Name,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                            } else {
+                                                Box(
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(
+                                                        text = person.Name?.take(1) ?: "",
+                                                        color = Color.White,
+                                                        style = MaterialTheme.typography.titleMedium
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = person.Name ?: "",
+                                            color = Color.White.copy(alpha = 0.8f),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+    } else {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .focusRequester(rootFocusRequester)
+                .focusTarget()
+                .onPreviewKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    
+                    // Helper to update interaction timer
+                    fun consumeAndTouch(): Boolean {
+                        lastInteractionTime = System.currentTimeMillis()
+                        return true
+                    }
 
-        // Buffering indicator
-        if (isBuffering || !isSubtitleReady) {
-            CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center),
-                color = Color.White
-            )
+                    if (controlsVisible) {
+                        // When controls are visible, we allow standard navigation (Up/Down/Left/Right/Enter)
+                        // to reach the buttons. We ONLY intercept Back to hide controls.
+                        if (event.key == Key.Back) {
+                            if (showSettingsMenu) {
+                                showSettingsMenu = false
+                                return@onPreviewKeyEvent consumeAndTouch()
+                            } else {
+                                controlsVisible = false
+                                return@onPreviewKeyEvent consumeAndTouch()
+                            }
+                        }
+                        // For all other keys (Arrows, Enter), let Compose FocusManager handle them!
+                        return@onPreviewKeyEvent false
+                    }
+
+                    // --- CONTROLS HIDDEN LOGIC ---
+                    // We capture keys to show controls or seek
+                    when (event.key) {
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                            // Netflix-style: First click shows controls
+                            showControls()
+                            consumeAndTouch()
+                        }
+
+                        Key.DirectionDown -> {
+                            showControls()
+                            consumeAndTouch()
+                        }
+                        
+                        Key.DirectionUp -> {
+                            showControls()
+                            consumeAndTouch()
+                        }
+
+                        Key.DirectionLeft -> {
+                            // Seek when hidden - Offload to background
+                            scope.launch(Dispatchers.IO) {
+                                mpvViewRef?.seek(-10)
+                            }
+                            consumeAndTouch()
+                        }
+
+                        Key.DirectionRight -> {
+                            // Seek when hidden - Offload to background
+                            scope.launch(Dispatchers.IO) {
+                                mpvViewRef?.seek(10)
+                            }
+                            consumeAndTouch()
+                        }
+
+                        Key.MediaPlayPause -> {
+                            // If hidden, show controls. If specific media key, maybe just toggle?
+                            // Let's mirror Netflix: Media Button always acts on media
+                            scope.launch(Dispatchers.IO) {
+                                mpvViewRef?.cyclePause()
+                            }
+                            showControls()
+                            consumeAndTouch()
+                        }
+                        
+                        Key.Back -> {
+                            onBack()
+                            true
+                        }
+
+                        else -> false
+                    }
+                }
+                .focusable()
+        ) {
+            playerContent(Modifier.fillMaxSize())
+
+            AnimatedVisibility(
+                visible = controlsVisible && title.isNotEmpty(),
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.TopStart)
+            ) {
+                androidx.tv.material3.Surface(
+                    modifier = Modifier.padding(24.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = androidx.tv.material3.SurfaceDefaults.colors(
+                        containerColor = Color.Black.copy(alpha = 0.5f),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    ) {
+                        Text(
+                            text = title,
+                            color = Color.White,
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        
+                        if (productionYear != null || runtimeText != null) {
+                            val metadata = buildString {
+                                if (productionYear != null) append(productionYear)
+                                if (productionYear != null && runtimeText != null) append(" · ")
+                                if (runtimeText != null) append(runtimeText)
+                            }
+                            Text(
+                                text = metadata,
+                                color = Color.White.copy(alpha = 0.7f),
+                                fontSize = 16.sp,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
         }
-
-        // NEW Controls Overlay
-        MpvControls(
-            isVisible = controlsVisible,
-            isPlaying = isPlaying,
-            currentPosition = currentPositionMs,
-            duration = durationMs,
-            currentAspectMode = currentAspectMode,
-            onPlayPause = { 
-                scope.launch(Dispatchers.IO) {
-                    mpvViewRef?.cyclePause()
-                }
-            },
-            onSeek = { pos -> 
-                scope.launch(Dispatchers.IO) {
-                    mpvViewRef?.timePos = pos / 1000.0 
-                }
-                lastInteractionTime = System.currentTimeMillis()
-            },
-            onFastRewind = { 
-                scope.launch(Dispatchers.IO) {
-                    mpvViewRef?.seek(-15) 
-                }
-                lastInteractionTime = System.currentTimeMillis()
-            },
-            onFastForward = { 
-                scope.launch(Dispatchers.IO) {
-                    mpvViewRef?.seek(15)
-                }
-                lastInteractionTime = System.currentTimeMillis()
-            },
-            onAspectModeChange = {
-                currentAspectMode = currentAspectMode.next()
-                lastInteractionTime = System.currentTimeMillis()
-            },
-            onOpenSettings = { level ->
-                if (level == "subtitles") {
-                     settingsInitialLevel = "subtitles"
-                } else {
-                     settingsInitialLevel = "main"
-                }
-                showSettingsMenu = true
-                controlsVisible = false 
-            },
-            onHide = { controlsVisible = false },
-            onResetHideTimer = { lastInteractionTime = System.currentTimeMillis() },
-            videoResolution = videoResolution,
-            modifier = Modifier.align(Alignment.BottomCenter)
-        )
+    }
         
         // Settings Menu
         if (showSettingsMenu) {
@@ -1176,7 +1432,6 @@ private fun MpvPlayerScreen(
             )
         }
     }
-}
 
 private fun writeMpvTvConfig(dir: File) {
     val mpvConf = File(dir, "mpv.conf")

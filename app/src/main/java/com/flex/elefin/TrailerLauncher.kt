@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import android.widget.Toast
 import com.flex.elefin.player.mpv.MpvTvPlayerActivity
+import com.flex.elefin.ui.DeviceUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -64,6 +65,10 @@ class TrailerLauncher {
                         Log.d("TrailerLauncher", "No 1080p video-only stream found.")
                     }
                     
+                    Log.d("TrailerLauncher", "Available Video-Only Streams: ${videoOnlyStreams.map { it.id }}")
+                    Log.d("TrailerLauncher", "Available Audio Streams: ${audioStreams.map { it.id }}")
+                    Log.d("TrailerLauncher", "Available Muxed Streams: ${muxedStreams.map { it.id }}")
+
                     // Fallback: 720p Muxed (itag 22)
                     if (streamUrl.isEmpty()) {
                         val hdStream = muxedStreams.find { it.id == "22" }
@@ -87,12 +92,13 @@ class TrailerLauncher {
                         // ... existing fallback or DASH check
                         val dashUrl = extractor.dashMpdUrl
                         if (dashUrl.isNotEmpty()) {
-                             streamUrl = dashUrl
-                             Log.d("TrailerLauncher", "Fallback to DASH manifest")
+                            streamUrl = dashUrl
+                            Log.d("TrailerLauncher", "Fallback to DASH manifest")
                         } else {
                             // Last resort
                             val bestMux = muxedStreams.firstOrNull()
                             streamUrl = bestMux?.content ?: ""
+                            Log.d("TrailerLauncher", "Last resort muxed stream: ${bestMux?.id}")
                         }
                     }
 
@@ -118,15 +124,27 @@ class TrailerLauncher {
                         }
                         return@launch
                     }
-                    
-                    /* REMOVED PREVIOUS LOGIC */
-                        
-                    // Removed: if (bestStream != null) ... logic replaced above
-                        
+                    throw Exception("No playable YouTube stream found")
                 } catch (e: Exception) {
-                    Log.e("TrailerLauncher", "Error extracting trailer", e)
+                    Log.e("TrailerLauncher", "Error extracting trailer, falling back to YouTube App", e)
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Error playing trailer: ${e.message}", Toast.LENGTH_SHORT).show()
+                        val appIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("vnd.youtube:$key"))
+                        val webIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=$key"))
+                        try {
+                            if (context !is android.app.Activity) {
+                                appIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(appIntent)
+                        } catch (ex: Exception) {
+                            try {
+                                if (context !is android.app.Activity) {
+                                    webIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(webIntent)
+                            } catch (exc: Exception) {
+                                Toast.makeText(context, "Error playing trailer: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     }
                 }
             }

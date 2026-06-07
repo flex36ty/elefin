@@ -17,7 +17,7 @@ All notable changes to Elefin will be documented in this file.
   - Clicking "View More" requests the next page of categories from Jellyseerr/Overseerr, appending results seamlessly into the horizontal lists.
 
 - **YouTube-Style Portrait Video Player (Mobile/Tablet)**
-  - Introduced a YouTube-style portrait viewing mode for mobile devices and tablets, allowing users to watch content vertically with details, status, and player controls shown below the video.
+  - Introduced a YouTube-style portrait viewing mode for both the ExoPlayer and MPV player on mobile devices and tablets, allowing users to watch content vertically with details, status, and player controls shown below the video.
   - Seamlessly handles rotation between standard landscape fullscreen playback and portrait metadata layout.
 
 - **Android TV Settings Color Picker**
@@ -39,6 +39,7 @@ All notable changes to Elefin will be documented in this file.
   - Corrected landscape letterboxing (16:9 clamping) issues when rotating between portrait and landscape modes on mobile.
   - Added notch protection padding (system bar spacers) to prevent layout overlapping on mobile info and home screens.
   - Resolved empty vertical spaces above and below images in the mobile home screen featured carousel by dynamically adjusting the container height to match the 16:9 aspect ratio based on device width (handles phone vs. tablet sizing) and prioritizing landscape `Thumb`/`Backdrop` images with full `Crop` scaling.
+  - Resolved trailer playback failure on mobile by allowing trailers to play in-app using the internal MPV player (just like on Android TV) instead of redirecting to the external YouTube app. Added touch interaction support to the player screen (tapping toggles player controls visibility) so mobile/tablet users can easily pause, seek, and customize settings, with a seamless YouTube app redirect fallback on both TV and mobile if the in-app extraction fails.
 
 ---
 
