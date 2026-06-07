@@ -1,0 +1,613 @@
+Initialized native services in: C:\Users\flex360\.gradle\native
+Initialized jansi services in: C:\Users\flex360\.gradle\native
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Starting process 'Gradle build daemon'. Working directory: C:\Users\flex360\.gradle\daemon\8.13 Command: C:\Program Files\Eclipse Adoptium\jdk-17.0.17.10-hotspot\bin\java.exe --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.prefs/java.util.prefs=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.prefs/java.util.prefs=ALL-UNNAMED --add-opens=java.base/java.nio.charset=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.xml/javax.xml.namespace=ALL-UNNAMED -Xmx2048m -Dfile.encoding=UTF-8 -Duser.country=US -Duser.language=en -Duser.variant -cp C:\Users\flex360\.gradle\wrapper\dists\gradle-8.13-bin\5xuhj0ry160q40clulazy9h7d\gradle-8.13\lib\gradle-daemon-main-8.13.jar -javaagent:C:\Users\flex360\.gradle\wrapper\dists\gradle-8.13-bin\5xuhj0ry160q40clulazy9h7d\gradle-8.13\lib\agents\gradle-instrumentation-agent-8.13.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 8.13
+Successfully started process 'Gradle build daemon'
+An attempt to start the daemon took 3.807 secs.
+The client will now receive all logging from the daemon (pid: 36340). The daemon log file: C:\Users\flex360\.gradle\daemon\8.13\daemon-36340.out.log
+Daemon will be stopped at the end of the build 
+Using 1 worker leases.
+Received JVM installation metadata from 'C:\Program Files\Eclipse Adoptium\jdk-17.0.17.10-hotspot': {JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-17.0.17.10-hotspot, JAVA_VERSION=17.0.17, JAVA_VENDOR=Eclipse Adoptium, RUNTIME_NAME=OpenJDK Runtime Environment, RUNTIME_VERSION=17.0.17+10, VM_NAME=OpenJDK 64-Bit Server VM, VM_VERSION=17.0.17+10, VM_VENDOR=Eclipse Adoptium, OS_ARCH=amd64}
+Watching the file system is configured to be enabled if available
+Now considering [C:\Users\flex360\AndroidStudioProjects\elefin] as hierarchies to watch
+File system watching is active
+Starting Build
+Settings evaluated using settings file 'C:\Users\flex360\AndroidStudioProjects\elefin\settings.gradle.kts'.
+Projects loaded. Root project using build file 'C:\Users\flex360\AndroidStudioProjects\elefin\build.gradle.kts'.
+Included projects: [root project 'elefin', project ':app', project ':decoder_av1', project ':newpipe-extractor', project ':timeago-parser']
+
+> Configure project :
+Evaluating root project 'elefin' using build file 'C:\Users\flex360\AndroidStudioProjects\elefin\build.gradle.kts'.
+Resolved plugin [id: 'com.android.application', version: '8.13.2', apply: false]
+Resolved plugin [id: 'org.jetbrains.kotlin.android', version: '2.0.21', apply: false]
+
+> Configure project :app
+Evaluating project ':app' using build file 'C:\Users\flex360\AndroidStudioProjects\elefin\app\build.gradle.kts'.
+Resolved plugin [id: 'com.android.application', version: '8.13.2']
+Resolved plugin [id: 'org.jetbrains.kotlin.android', version: '2.0.21']
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.serialization', version: '2.0.21']
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.compose', version: '2.0.21']
+Resolved plugin [id: 'org.jetbrains.kotlin.kapt']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle85 variant
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+
+> Configure project :decoder_av1
+Evaluating project ':decoder_av1' using build file 'C:\Users\flex360\AndroidStudioProjects\elefin\decoder_av1\build.gradle.kts'.
+Resolved plugin [id: 'com.android.library']
+Resolved plugin [id: 'org.jetbrains.kotlin.android']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle85 variant
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\flex360\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\flex360\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\flex360\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\flex360\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\flex360\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\flex360\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\flex360\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\flex360\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\flex360\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\flex360\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\flex360\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\flex360\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.0.12077973]
+C/C++: android.ndkPath from module build.gradle is not set
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\flex360\AppData\Local\Android\Sdk
+
+> Configure project :newpipe-extractor
+Evaluating project ':newpipe-extractor' using build file 'C:\Users\flex360\AndroidStudioProjects\elefin\newpipe-extractor\build.gradle.kts'.
+Resolved plugin [id: 'java-library']
+Resolved plugin [id: 'com.google.protobuf', version: '0.9.4']
+The com.google.protobuf plugin was already applied to the project: :newpipe-extractor and will not be applied again after plugin: java-library
+------------------------------------------------------------------------
+Detecting the operating system and CPU architecture
+------------------------------------------------------------------------
+os.detected.name=windows
+os.detected.arch=x86_64
+os.detected.bitness=64
+os.detected.version=10.0
+os.detected.version.major=10
+os.detected.version.minor=0
+os.detected.classifier=windows-x86_64
+
+> Configure project :timeago-parser
+Evaluating project ':timeago-parser' using build file 'C:\Users\flex360\AndroidStudioProjects\elefin\timeago-parser\build.gradle.kts'.
+Resolved plugin [id: 'java-library']
+All projects evaluated.
+Task path ':app:compileDebugKotlin' matched project ':app'
+Task name matched 'compileDebugKotlin'
+Adding -Xuse-inline-scopes-numbers Kotlin compiler flag for task :app:compileDebugKotlin
+Selected primary task 'compileDebugKotlin' from project :app
+Tasks to be executed: [task ':timeago-parser:processResources', task ':newpipe-extractor:extractIncludeProto', task ':newpipe-extractor:extractProto', task ':newpipe-extractor:generateProto', task ':timeago-parser:compileJava', task ':newpipe-extractor:compileJava', task ':newpipe-extractor:processResources', task ':newpipe-extractor:classes', task ':newpipe-extractor:jar', task ':app:checkKotlinGradlePluginConfigurationErrors', task ':app:preBuild', task ':app:preDebugBuild', task ':app:generateDebugBuildConfig', task ':decoder_av1:preBuild', task ':decoder_av1:preDebugBuild', task ':decoder_av1:writeDebugAarMetadata', task ':app:checkDebugAarMetadata', task ':decoder_av1:processDebugNavigationResources', task ':app:processDebugNavigationResources', task ':app:compileDebugNavigationResources', task ':app:generateDebugResValues', task ':decoder_av1:generateDebugResValues', task ':decoder_av1:generateDebugResources', task ':decoder_av1:packageDebugResources', task ':app:mapDebugSourceSetPaths', task ':app:generateDebugResources', task ':app:mergeDebugResources', task ':app:packageDebugResources', task ':app:parseDebugLocalResources', task ':app:createDebugCompatibleScreenManifests', task ':app:extractDeepLinksDebug', task ':decoder_av1:extractDeepLinksDebug', task ':decoder_av1:processDebugManifest', task ':app:processDebugMainManifest', task ':app:processDebugManifest', task ':app:processDebugManifestForPackage', task ':decoder_av1:compileDebugLibraryResources', task ':decoder_av1:parseDebugLocalResources', task ':decoder_av1:generateDebugRFile', task ':app:processDebugResources', task ':decoder_av1:checkKotlinGradlePluginConfigurationErrors', task ':decoder_av1:compileDebugKotlin', task ':decoder_av1:javaPreCompileDebug', task ':decoder_av1:compileDebugJavaWithJavac', task ':decoder_av1:bundleLibCompileToJarDebug', task ':app:kaptGenerateStubsDebugKotlin', task ':app:kaptDebugKotlin', task ':app:compileDebugKotlin']
+Tasks that were excluded: []
+work action Parameters of IdentityTransform (Thread[included builds,5,main]) started.
+Resolve mutations for :timeago-parser:processResources (Thread[included builds,5,main]) started.
+:timeago-parser:processResources (Thread[included builds,5,main]) started.
+
+> Task :timeago-parser:processResources NO-SOURCE
+Skipping task ':timeago-parser:processResources' as it has no source files and no previous output files.
+work action resolve main (project :timeago-parser) (Thread[included builds,5,main]) started.
+Resolve mutations for :newpipe-extractor:extractIncludeProto (Thread[included builds,5,main]) started.
+:newpipe-extractor:extractIncludeProto (Thread[included builds,5,main]) started.
+
+> Task :newpipe-extractor:extractIncludeProto UP-TO-DATE
+Caching disabled for task ':newpipe-extractor:extractIncludeProto' because:
+  Build cache is disabled
+  Caching has not been enabled for the task
+Skipping task ':newpipe-extractor:extractIncludeProto' as it is up-to-date.
+Resolve mutations for :newpipe-extractor:extractProto (Thread[included builds,5,main]) started.
+:newpipe-extractor:extractProto (Thread[included builds,5,main]) started.
+
+> Task :newpipe-extractor:extractProto UP-TO-DATE
+Caching disabled for task ':newpipe-extractor:extractProto' because:
+  Build cache is disabled
+  Caching has not been enabled for the task
+Skipping task ':newpipe-extractor:extractProto' as it is up-to-date.
+Resolve mutations for :newpipe-extractor:generateProto (Thread[included builds,5,main]) started.
+:newpipe-extractor:generateProto (Thread[included builds,5,main]) started.
+
+> Task :newpipe-extractor:generateProto UP-TO-DATE
+Custom actions are attached to task ':newpipe-extractor:generateProto'.
+Caching disabled for task ':newpipe-extractor:generateProto' because:
+  Build cache is disabled
+Skipping task ':newpipe-extractor:generateProto' as it is up-to-date.
+Resolve mutations for :timeago-parser:compileJava (Thread[included builds,5,main]) started.
+:timeago-parser:compileJava (Thread[included builds,5,main]) started.
+
+> Task :timeago-parser:compileJava UP-TO-DATE
+Caching disabled for task ':timeago-parser:compileJava' because:
+  Build cache is disabled
+Skipping task ':timeago-parser:compileJava' as it is up-to-date.
+No compile result for :timeago-parser:compileJava
+work action resolve main (project :timeago-parser) (Thread[included builds,5,main]) started.
+Resolve mutations for :newpipe-extractor:compileJava (Thread[included builds,5,main]) started.
+:newpipe-extractor:compileJava (Thread[included builds,5,main]) started.
+
+> Task :newpipe-extractor:compileJava UP-TO-DATE
+Caching disabled for task ':newpipe-extractor:compileJava' because:
+  Build cache is disabled
+Skipping task ':newpipe-extractor:compileJava' as it is up-to-date.
+No compile result for :newpipe-extractor:compileJava
+Resolve mutations for :newpipe-extractor:processResources (Thread[included builds,5,main]) started.
+:newpipe-extractor:processResources (Thread[included builds,5,main]) started.
+
+> Task :newpipe-extractor:processResources UP-TO-DATE
+Caching disabled for task ':newpipe-extractor:processResources' because:
+  Build cache is disabled
+  Not worth caching
+Skipping task ':newpipe-extractor:processResources' as it is up-to-date.
+Resolve mutations for :newpipe-extractor:classes (Thread[included builds,5,main]) started.
+:newpipe-extractor:classes (Thread[included builds,5,main]) started.
+
+> Task :newpipe-extractor:classes UP-TO-DATE
+Skipping task ':newpipe-extractor:classes' as it has no actions.
+Resolve mutations for :newpipe-extractor:jar (Thread[included builds,5,main]) started.
+:newpipe-extractor:jar (Thread[included builds,5,main]) started.
+
+> Task :newpipe-extractor:jar UP-TO-DATE
+Caching disabled for task ':newpipe-extractor:jar' because:
+  Build cache is disabled
+  Not worth caching
+Skipping task ':newpipe-extractor:jar' as it is up-to-date.
+work action resolve newpipe-extractor.jar (project :newpipe-extractor) (Thread[included builds,5,main]) started.
+IdentityTransform (Thread[included builds,5,main]) started.
+Resolve mutations for :app:checkKotlinGradlePluginConfigurationErrors (Thread[included builds,5,main]) started.
+:app:checkKotlinGradlePluginConfigurationErrors (Thread[included builds,5,main]) started.
+
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':app:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :app:preBuild (Thread[included builds,5,main]) started.
+:app:preBuild (Thread[included builds,5,main]) started.
+
+> Task :app:preBuild UP-TO-DATE
+Skipping task ':app:preBuild' as it has no actions.
+Resolve mutations for :app:preDebugBuild (Thread[included builds,5,main]) started.
+:app:preDebugBuild (Thread[included builds,5,main]) started.
+
+> Task :app:preDebugBuild UP-TO-DATE
+Skipping task ':app:preDebugBuild' as it has no actions.
+Resolve mutations for :app:generateDebugBuildConfig (Thread[included builds,5,main]) started.
+:app:generateDebugBuildConfig (Thread[included builds,5,main]) started.
+
+> Task :app:generateDebugBuildConfig UP-TO-DATE
+Caching disabled for task ':app:generateDebugBuildConfig' because:
+  Build cache is disabled
+Skipping task ':app:generateDebugBuildConfig' as it is up-to-date.
+Resolve mutations for :decoder_av1:preBuild (Thread[included builds,5,main]) started.
+:decoder_av1:preBuild (Thread[included builds,5,main]) started.
+
+> Task :decoder_av1:preBuild UP-TO-DATE
+Skipping task ':decoder_av1:preBuild' as it has no actions.
+Resolve mutations for :decoder_av1:preDebugBuild (Thread[included builds,5,main]) started.
+:decoder_av1:preDebugBuild (Thread[included builds,5,main]) started.
+
+> Task :decoder_av1:preDebugBuild UP-TO-DATE
+Skipping task ':decoder_av1:preDebugBuild' as it has no actions.
+Resolve mutations for :decoder_av1:writeDebugAarMetadata (Thread[included builds,5,main]) started.
+:decoder_av1:writeDebugAarMetadata (Thread[included builds,5,main]) started.
+
+> Task :decoder_av1:writeDebugAarMetadata UP-TO-DATE
+Caching disabled for task ':decoder_av1:writeDebugAarMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':decoder_av1:writeDebugAarMetadata' as it is up-to-date.
+work action resolve aar-metadata.properties (project :decoder_av1) (Thread[included builds,5,main]) started.
+Resolve mutations for :app:checkDebugAarMetadata (Thread[included builds,5,main]) started.
+:app:checkDebugAarMetadata (Thread[included builds,5,main]) started.
+
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+Caching disabled for task ':app:checkDebugAarMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:checkDebugAarMetadata' as it is up-to-date.
+Resolve mutations for :decoder_av1:processDebugNavigationResources (Thread[included builds,5,main]) started.
+:decoder_av1:processDebugNavigationResources (Thread[included builds,5,main]) started.
+
+> Task :decoder_av1:processDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':decoder_av1:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':decoder_av1:processDebugNavigationResources' as it is up-to-date.
+work action resolve debug (project :decoder_av1) (Thread[included builds,5,main]) started.
+Resolve mutations for :app:processDebugNavigationResources (Thread[included builds,5,main]) started.
+:app:processDebugNavigationResources (Thread[included builds,5,main]) started.
+
+> Task :app:processDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':app:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':app:processDebugNavigationResources' as it is up-to-date.
+Resolve mutations for :app:compileDebugNavigationResources (Thread[included builds,5,main]) started.
+:app:compileDebugNavigationResources (Thread[included builds,5,main]) started.
+
+> Task :app:compileDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':app:compileDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':app:compileDebugNavigationResources' as it is up-to-date.
+Resolve mutations for :app:generateDebugResValues (Thread[included builds,5,main]) started.
+:app:generateDebugResValues (Thread[included builds,5,main]) started.
+
+> Task :app:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':app:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':app:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :decoder_av1:generateDebugResValues (Thread[included builds,5,main]) started.
+:decoder_av1:generateDebugResValues (Thread[included builds,5,main]) started.
+
+> Task :decoder_av1:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':decoder_av1:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':decoder_av1:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :decoder_av1:generateDebugResources (Thread[included builds,5,main]) started.
+:decoder_av1:generateDebugResources (Thread[included builds,5,main]) started.
+
+> Task :decoder_av1:generateDebugResources UP-TO-DATE
+Caching disabled for task ':decoder_av1:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':decoder_av1:generateDebugResources' as it is up-to-date.
+Resolve mutations for :decoder_av1:packageDebugResources (Thread[included builds,5,main]) started.
+:decoder_av1:packageDebugResources (Thread[included builds,5,main]) started.
+
+> Task :decoder_av1:packageDebugResources UP-TO-DATE
+Caching disabled for task ':decoder_av1:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':decoder_av1:packageDebugResources' as it is up-to-date.
+work action resolve packageDebugResources (project :decoder_av1) (Thread[included builds,5,main]) started.
+Resolve mutations for :app:mapDebugSourceSetPaths (Thread[included builds,5,main]) started.
+:app:mapDebugSourceSetPaths (Thread[included builds,5,main]) started.
+
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+Caching disabled for task ':app:mapDebugSourceSetPaths' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:mapDebugSourceSetPaths' as it is up-to-date.
+Resolve mutations for :app:generateDebugResources (Thread[included builds,5,main]) started.
+:app:generateDebugResources (Thread[included builds,5,main]) started.
+
+> Task :app:generateDebugResources UP-TO-DATE
+Caching disabled for task ':app:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:generateDebugResources' as it is up-to-date.
+Resolve mutations for :app:mergeDebugResources (Thread[included builds,5,main]) started.
+:app:mergeDebugResources (Thread[included builds,5,main]) started.
+
+> Task :app:mergeDebugResources UP-TO-DATE
+Caching disabled for task ':app:mergeDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:mergeDebugResources' as it is up-to-date.
+Resolve mutations for :app:packageDebugResources (Thread[included builds,5,main]) started.
+:app:packageDebugResources (Thread[included builds,5,main]) started.
+
+> Task :app:packageDebugResources UP-TO-DATE
+Caching disabled for task ':app:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:packageDebugResources' as it is up-to-date.
+Resolve mutations for :app:parseDebugLocalResources (Thread[included builds,5,main]) started.
+:app:parseDebugLocalResources (Thread[included builds,5,main]) started.
+
+> Task :app:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':app:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':app:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :app:createDebugCompatibleScreenManifests (Thread[included builds,5,main]) started.
+:app:createDebugCompatibleScreenManifests (Thread[included builds,5,main]) started.
+
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+Caching disabled for task ':app:createDebugCompatibleScreenManifests' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:createDebugCompatibleScreenManifests' as it is up-to-date.
+Resolve mutations for :app:extractDeepLinksDebug (Thread[included builds,5,main]) started.
+:app:extractDeepLinksDebug (Thread[included builds,5,main]) started.
+
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+Caching disabled for task ':app:extractDeepLinksDebug' because:
+  Build cache is disabled
+Skipping task ':app:extractDeepLinksDebug' as it is up-to-date.
+Resolve mutations for :decoder_av1:extractDeepLinksDebug (Thread[included builds,5,main]) started.
+:decoder_av1:extractDeepLinksDebug (Thread[included builds,5,main]) started.
+
+> Task :decoder_av1:extractDeepLinksDebug UP-TO-DATE
+Caching disabled for task ':decoder_av1:extractDeepLinksDebug' because:
+  Build cache is disabled
+Skipping task ':decoder_av1:extractDeepLinksDebug' as it is up-to-date.
+work action resolve navigation.json (project :decoder_av1) (Thread[included builds,5,main]) started.
+Resolve mutations for :decoder_av1:processDebugManifest (Thread[included builds,5,main]) started.
+:decoder_av1:processDebugManifest (Thread[included builds,5,main]) started.
+
+> Task :decoder_av1:processDebugManifest UP-TO-DATE
+Caching disabled for task ':decoder_av1:processDebugManifest' because:
+  Build cache is disabled
+Skipping task ':decoder_av1:processDebugManifest' as it is up-to-date.
+work action resolve AndroidManifest.xml (project :decoder_av1) (Thread[included builds,5,main]) started.
+Resolve mutations for :app:processDebugMainManifest (Thread[included builds,5,main]) started.
+:app:processDebugMainManifest (Thread[included builds,5,main]) started.
+
+> Task :app:processDebugMainManifest UP-TO-DATE
+Caching disabled for task ':app:processDebugMainManifest' because:
+  Build cache is disabled
+Skipping task ':app:processDebugMainManifest' as it is up-to-date.
+Resolve mutations for :app:processDebugManifest (Thread[included builds,5,main]) started.
+:app:processDebugManifest (Thread[included builds,5,main]) started.
+
+> Task :app:processDebugManifest UP-TO-DATE
+Caching disabled for task ':app:processDebugManifest' because:
+  Build cache is disabled
+Skipping task ':app:processDebugManifest' as it is up-to-date.
+Resolve mutations for :app:processDebugManifestForPackage (Thread[included builds,5,main]) started.
+:app:processDebugManifestForPackage (Thread[included builds,5,main]) started.
+
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+Custom actions are attached to task ':app:processDebugManifestForPackage'.
+Caching disabled for task ':app:processDebugManifestForPackage' because:
+  Build cache is disabled
+Skipping task ':app:processDebugManifestForPackage' as it is up-to-date.
+Resolve mutations for :decoder_av1:compileDebugLibraryResources (Thread[included builds,5,main]) started.
+:decoder_av1:compileDebugLibraryResources (Thread[included builds,5,main]) started.
+
+> Task :decoder_av1:compileDebugLibraryResources UP-TO-DATE
+Caching disabled for task ':decoder_av1:compileDebugLibraryResources' because:
+  Build cache is disabled
+Skipping task ':decoder_av1:compileDebugLibraryResources' as it is up-to-date.
+work action resolve out (project :decoder_av1) (Thread[included builds,5,main]) started.
+Resolve mutations for :decoder_av1:parseDebugLocalResources (Thread[included builds,5,main]) started.
+:decoder_av1:parseDebugLocalResources (Thread[included builds,5,main]) started.
+
+> Task :decoder_av1:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':decoder_av1:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':decoder_av1:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :decoder_av1:generateDebugRFile (Thread[included builds,5,main]) started.
+:decoder_av1:generateDebugRFile (Thread[included builds,5,main]) started.
+
+> Task :decoder_av1:generateDebugRFile UP-TO-DATE
+Caching disabled for task ':decoder_av1:generateDebugRFile' because:
+  Build cache is disabled
+Skipping task ':decoder_av1:generateDebugRFile' as it is up-to-date.
+work action resolve package-aware-r.txt (project :decoder_av1) (Thread[included builds,5,main]) started.
+Resolve mutations for :app:processDebugResources (Thread[included builds,5,main]) started.
+:app:processDebugResources (Thread[included builds,5,main]) started.
+
+> Task :app:processDebugResources UP-TO-DATE
+Caching disabled for task ':app:processDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:processDebugResources' as it is up-to-date.
+Resolve mutations for :decoder_av1:checkKotlinGradlePluginConfigurationErrors (Thread[included builds,5,main]) started.
+:decoder_av1:checkKotlinGradlePluginConfigurationErrors (Thread[included builds,5,main]) started.
+
+> Task :decoder_av1:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':decoder_av1:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :decoder_av1:compileDebugKotlin (Thread[included builds,5,main]) started.
+:decoder_av1:compileDebugKotlin (Thread[included builds,5,main]) started.
+
+> Task :decoder_av1:compileDebugKotlin NO-SOURCE
+Skipping task ':decoder_av1:compileDebugKotlin' as it has no source files and no previous output files.
+Resolve mutations for :decoder_av1:javaPreCompileDebug (Thread[included builds,5,main]) started.
+:decoder_av1:javaPreCompileDebug (Thread[included builds,5,main]) started.
+
+> Task :decoder_av1:javaPreCompileDebug UP-TO-DATE
+Caching disabled for task ':decoder_av1:javaPreCompileDebug' because:
+  Build cache is disabled
+Skipping task ':decoder_av1:javaPreCompileDebug' as it is up-to-date.
+Resolve mutations for :decoder_av1:compileDebugJavaWithJavac (Thread[included builds,5,main]) started.
+:decoder_av1:compileDebugJavaWithJavac (Thread[included builds,5,main]) started.
+
+> Task :decoder_av1:compileDebugJavaWithJavac UP-TO-DATE
+Custom actions are attached to task ':decoder_av1:compileDebugJavaWithJavac'.
+Caching disabled for task ':decoder_av1:compileDebugJavaWithJavac' because:
+  Build cache is disabled
+Skipping task ':decoder_av1:compileDebugJavaWithJavac' as it is up-to-date.
+No compile result for :decoder_av1:compileDebugJavaWithJavac
+Resolve mutations for :decoder_av1:bundleLibCompileToJarDebug (Thread[included builds,5,main]) started.
+:decoder_av1:bundleLibCompileToJarDebug (Thread[included builds,5,main]) started.
+
+> Task :decoder_av1:bundleLibCompileToJarDebug UP-TO-DATE
+Caching disabled for task ':decoder_av1:bundleLibCompileToJarDebug' because:
+  Build cache is disabled
+  Simple merging task
+Skipping task ':decoder_av1:bundleLibCompileToJarDebug' as it is up-to-date.
+work action resolve classes.jar (project :decoder_av1) (Thread[included builds,5,main]) started.
+Resolve mutations for :app:kaptGenerateStubsDebugKotlin (Thread[included builds,5,main]) started.
+:app:kaptGenerateStubsDebugKotlin (Thread[included builds,5,main]) started.
+
+> Task :app:kaptGenerateStubsDebugKotlin UP-TO-DATE
+Adding -Xuse-inline-scopes-numbers Kotlin compiler flag for task :app:compileDebugAndroidTestKotlin
+Caching disabled for task ':app:kaptGenerateStubsDebugKotlin' because:
+  Build cache is disabled
+Skipping task ':app:kaptGenerateStubsDebugKotlin' as it is up-to-date.
+Resolve mutations for :app:kaptDebugKotlin (Thread[included builds,5,main]) started.
+:app:kaptDebugKotlin (Thread[included builds,5,main]) started.
+
+> Task :app:kaptDebugKotlin UP-TO-DATE
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+Caching disabled for task ':app:kaptDebugKotlin' because:
+  Build cache is disabled
+Skipping task ':app:kaptDebugKotlin' as it is up-to-date.
+Resolve mutations for :app:compileDebugKotlin (Thread[included builds,5,main]) started.
+:app:compileDebugKotlin (Thread[included builds,5,main]) started.
+
+> Task :app:compileDebugKotlin
+Caching disabled for task ':app:compileDebugKotlin' because:
+  Build cache is disabled
+Task ':app:compileDebugKotlin' is not up-to-date because:
+  Input property 'sources' file C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\JellyfinVideoPlayerScreen.kt has changed.
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\kotlin', not found
+file or directory 'C:\Users\flex360\AndroidStudioProjects\elefin\app\src\debug\java', not found
+Kotlin source files: C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\BrowseErrorActivity.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\CardPresenter.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\CastInfoActivity.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\components\DigitalClock.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\components\DiscoverViewMoreCard.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\components\TvTextField.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\DetailsActivity.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\DetailsDescriptionPresenter.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\ElefinApplication.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\ErrorFragment.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\GlideConfiguration.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\jellyfin\AppSettings.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\jellyfin\JellyfinApi.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\jellyfin\JellyfinAuthService.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\jellyfin\JellyfinConfig.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\jellyfin\JellyfinRepository.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\jellyfin\QuickConnectService.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\jellyfin\ServerDiscovery.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\JellyfinHomeActivity.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\JellyfinVideoPlayerActivity.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\jellyseerr\JellyseerrApiService.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\jellyseerr\JellyseerrModels.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\JellyseerrDetailsActivity.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\MainActivity.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\MainFragment.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\Movie.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\MovieDetailsActivity.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\MovieList.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\MoviesLibraryActivity.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\data\JellyfinMusicApi.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\data\MusicRepository.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\model\Album.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\model\Artist.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\model\Track.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\MusicNavigation.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\player\AudioPlayerService.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\player\AudioQueueManager.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\player\PlayerConnection.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\ui\AlbumScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\ui\apple\AppleAlbumScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\ui\apple\AppleArtistScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\ui\apple\AppleBlurBackground.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\ui\apple\AppleLargeAlbumArt.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\ui\apple\AppleNowPlayingScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\ui\apple\AppleTrackRow.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\ui\ArtistScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\ui\MusicHomeScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\music\ui\NowPlayingScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\MusicActivity.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\networking\ElefinDownloader.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\PlaybackActivity.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\PlaybackVideoFragment.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\player\GLVideoSurfaceView.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\player\mpv\MpvElefinLauncher.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\player\mpv\MpvPlayerControls.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\player\mpv\MpvShaderManager.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\player\mpv\MpvTvPlayerActivity.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\player\mpv\MpvUrlBuilder.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\player\SubtitleDownloader.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\player\SubtitleMapper.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\AnimatedPlayButton.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\CastInfoScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\EpisodeLongPressMenu.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\ItemDetailsSection.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\JellyfinHomeScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\JellyfinLoginScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\JellyfinVideoPlayerScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\JellyseerrDetailsScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\MovieDetailsScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\MovieRequestScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\MoviesLibraryScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\SearchScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\SeriesDetailsScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\ServerEntryScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\SettingsScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\TimeUtils.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\TvShowRequestScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\TvShowsLibraryScreen.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\UpdateDialog.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\SeriesDetailsActivity.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\subtitles\OpenSubtitlesApi.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\subtitles\SubtitleDownloadDialogs.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\theme\FocusStyle.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\theme\ThemeConfig.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\theme\ThemeLoader.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\Theme.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\tmdb\TmdbApiService.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\tmdb\TmdbModels.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\TrailerLauncher.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\TvShowsLibraryActivity.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\Type.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\ui\PlexTheme.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\ui\TvBringIntoViewSpec.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\updater\GitHubRelease.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\updater\UpdateService.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\VideoDetailsFragment.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\is\xyz\mpv\BaseMPVView.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\is\xyz\mpv\MPVLib.kt, C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\is\xyz\mpv\MPVView.kt
+Java source files: C:\Users\flex360\AndroidStudioProjects\elefin\app\build\generated\source\buildConfig\debug\com\flex\elefin\BuildConfig.java, C:\Users\flex360\AndroidStudioProjects\elefin\app\build\generated\source\kapt\debug\com\bumptech\glide\GeneratedAppGlideModuleImpl.java, C:\Users\flex360\AndroidStudioProjects\elefin\app\build\generated\source\kapt\debug\com\bumptech\glide\GeneratedRequestManagerFactory.java, C:\Users\flex360\AndroidStudioProjects\elefin\app\build\generated\source\kapt\debug\com\flex\elefin\GlideApp.java, C:\Users\flex360\AndroidStudioProjects\elefin\app\build\generated\source\kapt\debug\com\flex\elefin\GlideOptions.java, C:\Users\flex360\AndroidStudioProjects\elefin\app\build\generated\source\kapt\debug\com\flex\elefin\GlideRequest.java, C:\Users\flex360\AndroidStudioProjects\elefin\app\build\generated\source\kapt\debug\com\flex\elefin\GlideRequests.java
+Script source files: 
+Script file extensions: 
+Using Kotlin/JVM incremental compilation
+[KOTLIN] Kotlin compilation 'jdkHome' argument: null
+Options for KOTLIN DAEMON: IncrementalCompilationOptions(super=CompilationOptions(compilerMode=INCREMENTAL_COMPILER, targetPlatform=JVM, reportCategories=[0, 3], reportSeverity=2, requestedCompilationResults=[0], kotlinScriptExtensions=[]), areFileChangesKnown=true, modifiedFiles=[C:\Users\flex360\AndroidStudioProjects\elefin\app\src\main\java\com\flex\elefin\screens\JellyfinVideoPlayerScreen.kt], deletedFiles=[], classpathChanges=NoChanges, workingDir=C:\Users\flex360\AndroidStudioProjects\elefin\app\build\kotlin\compileDebugKotlin\cacheable, multiModuleICSettings=MultiModuleICSettings(buildHistoryFile=C:\Users\flex360\AndroidStudioProjects\elefin\app\build\kotlin\compileDebugKotlin\local-state\build-history.bin, useModuleDetection=true), usePreciseJavaTracking=true, icFeatures=IncrementalCompilationFeatures(withAbiSnapshot=false, preciseCompilationResultsBackup=true, keepIncrementalCompilationCachesInMemory=true, enableUnsafeIncrementalCompilationForMultiplatform=false), outputFiles=[C:\Users\flex360\AndroidStudioProjects\elefin\app\build\tmp\kotlin-classes\debug, C:\Users\flex360\AndroidStudioProjects\elefin\app\build\kotlin\compileDebugKotlin\cacheable, C:\Users\flex360\AndroidStudioProjects\elefin\app\build\kotlin\compileDebugKotlin\local-state])
+e: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:285:13 'selectTracks' in 'MappingTrackSelector' is final and cannot be overridden.
+e: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:331:39 Unresolved reference 'mediaTrackGroup'.
+e: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:336:38 Cannot access 'field trackSelectionFactory: ExoTrackSelection.Factory': it is private in 'androidx/media3/exoplayer/trackselection/DefaultTrackSelector'.
+e: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:336:96 Null cannot be a value of a non-null type 'androidx.media3.exoplayer.upstream.BandwidthMeter'.
+e: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:336:96 No value passed for parameter 'p2'.
+e: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:336:96 No value passed for parameter 'p3'.
+Finished executing kotlin compiler using DAEMON strategy
+Restoring task outputs to pre-compilation state
+
+> Task :app:compileDebugKotlin FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileDebugKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 33s
+39 actionable tasks: 1 executed, 38 up-to-date
+Watched directory hierarchies: [C:\Users\flex360\AndroidStudioProjects\elefin]

@@ -1,0 +1,96 @@
+﻿To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :timeago-parser:processResources NO-SOURCE
+> Task :newpipe-extractor:extractIncludeProto UP-TO-DATE
+> Task :newpipe-extractor:extractProto UP-TO-DATE
+> Task :newpipe-extractor:generateProto UP-TO-DATE
+> Task :timeago-parser:compileJava UP-TO-DATE
+> Task :newpipe-extractor:compileJava UP-TO-DATE
+> Task :newpipe-extractor:processResources UP-TO-DATE
+> Task :newpipe-extractor:classes UP-TO-DATE
+> Task :newpipe-extractor:jar UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:generateDebugBuildConfig UP-TO-DATE
+> Task :decoder_av1:preBuild UP-TO-DATE
+> Task :decoder_av1:preDebugBuild UP-TO-DATE
+> Task :decoder_av1:writeDebugAarMetadata UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :decoder_av1:processDebugNavigationResources UP-TO-DATE
+> Task :app:processDebugNavigationResources UP-TO-DATE
+> Task :app:compileDebugNavigationResources UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :decoder_av1:generateDebugResValues UP-TO-DATE
+> Task :decoder_av1:generateDebugResources UP-TO-DATE
+> Task :decoder_av1:packageDebugResources UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :decoder_av1:extractDeepLinksDebug UP-TO-DATE
+> Task :decoder_av1:processDebugManifest UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :decoder_av1:compileDebugLibraryResources UP-TO-DATE
+> Task :decoder_av1:parseDebugLocalResources UP-TO-DATE
+> Task :decoder_av1:generateDebugRFile UP-TO-DATE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :decoder_av1:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :decoder_av1:compileDebugKotlin NO-SOURCE
+> Task :decoder_av1:javaPreCompileDebug UP-TO-DATE
+> Task :decoder_av1:compileDebugJavaWithJavac UP-TO-DATE
+> Task :decoder_av1:bundleLibCompileToJarDebug UP-TO-DATE
+
+> Task :app:kaptGenerateStubsDebugKotlin
+w: Kapt currently doesn't support language version 2.0+. Falling back to 1.9.
+
+> Task :app:kaptDebugKotlin UP-TO-DATE
+> Task :app:compileDebugKotlin
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/music/ui/AlbumScreen.kt:176:45 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/music/ui/ArtistScreen.kt:251:49 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/music/ui/MusicHomeScreen.kt:222:49 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/music/ui/NowPlayingScreen.kt:131:45 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/music/ui/NowPlayingScreen.kt:218:53 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/music/ui/NowPlayingScreen.kt:229:53 'val Icons.Filled.QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.QueueMusic.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/music/ui/NowPlayingScreen.kt:509:49 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/player/mpv/MpvPlayerControls.kt:405:80 'val Icons.Filled.VolumeUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.VolumeUp.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/player/mpv/MpvTvPlayerActivity.kt:155:28 This is a delicate API and its use requires care. Make sure you fully read and understand documentation of the declaration that is marked as a delicate API.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinHomeScreen.kt:814:68 This declaration needs opt-in. Its usage should be marked with '@coil.annotation.ExperimentalCoilApi' or '@OptIn(coil.annotation.ExperimentalCoilApi::class)'
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinHomeScreen.kt:999:60 Condition is always 'true'.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinHomeScreen.kt:1006:61 Condition is always 'true'.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:263:22 'fun setDisabledTextTrackSelectionFlags(p0: Int): DefaultTrackSelector.Parameters.Builder' is deprecated. Deprecated in Java.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:276:27 'static field CONTENT_TYPE_MOVIE: Int' is deprecated. Deprecated in Java.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:435:28 This is a delicate API and its use requires care. Make sure you fully read and understand documentation of the declaration that is marked as a delicate API.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:2250:32 This is a delicate API and its use requires care. Make sure you fully read and understand documentation of the declaration that is marked as a delicate API.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:2967:50 Check for instance is always 'true'.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/JellyfinVideoPlayerScreen.kt:3793:85 'val Icons.Filled.VolumeUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.VolumeUp.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/MovieDetailsScreen.kt:1602:57 'constructor(p0: String!): Locale' is deprecated. Deprecated in Java.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/MovieDetailsScreen.kt:1914:45 'val Icons.Filled.VolumeUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.VolumeUp.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/SeriesDetailsScreen.kt:1981:58 'constructor(p0: String!): Locale' is deprecated. Deprecated in Java.
+w: file:///C:/Users/flex360/AndroidStudioProjects/elefin/app/src/main/java/com/flex/elefin/screens/SeriesDetailsScreen.kt:2187:49 'val Icons.Filled.VolumeUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.VolumeUp.
+
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:compileDebugJavaWithJavac
+> Task :app:mergeDebugShaders UP-TO-DATE
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :decoder_av1:mergeDebugShaders UP-TO-DATE
+> Task :decoder_av1:compileDebugShaders NO-SOURCE
+> Task :decoder_av1:generateDebugAssets UP-TO-DATE
+> Task :decoder_av1:mergeDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets UP-TO-DATE
+> Task :app:compressDebugAssets UP-TO-DATE
+> Task :timeago-parser:classes UP-TO-DATE
+> Task :timeago-parser:jar
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :decoder_av1:processDebugJavaRes NO-SOURCE
+> Task :app:mergeDebugJavaResource
+> Task :app:checkDebugDuplicateClasses UP-TO-DATE
+> Task :app:desugarDebugFileDependencies
+> Task :app:mergeExtDexDebug
