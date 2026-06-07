@@ -6,12 +6,23 @@ All notable changes to Elefin will be documented in this file.
 
 ## 2026-06-07
 
+### Added
+
+- **Expanded Theme Accent Colors**
+  - Added new color presets to the settings appearance menu: Matte Black, Teal, Pink, Lavender, and Cyan.
+
 ### Improved
 
 - **Android TV Home Screen Scroll Performance**
   - Restructured the TV Home Screen layout to completely eliminate vertical scrolling lag.
   - Optimized background image rendering and color transitions to prevent interface stutter when switching selections.
   - Streamlined library filtering and scrolling behavior to ensure a smooth, stable frame rate.
+
+### Fixed
+
+- **Android TV Theme Accent Color Picker**
+  - Fixed an issue where changing the accent color in Settings on Android TV would not update the app theme, causing it to remain stuck on the default yellow.
+  - Added dynamic text contrast checks that automatically switch text/icon overlays to white when using dark accent colors like Matte Black, ensuring readable menus.
 
 ---
 

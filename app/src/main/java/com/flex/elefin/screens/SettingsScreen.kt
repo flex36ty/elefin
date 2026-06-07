@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -122,7 +124,7 @@ enum class SettingsCategory(val title: String, val icon: ImageVector) {
     COFFEE("Buy Me a Coffee", Icons.Filled.Favorite)
 }
 
-@OptIn(coil.annotation.ExperimentalCoilApi::class)
+@OptIn(coil.annotation.ExperimentalCoilApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
@@ -1819,15 +1821,20 @@ fun SettingsScreen(
                                 Pair("Green", "#4CAF50"),
                                 Pair("Red", "#F44336"),
                                 Pair("Purple", "#9C27B0"),
-                                Pair("Orange", "#FF9800")
+                                Pair("Orange", "#FF9800"),
+                                Pair("Matte Black", "#1A1A1A"),
+                                Pair("Teal", "#009688"),
+                                Pair("Pink", "#E91E63"),
+                                Pair("Lavender", "#A084E8"),
+                                Pair("Cyan", "#00BCD4")
                             )
 
-                            Row(
+                            FlowRow(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 16.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 colorPresets.forEach { (name, hex) ->
                                     val color = Color(android.graphics.Color.parseColor(hex))
