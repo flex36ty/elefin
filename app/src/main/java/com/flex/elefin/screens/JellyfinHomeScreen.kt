@@ -291,9 +291,11 @@ fun JellyfinHomeScreen(
     val allMovieLibraries = movieLibrariesState?.value ?: emptyList()
     
     // Get movie libraries (libraries that have movies)
-    val movieLibraries = allMovieLibraries.filter { library ->
-        recentlyAddedMoviesByLibrary.containsKey(library.Id)
-    }.sortedBy { it.Name } // Sort by name for consistent ordering
+    val movieLibraries = remember(allMovieLibraries, recentlyAddedMoviesByLibrary) {
+        allMovieLibraries.filter { library ->
+            recentlyAddedMoviesByLibrary.containsKey(library.Id)
+        }.sortedBy { it.Name } // Sort by name for consistent ordering
+    }
     
     val recentlyReleasedMoviesState = repository?.recentlyReleasedMovies?.collectAsState(initial = emptyList())
     val recentlyReleasedMovies = recentlyReleasedMoviesState?.value ?: emptyList()
@@ -305,9 +307,11 @@ fun JellyfinHomeScreen(
     val recentlyAddedEpisodesByLibrary = recentlyAddedEpisodesByLibraryState?.value ?: emptyMap()
     
     // Get TV show libraries (libraries that have shows or episodes)
-    val tvShowLibraries = (movieLibrariesState?.value ?: emptyList()).filter { library ->
-        recentlyAddedShowsByLibrary.containsKey(library.Id) || recentlyAddedEpisodesByLibrary.containsKey(library.Id)
-    }.sortedBy { it.Name } // Sort by name for consistent ordering
+    val tvShowLibraries = remember(allMovieLibraries, recentlyAddedShowsByLibrary, recentlyAddedEpisodesByLibrary) {
+        allMovieLibraries.filter { library ->
+            recentlyAddedShowsByLibrary.containsKey(library.Id) || recentlyAddedEpisodesByLibrary.containsKey(library.Id)
+        }.sortedBy { it.Name } // Sort by name for consistent ordering
+    }
     
     val librariesState = repository?.libraries?.collectAsState(initial = emptyList())
     val libraries = librariesState?.value ?: emptyList()
@@ -490,10 +494,6 @@ fun JellyfinHomeScreen(
     // Job to track debounced background image changes
     var backgroundChangeJob by remember { mutableStateOf<Job?>(null) }
     
-    // Plex-style dynamic background palette
-    val paletteCache = remember { mutableMapOf<String, ArtworkPalette>() }
-    var currentArtworkPalette by remember { mutableStateOf<ArtworkPalette?>(null) }
-    
     // Set initial highlighted item to first continue watching item or first recently added movie
     LaunchedEffect(continueWatchingItems, recentlyAddedMoviesByLibrary) {
         if (highlightedItem == null) {
@@ -550,196 +550,17 @@ fun JellyfinHomeScreen(
         }
     }
     
-    // Track scrolling state for background optimization
-    val isScrolling: State<Boolean> = remember {
-        derivedStateOf {
-            homeLazyListState.isScrollInProgress || 
-            libraryLazyListState.isScrollInProgress || 
-            collectionsLazyListState.isScrollInProgress
-        }
-    }
-    
-    // Main content (navigation drawer removed due to performance issues - using tab bar instead)
-    // Wrap with TV-optimized bring-into-view behavior for better focus handling
     TvBringIntoViewProvider {
-    Box(Modifier.fillMaxSize()) {
-            // Featured carousel with backdrop - extends behind bottom container
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-            ) {
-                // Get image URL for current highlighted item - use backdrop photo
-                // For episodes, use the series backdrop; for other items, use their own backdrop
-                val imageUrl = highlightedItem?.let { item ->
-                // If this is an episode, get the series backdrop
-                val itemId = if (item.Type == "Episode" && item.SeriesId != null) {
-                    item.SeriesId
-                } else {
-                    item.Id
-                }
-                
-                // Prioritize backdrop for home screen background
-                // Low power mode uses 720p, normal mode uses 1080p, 4K mode uses 2160p
-                val bgMaxWidth = if (lowPowerMode.value) 1280 else if (settings.use4KBackgrounds) 3840 else 1920
-                val bgMaxHeight = if (lowPowerMode.value) 720 else if (settings.use4KBackgrounds) 2160 else 1080
-                val bgQuality = if (lowPowerMode.value) 75 else if (settings.use4KBackgrounds) 95 else 90
-                
-                val backdropUrl = apiService?.getImageUrl(itemId, "Backdrop", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
-                if (backdropUrl.isNotEmpty()) {
-                    backdropUrl
-                } else {
-                    // Fall back to primary image if no backdrop
-                    apiService?.getImageUrl(itemId, "Primary", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
-                }
-            } ?: ""
-            
-            // Extract palette from the current image URL
-            LaunchedEffect(imageUrl) {
-                if (imageUrl.isNotEmpty()) {
-                    // Check cache first
-                    val cacheKey = highlightedItem?.Id ?: imageUrl
-                    paletteCache[cacheKey]?.let {
-                        currentArtworkPalette = it
-                        return@LaunchedEffect
-                    }
-
-                    withContext(Dispatchers.IO) {
-                        try {
-                            val loader = coil.ImageLoader(context)
-                            val request = ImageRequest.Builder(context)
-                                .data(imageUrl)
-                                .allowHardware(false) // Required for Palette
-                                .build()
-                            
-                            val result = loader.execute(request)
-                            if (result is SuccessResult) {
-                                val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
-                                if (bitmap != null) {
-                                    val palette = PlexPaletteExtractor.extract(context, bitmap)
-                                    withContext(Dispatchers.Main) {
-                                        paletteCache[cacheKey] = palette
-                                        currentArtworkPalette = palette
-                                    }
-                                }
-                            }
-                        } catch (e: Exception) {
-                            Log.e("JellyfinHomeScreen", "Error extracting palette", e)
-                        }
-                    }
-                } else {
-                    currentArtworkPalette = null
-                }
-            }
-            
-            // Use Crossfade for smooth fade in/out animation
-            // In dark mode, don't show background image - use Material dark background instead
-            // Optimization: Disable crossfade while scrolling to reduce GPU load
-            if (!darkModeEnabled) {
-                if (isScrolling.value) {
-                    // Show target image instantly without animation while scrolling
-                    if (imageUrl.isNotEmpty() && apiService != null) {
-                        val headerMap = apiService.getImageRequestHeaders()
-                        AsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data(imageUrl)
-                                .headers(headerMap)
-                                .memoryCachePolicy(CachePolicy.ENABLED)
-                                .diskCachePolicy(CachePolicy.ENABLED)
-                                .allowHardware(true)
-                                .build(),
-                            contentDescription = highlightedItem?.Name ?: "",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.FillBounds,
-                            alignment = Alignment.Center
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                        )
-                    }
-                } else {
-                    Crossfade(
-                        targetState = imageUrl,
-                        animationSpec = tween(durationMillis = 500),
-                        label = "background_fade"
-                    ) { currentUrl ->
-                        if (currentUrl.isNotEmpty() && apiService != null) {
-                            val headerMap = apiService.getImageRequestHeaders()
-                            AsyncImage(
-                                model = ImageRequest.Builder(LocalContext.current)
-                                    .data(currentUrl)
-                                    .headers(headerMap)
-                                    .memoryCachePolicy(CachePolicy.ENABLED)
-                                    .diskCachePolicy(CachePolicy.ENABLED)
-                                    .crossfade(300) // Smooth 300ms crossfade when loading
-                                    .allowHardware(true) // Use GPU memory for faster rendering
-                                    .build(),
-                                contentDescription = highlightedItem?.Name ?: "",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.FillBounds,
-                                alignment = Alignment.Center
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                            )
-                        }
-                    }
-                }
-            } else {
-                // Dark mode: use Material dark background
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surface)
-                )
-            }
-            
-            // Dark overlay and scrim - different opacity based on view mode
-            // Skip overlay in dark mode since we're using a dark background
-            if ((selectedLibraryId == null && selectedCollectionId == null) && !darkModeEnabled) {
-                // Default home view: 20% darkness + gradient scrim
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.1f))
-                )
-                
-                // Scrim gradient overlay
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .carouselGradient()
-                )
-            } else if (!darkModeEnabled) {
-                // Library or Collections view: 20% darkness + gradient scrim (same as home)
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.1f))
-                )
-                
-                // Scrim gradient overlay
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .carouselGradient()
-                )
-            }
-            
-            // Apply Plex-style dynamic gradient overlay
-            if (currentArtworkPalette != null && !darkModeEnabled) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(PlexBackdropGradient(currentArtworkPalette!!))
-                )
-            }
-        }
+        Box(Modifier.fillMaxSize()) {
+            TvHomeBackground(
+                highlightedItem = highlightedItem,
+                apiService = apiService,
+                darkModeEnabled = darkModeEnabled,
+                lowPowerMode = lowPowerMode.value,
+                use4KBackgrounds = settings.use4KBackgrounds,
+                selectedLibraryId = selectedLibraryId,
+                selectedCollectionId = selectedCollectionId
+            )
         
         // Top row with home button and library buttons - positioned absolutely on top of carousel
         Box(
@@ -1627,180 +1448,26 @@ fun JellyfinHomeScreen(
                                 }
                             )
                     ) {
-                        // Continue Watching row
-                        if (continueWatchingItems.isNotEmpty()) {
-                            item(key = "continue_watching", contentType = "media_row") {
-                                Column(
-                                    modifier = Modifier
-                                        .padding(top = 12.dp)
-                                        .focusRequester(focusRequester)
-                                ) {
-                                    Text(
-                                        text = "Continue Watching",
-                                        style = MaterialTheme.typography.headlineMedium.copy(
-                                            fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
-                                        ),
-                                        modifier = Modifier.padding(bottom = 12.dp, top = 12.dp)
-                                    )
-                                    
-                                    LazyRow(
-                                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
-                                        horizontalArrangement = Arrangement.spacedBy(26.dp),
-                                        flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
-                                        modifier = if (debugOutlinesEnabled) {
-                                            Modifier.border(2.dp, Color.Magenta)
-                                        } else {
-                                            Modifier
-                                        }
-                                    ) {
-                                        items(
-                                            items = continueWatchingItems,
-                                            key = { it.Id },
-                                            contentType = { "horizontal_card_progress" }
-                                        ) { item ->
-                                            JellyfinHorizontalCardWithProgress(
-                                                item = item,
-                                                apiService = apiService,
-                                                onClick = {
-                                                    val resumePositionMs = item.UserData?.PositionTicks?.let { it / 10_000 } ?: 0L
-                                                    onItemClick(item, resumePositionMs)
-                                                },
-                                                onFocusChanged = { isFocused ->
-                                                    if (isFocused) {
-                                                        instantHighlightedItem = item
-                                                        originalEpisodeItem = if (item.Type == "Episode") item else null
-                                                        backgroundChangeJob?.cancel()
-                                                        backgroundChangeJob = scope.launch {
-                                                            delay(1300)
-                                                            if (item.Type == "Episode" && item.SeriesId != null) {
-                                                                val seriesDetails = apiService?.getItemDetails(item.SeriesId)
-                                                                if (seriesDetails != null) {
-                                                                    highlightedItem = seriesDetails
-                                                                } else {
-                                                                    highlightedItem = item
-                                                                }
-                                                            } else {
-                                                                highlightedItem = item
-                                                            }
-                                                        }
-                                                    }
-                                                },
-                                                useSimpleCards = useSimpleCards.value,
-                                                useGoogleTvCards = useGoogleTvCards.value,
-                                                lowPowerMode = lowPowerMode.value,
-                                                imageRefreshKey = imageRefreshKey
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Next Up row
-                        if (nextUpItems.isNotEmpty()) {
-                            item(key = "next_up", contentType = "media_row") {
-                                val isFirst = continueWatchingItems.isEmpty()
-                                Column(
-                                    modifier = Modifier
-                                        .then(
-                                            if (isFirst) {
-                                                Modifier.padding(top = 12.dp).focusRequester(focusRequester)
-                                            } else {
-                                                Modifier
-                                            }
-                                        )
-                                ) {
-                                    Text(
-                                        text = "Next Up",
-                                        style = MaterialTheme.typography.headlineMedium.copy(
-                                            fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
-                                        ),
-                                        modifier = Modifier.padding(bottom = 12.dp, top = if (isFirst) 12.dp else 30.36.dp)
-                                    )
-                                    
-                                    LazyRow(
-                                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
-                                        horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                        flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
-                                        modifier = if (debugOutlinesEnabled) {
-                                            Modifier.border(2.dp, Color.Magenta)
-                                        } else {
-                                            Modifier
-                                        }
-                                    ) {
-                                        items(
-                                            items = nextUpItems,
-                                            key = { it.Id },
-                                            contentType = { "collection_item" }
-                                        ) { item ->
-                                            JellyfinHorizontalCard(
-                                                item = item,
-                                                apiService = apiService,
-                                                onClick = {
-                                                    onItemClick(item, 0L)
-                                                },
-                                                onFocusChanged = { isFocused ->
-                                                    if (isFocused) {
-                                                        instantHighlightedItem = item
-                                                        originalEpisodeItem = if (item.Type == "Episode") item else null
-                                                        backgroundChangeJob?.cancel()
-                                                        backgroundChangeJob = scope.launch {
-                                                            delay(1300)
-                                                            if (item.Type == "Episode" && item.SeriesId != null) {
-                                                                val seriesDetails = apiService?.getItemDetails(item.SeriesId)
-                                                                if (seriesDetails != null) {
-                                                                    highlightedItem = seriesDetails
-                                                                } else {
-                                                                    highlightedItem = item
-                                                                }
-                                                            } else {
-                                                                highlightedItem = item
-                                                            }
-                                                        }
-                                                    }
-                                                },
-                                                enableCaching = cacheLibraryImages,
-                                                reducePosterResolution = reducePosterResolution,
-                                                useSeriesPosterForEpisodes = true,
-                                                useSimpleCards = useSimpleCards.value,
-                                                useGoogleTvCards = useGoogleTvCards.value,
-                                                lowPowerMode = lowPowerMode.value,
-                                                imageRefreshKey = imageRefreshKey
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Recently Added Movies rows - one per movie library
-                        movieLibraries.forEachIndexed { index, library ->
-                            val libraryMovies = recentlyAddedMoviesByLibrary[library.Id] ?: emptyList()
-                            if (libraryMovies.isNotEmpty()) {
-                                item(key = "recently_added_movies_${library.Id}", contentType = "media_row") {
-                                    val isFirst = continueWatchingItems.isEmpty() && nextUpItems.isEmpty() && index == 0
-                                    val rowTitle = if (index == 0) "Recently Added Movies" else "Recently Added ${library.Name}"
+                        item(key = "home_content_rows", contentType = "home_rows") {
+                            Column {
+                                // Continue Watching row
+                                if (continueWatchingItems.isNotEmpty()) {
                                     Column(
                                         modifier = Modifier
-                                            .then(
-                                                if (isFirst) {
-                                                    Modifier.padding(top = 12.dp).focusRequester(focusRequester)
-                                                } else {
-                                                    Modifier
-                                                }
-                                            )
+                                            .padding(top = 12.dp)
+                                            .focusRequester(focusRequester)
                                     ) {
                                         Text(
-                                            text = rowTitle,
+                                            text = "Continue Watching",
                                             style = MaterialTheme.typography.headlineMedium.copy(
                                                 fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
                                             ),
-                                            modifier = Modifier.padding(bottom = 12.dp, top = if (isFirst) 12.dp else 30.36.dp)
+                                            modifier = Modifier.padding(bottom = 12.dp, top = 12.dp)
                                         )
                                         
                                         LazyRow(
-                                            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
-                                            horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
+                                            horizontalArrangement = Arrangement.spacedBy(26.dp),
                                             flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                             modifier = if (debugOutlinesEnabled) {
                                                 Modifier.border(2.dp, Color.Magenta)
@@ -1809,27 +1476,37 @@ fun JellyfinHomeScreen(
                                             }
                                         ) {
                                             items(
-                                                items = libraryMovies,
+                                                items = continueWatchingItems,
                                                 key = { it.Id },
-                                                contentType = { "collection_item" }
+                                                contentType = { "horizontal_card_progress" }
                                             ) { item ->
-                                                JellyfinHorizontalCard(
+                                                JellyfinHorizontalCardWithProgress(
                                                     item = item,
                                                     apiService = apiService,
-                                                    onClick = { onItemClick(item, 0L) },
+                                                    onClick = {
+                                                        val resumePositionMs = item.UserData?.PositionTicks?.let { it / 10_000 } ?: 0L
+                                                        onItemClick(item, resumePositionMs)
+                                                    },
                                                     onFocusChanged = { isFocused ->
                                                         if (isFocused) {
                                                             instantHighlightedItem = item
-                                                            originalEpisodeItem = null
+                                                            originalEpisodeItem = if (item.Type == "Episode") item else null
                                                             backgroundChangeJob?.cancel()
                                                             backgroundChangeJob = scope.launch {
                                                                 delay(1300)
-                                                                highlightedItem = item
+                                                                if (item.Type == "Episode" && item.SeriesId != null) {
+                                                                    val seriesDetails = apiService?.getItemDetails(item.SeriesId)
+                                                                    if (seriesDetails != null) {
+                                                                        highlightedItem = seriesDetails
+                                                                    } else {
+                                                                        highlightedItem = item
+                                                                    }
+                                                                } else {
+                                                                    highlightedItem = item
+                                                                }
                                                             }
                                                         }
                                                     },
-                                                    enableCaching = cacheLibraryImages,
-                                                    reducePosterResolution = reducePosterResolution,
                                                     useSimpleCards = useSimpleCards.value,
                                                     useGoogleTvCards = useGoogleTvCards.value,
                                                     lowPowerMode = lowPowerMode.value,
@@ -1839,95 +1516,10 @@ fun JellyfinHomeScreen(
                                         }
                                     }
                                 }
-                            }
-                        }
-                        
-                        // Recently Released Movies row
-                        if (recentlyReleasedMovies.isNotEmpty()) {
-                            item(key = "recently_released_movies", contentType = "media_row") {
-                                val isFirst = continueWatchingItems.isEmpty() && nextUpItems.isEmpty() && movieLibraries.none { (recentlyAddedMoviesByLibrary[it.Id] ?: emptyList()).isNotEmpty() }
-                                Column(
-                                    modifier = Modifier
-                                        .then(
-                                            if (isFirst) {
-                                                Modifier.padding(top = 12.dp).focusRequester(focusRequester)
-                                            } else {
-                                                Modifier
-                                            }
-                                        )
-                                ) {
-                                    Text(
-                                        text = "Recently Released Movies",
-                                        style = MaterialTheme.typography.headlineMedium.copy(
-                                            fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
-                                        ),
-                                        modifier = Modifier.padding(bottom = 12.dp, top = if (isFirst) 12.dp else 30.36.dp)
-                                    )
-                                    
-                                    LazyRow(
-                                        contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
-                                        horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                        modifier = if (debugOutlinesEnabled) {
-                                            Modifier.border(2.dp, Color.Magenta)
-                                        } else {
-                                            Modifier
-                                        }
-                                    ) {
-                                        items(
-                                            items = recentlyReleasedMovies,
-                                            key = { it.Id },
-                                            contentType = { "collection_item" }
-                                        ) { item ->
-                                            JellyfinHorizontalCard(
-                                                item = item,
-                                                apiService = apiService,
-                                                onClick = { onItemClick(item, 0L) },
-                                                onFocusChanged = { isFocused ->
-                                                    if (isFocused) {
-                                                        instantHighlightedItem = item
-                                                        originalEpisodeItem = null
-                                                        backgroundChangeJob?.cancel()
-                                                        backgroundChangeJob = scope.launch {
-                                                            delay(1300)
-                                                            highlightedItem = item
-                                                        }
-                                                    }
-                                                },
-                                                enableCaching = cacheLibraryImages,
-                                                reducePosterResolution = reducePosterResolution,
-                                                useSimpleCards = useSimpleCards.value,
-                                                useGoogleTvCards = useGoogleTvCards.value,
-                                                lowPowerMode = lowPowerMode.value,
-                                                imageRefreshKey = imageRefreshKey
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Recently Added Shows rows - one per TV show library
-                        val hasPrecedingRowsForShows = continueWatchingItems.isNotEmpty() || nextUpItems.isNotEmpty() || movieLibraries.any { (recentlyAddedMoviesByLibrary[it.Id] ?: emptyList()).isNotEmpty() } || recentlyReleasedMovies.isNotEmpty()
-                        tvShowLibraries.forEachIndexed { libraryIndex, library ->
-                            val libraryShows = recentlyAddedShowsByLibrary[library.Id]?.let { shows ->
-                                if (hideShowsWithZeroEpisodes) {
-                                    shows.filter { item ->
-                                        if (item.Type != "Series") {
-                                            true
-                                        } else {
-                                            val episodeCount = item.RecursiveItemCount ?: item.ChildCount ?: 0
-                                            episodeCount > 0
-                                        }
-                                    }
-                                } else {
-                                    shows
-                                }
-                            } ?: emptyList()
-                            
-                            if (libraryShows.isNotEmpty()) {
-                                item(key = "recently_added_shows_${library.Id}", contentType = "media_row") {
-                                    val isFirst = !hasPrecedingRowsForShows && libraryIndex == 0
-                                    val rowTitle = if (libraryIndex == 0) "Recently Added Shows" else "Recently Added Shows in ${library.Name}"
+                                
+                                // Next Up row
+                                if (nextUpItems.isNotEmpty()) {
+                                    val isFirst = continueWatchingItems.isEmpty()
                                     Column(
                                         modifier = Modifier
                                             .then(
@@ -1939,7 +1531,7 @@ fun JellyfinHomeScreen(
                                             )
                                     ) {
                                         Text(
-                                            text = rowTitle,
+                                            text = "Next Up",
                                             style = MaterialTheme.typography.headlineMedium.copy(
                                                 fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
                                             ),
@@ -1947,7 +1539,7 @@ fun JellyfinHomeScreen(
                                         )
                                         
                                         LazyRow(
-                                            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
+                                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                             horizontalArrangement = Arrangement.spacedBy(20.dp),
                                             flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                             modifier = if (debugOutlinesEnabled) {
@@ -1957,79 +1549,7 @@ fun JellyfinHomeScreen(
                                             }
                                         ) {
                                             items(
-                                                items = libraryShows,
-                                                key = { it.Id },
-                                                contentType = { "collection_item" }
-                                            ) { item ->
-                                                JellyfinHorizontalCard(
-                                                    item = item,
-                                                    apiService = apiService,
-                                                    onClick = { onItemClick(item, 0L) },
-                                                    onFocusChanged = { isFocused ->
-                                                        if (isFocused) {
-                                                            instantHighlightedItem = item
-                                                            originalEpisodeItem = null
-                                                            backgroundChangeJob?.cancel()
-                                                            backgroundChangeJob = scope.launch {
-                                                                delay(1300)
-                                                                highlightedItem = item
-                                                            }
-                                                        }
-                                                    },
-                                                    enableCaching = cacheLibraryImages,
-                                                    reducePosterResolution = reducePosterResolution,
-                                                    unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null,
-                                                    useSimpleCards = useSimpleCards.value,
-                                                    useGoogleTvCards = useGoogleTvCards.value,
-                                                    lowPowerMode = lowPowerMode.value,
-                                                    imageRefreshKey = imageRefreshKey
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Recently Added Episodes rows - one per TV show library
-                        val hasPrecedingRowsForEpisodes = hasPrecedingRowsForShows || tvShowLibraries.any { (recentlyAddedShowsByLibrary[it.Id] ?: emptyList()).isNotEmpty() }
-                        tvShowLibraries.forEachIndexed { libraryIndex, library ->
-                            val libraryEpisodes = recentlyAddedEpisodesByLibrary[library.Id] ?: emptyList()
-                            
-                            if (libraryEpisodes.isNotEmpty()) {
-                                item(key = "recently_added_episodes_${library.Id}", contentType = "media_row") {
-                                    val isFirst = !hasPrecedingRowsForEpisodes && libraryIndex == 0
-                                    val rowTitle = if (libraryIndex == 0) "Recently Added Episodes" else "Recently Added Episodes in ${library.Name}"
-                                    Column(
-                                        modifier = Modifier
-                                            .then(
-                                                if (isFirst) {
-                                                    Modifier.padding(top = 12.dp).focusRequester(focusRequester)
-                                                } else {
-                                                    Modifier
-                                                }
-                                            )
-                                    ) {
-                                        Text(
-                                            text = rowTitle,
-                                            style = MaterialTheme.typography.headlineMedium.copy(
-                                                fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
-                                            ),
-                                            modifier = Modifier.padding(bottom = 12.dp, top = if (isFirst) 12.dp else 30.36.dp)
-                                        )
-                                        
-                                        LazyRow(
-                                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.4f * 1.3f)),
-                                            horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                            flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
-                                            modifier = if (debugOutlinesEnabled) {
-                                                Modifier.border(2.dp, Color.Magenta)
-                                            } else {
-                                                Modifier
-                                            }
-                                        ) {
-                                            items(
-                                                items = libraryEpisodes,
+                                                items = nextUpItems,
                                                 key = { it.Id },
                                                 contentType = { "collection_item" }
                                             ) { item ->
@@ -2037,8 +1557,7 @@ fun JellyfinHomeScreen(
                                                     item = item,
                                                     apiService = apiService,
                                                     onClick = {
-                                                        val resumePositionMs = item.UserData?.PositionTicks?.let { it / 10_000 } ?: 0L
-                                                        onItemClick(item, resumePositionMs)
+                                                        onItemClick(item, 0L)
                                                     },
                                                     onFocusChanged = { isFocused ->
                                                         if (isFocused) {
@@ -2068,6 +1587,300 @@ fun JellyfinHomeScreen(
                                                     lowPowerMode = lowPowerMode.value,
                                                     imageRefreshKey = imageRefreshKey
                                                 )
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Recently Added Movies rows - one per movie library
+                                movieLibraries.forEachIndexed { index, library ->
+                                    val libraryMovies = recentlyAddedMoviesByLibrary[library.Id] ?: emptyList()
+                                    if (libraryMovies.isNotEmpty()) {
+                                        val isFirst = continueWatchingItems.isEmpty() && nextUpItems.isEmpty() && index == 0
+                                        val rowTitle = if (index == 0) "Recently Added Movies" else "Recently Added ${library.Name}"
+                                        Column(
+                                            modifier = Modifier
+                                                .then(
+                                                    if (isFirst) {
+                                                        Modifier.padding(top = 12.dp).focusRequester(focusRequester)
+                                                    } else {
+                                                        Modifier
+                                                    }
+                                                )
+                                        ) {
+                                            Text(
+                                                text = rowTitle,
+                                                style = MaterialTheme.typography.headlineMedium.copy(
+                                                    fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+                                                ),
+                                                modifier = Modifier.padding(bottom = 12.dp, top = if (isFirst) 12.dp else 30.36.dp)
+                                            )
+                                            
+                                            LazyRow(
+                                                contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
+                                                horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                                flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
+                                                modifier = if (debugOutlinesEnabled) {
+                                                    Modifier.border(2.dp, Color.Magenta)
+                                                } else {
+                                                    Modifier
+                                                }
+                                            ) {
+                                                items(
+                                                    items = libraryMovies,
+                                                    key = { it.Id },
+                                                    contentType = { "collection_item" }
+                                                ) { item ->
+                                                    JellyfinHorizontalCard(
+                                                        item = item,
+                                                        apiService = apiService,
+                                                        onClick = { onItemClick(item, 0L) },
+                                                        onFocusChanged = { isFocused ->
+                                                            if (isFocused) {
+                                                                instantHighlightedItem = item
+                                                                originalEpisodeItem = null
+                                                                backgroundChangeJob?.cancel()
+                                                                backgroundChangeJob = scope.launch {
+                                                                    delay(1300)
+                                                                    highlightedItem = item
+                                                                }
+                                                            }
+                                                        },
+                                                        enableCaching = cacheLibraryImages,
+                                                        reducePosterResolution = reducePosterResolution,
+                                                        useSimpleCards = useSimpleCards.value,
+                                                        useGoogleTvCards = useGoogleTvCards.value,
+                                                        lowPowerMode = lowPowerMode.value,
+                                                        imageRefreshKey = imageRefreshKey
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Recently Released Movies row
+                                if (recentlyReleasedMovies.isNotEmpty()) {
+                                    val isFirst = continueWatchingItems.isEmpty() && nextUpItems.isEmpty() && movieLibraries.none { (recentlyAddedMoviesByLibrary[it.Id] ?: emptyList()).isNotEmpty() }
+                                    Column(
+                                        modifier = Modifier
+                                            .then(
+                                                if (isFirst) {
+                                                    Modifier.padding(top = 12.dp).focusRequester(focusRequester)
+                                                } else {
+                                                    Modifier
+                                                }
+                                            )
+                                    ) {
+                                        Text(
+                                            text = "Recently Released Movies",
+                                            style = MaterialTheme.typography.headlineMedium.copy(
+                                                fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+                                            ),
+                                            modifier = Modifier.padding(bottom = 12.dp, top = if (isFirst) 12.dp else 30.36.dp)
+                                        )
+                                        
+                                        LazyRow(
+                                            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
+                                            horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                            modifier = if (debugOutlinesEnabled) {
+                                                Modifier.border(2.dp, Color.Magenta)
+                                            } else {
+                                                Modifier
+                                            }
+                                        ) {
+                                            items(
+                                                items = recentlyReleasedMovies,
+                                                key = { it.Id },
+                                                contentType = { "collection_item" }
+                                            ) { item ->
+                                                JellyfinHorizontalCard(
+                                                    item = item,
+                                                    apiService = apiService,
+                                                    onClick = { onItemClick(item, 0L) },
+                                                    onFocusChanged = { isFocused ->
+                                                        if (isFocused) {
+                                                            instantHighlightedItem = item
+                                                            originalEpisodeItem = null
+                                                            backgroundChangeJob?.cancel()
+                                                            backgroundChangeJob = scope.launch {
+                                                                delay(1300)
+                                                                highlightedItem = item
+                                                            }
+                                                        }
+                                                    },
+                                                    enableCaching = cacheLibraryImages,
+                                                    reducePosterResolution = reducePosterResolution,
+                                                    useSimpleCards = useSimpleCards.value,
+                                                    useGoogleTvCards = useGoogleTvCards.value,
+                                                    lowPowerMode = lowPowerMode.value,
+                                                    imageRefreshKey = imageRefreshKey
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Recently Added Shows rows - one per TV show library
+                                val hasPrecedingRowsForShows = continueWatchingItems.isNotEmpty() || nextUpItems.isNotEmpty() || movieLibraries.any { (recentlyAddedMoviesByLibrary[it.Id] ?: emptyList()).isNotEmpty() } || recentlyReleasedMovies.isNotEmpty()
+                                tvShowLibraries.forEachIndexed { libraryIndex, library ->
+                                    val libraryShows = recentlyAddedShowsByLibrary[library.Id]?.let { shows ->
+                                        if (hideShowsWithZeroEpisodes) {
+                                            shows.filter { item ->
+                                                if (item.Type != "Series") {
+                                                    true
+                                                } else {
+                                                    val episodeCount = item.RecursiveItemCount ?: item.ChildCount ?: 0
+                                                    episodeCount > 0
+                                                }
+                                            }
+                                        } else {
+                                            shows
+                                        }
+                                    } ?: emptyList()
+                                    
+                                    if (libraryShows.isNotEmpty()) {
+                                        val isFirst = !hasPrecedingRowsForShows && libraryIndex == 0
+                                        val rowTitle = if (libraryIndex == 0) "Recently Added Shows" else "Recently Added Shows in ${library.Name}"
+                                        Column(
+                                            modifier = Modifier
+                                                .then(
+                                                    if (isFirst) {
+                                                        Modifier.padding(top = 12.dp).focusRequester(focusRequester)
+                                                    } else {
+                                                        Modifier
+                                                    }
+                                                )
+                                        ) {
+                                            Text(
+                                                text = rowTitle,
+                                                style = MaterialTheme.typography.headlineMedium.copy(
+                                                    fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+                                                ),
+                                                modifier = Modifier.padding(bottom = 12.dp, top = if (isFirst) 12.dp else 30.36.dp)
+                                            )
+                                            
+                                            LazyRow(
+                                                contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
+                                                horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                                flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
+                                                modifier = if (debugOutlinesEnabled) {
+                                                    Modifier.border(2.dp, Color.Magenta)
+                                                } else {
+                                                    Modifier
+                                                }
+                                            ) {
+                                                items(
+                                                    items = libraryShows,
+                                                    key = { it.Id },
+                                                    contentType = { "collection_item" }
+                                                ) { item ->
+                                                    JellyfinHorizontalCard(
+                                                        item = item,
+                                                        apiService = apiService,
+                                                        onClick = { onItemClick(item, 0L) },
+                                                        onFocusChanged = { isFocused ->
+                                                            if (isFocused) {
+                                                                instantHighlightedItem = item
+                                                                originalEpisodeItem = null
+                                                                backgroundChangeJob?.cancel()
+                                                                backgroundChangeJob = scope.launch {
+                                                                    delay(1300)
+                                                                    highlightedItem = item
+                                                                }
+                                                            }
+                                                        },
+                                                        enableCaching = cacheLibraryImages,
+                                                        reducePosterResolution = reducePosterResolution,
+                                                        unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null,
+                                                        useSimpleCards = useSimpleCards.value,
+                                                        useGoogleTvCards = useGoogleTvCards.value,
+                                                        lowPowerMode = lowPowerMode.value,
+                                                        imageRefreshKey = imageRefreshKey
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Recently Added Episodes rows - one per TV show library
+                                val hasPrecedingRowsForEpisodes = hasPrecedingRowsForShows || tvShowLibraries.any { (recentlyAddedShowsByLibrary[it.Id] ?: emptyList()).isNotEmpty() }
+                                tvShowLibraries.forEachIndexed { libraryIndex, library ->
+                                    val libraryEpisodes = recentlyAddedEpisodesByLibrary[library.Id] ?: emptyList()
+                                    
+                                    if (libraryEpisodes.isNotEmpty()) {
+                                        val isFirst = !hasPrecedingRowsForEpisodes && libraryIndex == 0
+                                        val rowTitle = if (libraryIndex == 0) "Recently Added Episodes" else "Recently Added Episodes in ${library.Name}"
+                                        Column(
+                                            modifier = Modifier
+                                                .then(
+                                                    if (isFirst) {
+                                                        Modifier.padding(top = 12.dp).focusRequester(focusRequester)
+                                                    } else {
+                                                        Modifier
+                                                    }
+                                                )
+                                        ) {
+                                            Text(
+                                                text = rowTitle,
+                                                style = MaterialTheme.typography.headlineMedium.copy(
+                                                    fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
+                                                ),
+                                                modifier = Modifier.padding(bottom = 12.dp, top = if (isFirst) 12.dp else 30.36.dp)
+                                            )
+                                            
+                                            LazyRow(
+                                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.4f * 1.3f)),
+                                                horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                                flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
+                                                modifier = if (debugOutlinesEnabled) {
+                                                    Modifier.border(2.dp, Color.Magenta)
+                                                } else {
+                                                    Modifier
+                                                }
+                                            ) {
+                                                items(
+                                                    items = libraryEpisodes,
+                                                    key = { it.Id },
+                                                    contentType = { "collection_item" }
+                                                ) { item ->
+                                                    JellyfinHorizontalCard(
+                                                        item = item,
+                                                        apiService = apiService,
+                                                        onClick = {
+                                                            val resumePositionMs = item.UserData?.PositionTicks?.let { it / 10_000 } ?: 0L
+                                                            onItemClick(item, resumePositionMs)
+                                                        },
+                                                        onFocusChanged = { isFocused ->
+                                                            if (isFocused) {
+                                                                instantHighlightedItem = item
+                                                                originalEpisodeItem = if (item.Type == "Episode") item else null
+                                                                backgroundChangeJob?.cancel()
+                                                                backgroundChangeJob = scope.launch {
+                                                                    delay(1300)
+                                                                    if (item.Type == "Episode" && item.SeriesId != null) {
+                                                                        val seriesDetails = apiService?.getItemDetails(item.SeriesId)
+                                                                        if (seriesDetails != null) {
+                                                                            highlightedItem = seriesDetails
+                                                                        } else {
+                                                                            highlightedItem = item
+                                                                        }
+                                                                    } else {
+                                                                        highlightedItem = item
+                                                                    }
+                                                                }
+                                                            }
+                                                        },
+                                                        enableCaching = cacheLibraryImages,
+                                                        reducePosterResolution = reducePosterResolution,
+                                                        useSeriesPosterForEpisodes = true,
+                                                        useSimpleCards = useSimpleCards.value,
+                                                        useGoogleTvCards = useGoogleTvCards.value,
+                                                        lowPowerMode = lowPowerMode.value,
+                                                        imageRefreshKey = imageRefreshKey
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -4163,3 +3976,165 @@ private fun MetadataSection(
         }
     }
 }
+
+@Composable
+private fun TvHomeBackground(
+    highlightedItem: JellyfinItem?,
+    apiService: JellyfinApiService?,
+    darkModeEnabled: Boolean,
+    lowPowerMode: Boolean,
+    use4KBackgrounds: Boolean,
+    selectedLibraryId: String?,
+    selectedCollectionId: String?
+) {
+    val context = LocalContext.current
+    
+    // Get image URL for current highlighted item - use backdrop photo
+    // For episodes, use the series backdrop; for other items, use their own backdrop
+    val imageUrl = remember(highlightedItem?.Id, lowPowerMode, use4KBackgrounds) {
+        highlightedItem?.let { item ->
+            val itemId = if (item.Type == "Episode" && item.SeriesId != null) {
+                item.SeriesId
+            } else {
+                item.Id
+            }
+            
+            val bgMaxWidth = if (lowPowerMode) 1280 else if (use4KBackgrounds) 3840 else 1920
+            val bgMaxHeight = if (lowPowerMode) 720 else if (use4KBackgrounds) 2160 else 1080
+            val bgQuality = if (lowPowerMode) 75 else if (use4KBackgrounds) 95 else 90
+            
+            val backdropUrl = apiService?.getImageUrl(itemId, "Backdrop", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
+            if (backdropUrl.isNotEmpty()) {
+                backdropUrl
+            } else {
+                apiService?.getImageUrl(itemId, "Primary", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
+            }
+        } ?: ""
+    }
+    
+    // Plex-style dynamic background palette
+    val paletteCache = remember { mutableMapOf<String, ArtworkPalette>() }
+    var currentArtworkPalette by remember { mutableStateOf<ArtworkPalette?>(null) }
+    
+    // Extract palette from the current image URL
+    LaunchedEffect(imageUrl) {
+        if (imageUrl.isNotEmpty()) {
+            val cacheKey = highlightedItem?.Id ?: imageUrl
+            paletteCache[cacheKey]?.let {
+                currentArtworkPalette = it
+                return@LaunchedEffect
+            }
+
+            withContext(Dispatchers.IO) {
+                try {
+                    val loader = coil.ImageLoader(context)
+                    val request = ImageRequest.Builder(context)
+                        .data(imageUrl)
+                        .allowHardware(false) // Required for Palette
+                        .build()
+                    
+                    val result = loader.execute(request)
+                    if (result is SuccessResult) {
+                        val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
+                        if (bitmap != null) {
+                            val palette = PlexPaletteExtractor.extract(context, bitmap)
+                            withContext(Dispatchers.Main) {
+                                paletteCache[cacheKey] = palette
+                                currentArtworkPalette = palette
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("JellyfinHomeScreen", "Error extracting palette", e)
+                }
+            }
+        } else {
+            currentArtworkPalette = null
+        }
+    }
+    
+    Box(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        if (!darkModeEnabled) {
+            Crossfade(
+                targetState = imageUrl,
+                animationSpec = tween(durationMillis = 500),
+                label = "background_fade"
+            ) { currentUrl ->
+                if (currentUrl.isNotEmpty() && apiService != null) {
+                    val headerMap = apiService.getImageRequestHeaders()
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(currentUrl)
+                            .headers(headerMap)
+                            .memoryCachePolicy(CachePolicy.ENABLED)
+                            .diskCachePolicy(CachePolicy.ENABLED)
+                            .crossfade(300) // Smooth 300ms crossfade when loading
+                            .allowHardware(true) // Use GPU memory for faster rendering
+                            .build(),
+                        contentDescription = highlightedItem?.Name ?: "",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.FillBounds,
+                        alignment = Alignment.Center
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    )
+                }
+            }
+        } else {
+            // Dark mode: use Material dark background
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface)
+            )
+        }
+        
+        // Dark overlay and scrim - different opacity based on view mode
+        // Skip overlay in dark mode since we're using a dark background
+        if ((selectedLibraryId == null && selectedCollectionId == null) && !darkModeEnabled) {
+            // Default home view: 20% darkness + gradient scrim
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.1f))
+            )
+            
+            // Scrim gradient overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .carouselGradient()
+            )
+        } else if (!darkModeEnabled) {
+            // Library or Collections view: 20% darkness + gradient scrim (same as home)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.1f))
+            )
+            
+            // Scrim gradient overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .carouselGradient()
+            )
+        }
+        
+        // Apply Plex-style dynamic gradient overlay
+        if (currentArtworkPalette != null && !darkModeEnabled) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(PlexBackdropGradient(currentArtworkPalette!!))
+            )
+        }
+    }
+}
+

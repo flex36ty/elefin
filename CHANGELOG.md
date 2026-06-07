@@ -4,6 +4,17 @@ All notable changes to Elefin will be documented in this file.
 
 ---
 
+## 2026-06-07
+
+### Improved
+
+- **Android TV Home Screen Scroll Performance**
+  - Restructured the TV Home Screen layout to completely eliminate vertical scrolling lag.
+  - Optimized background image rendering and color transitions to prevent interface stutter when switching selections.
+  - Streamlined library filtering and scrolling behavior to ensure a smooth, stable frame rate.
+
+---
+
 ## 2026-06-06
 
 ### Added
@@ -27,10 +38,10 @@ All notable changes to Elefin will be documented in this file.
 ### Improved
 
 - **Android TV Home Screen Scroll Performance**
-  - Refactored the Home Screen layout on Android TV to decompose row structures into a single unified vertical scroll layout (`LazyColumn`), enabling item recycling and improving performance on budget hardware.
-  - Implemented a 250ms focus debounce mechanism for metadata/synopsis header updates, preventing rendering lag and image loading spikes when rapidly navigating TV cards.
-  - Resolved vertical scrolling lag when navigating down the home screen by adding stable keys (`key = { it.Id }`) and contentTypes to all dynamic library rows (`LazyRow` lists for movies, shows, and episodes), enabling efficient view reuse and skipping unnecessary recompositions.
-  - Isolated the metadata/synopsis header layout into a separate standalone Composable (`MetadataSection`) and deferred state reads using lambda providers. This ensures focus updates only recompose the metadata panel, leaving the rest of the home screen and its lazy rows completely untouched during scrolling.
+  - Refactored the Home Screen layout to significantly improve performance on budget streaming devices.
+  - Added a brief focus delay for header updates to prevent lag when rapidly navigating items.
+  - Improved list caching and rendering efficiency to ensure fluid vertical scrolling.
+  - Isolated description and detail panel updates so that browsing items no longer impacts the scroll smoothness of the rest of the page.
 
 ### Fixed
 
