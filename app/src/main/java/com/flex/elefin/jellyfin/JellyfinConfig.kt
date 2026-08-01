@@ -38,6 +38,11 @@ class JellyfinConfig(context: Context) {
         get() = prefs.getString("device_id", "") ?: ""
         set(value) = prefs.edit().putString("device_id", value).apply()
 
+    var serverName: String
+        get() = prefs.getString("server_name", "Jellyfin Server") ?: "Jellyfin Server"
+        set(value) = prefs.edit().putString("server_name", value).apply()
+
+
     fun isConfigured(): Boolean {
         val url = serverUrl
         // Validate that server URL is properly formatted

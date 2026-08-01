@@ -2,6 +2,42 @@
 
 All notable changes to Elefin will be documented in this file.
 
+## 2026-06-09
+
+### Improved
+
+- **Mobile Series Info Screen Layout**
+  - Moved the "Similar Shows" row to the bottom of the screen, below the list of episodes, when viewing a TV series on mobile.
+
+---
+
+## 2026-06-08
+
+### Added
+
+- **Jellyfin Server Details in Account Settings**
+  - Added Server Name, Server IP address (URL), and Logged In User displays under the Account category in Settings.
+- **Mobile Library Sorting and Genre Filtering**
+  - Added new "Release Date" sorting options along with "Alphabetical" and "Recently Added" sorting in mobile library views.
+  - Implemented dynamic genre extraction and a genre selection filter dialog to filter movies and TV shows.
+  - Added text labels alongside both the sort and filter icons for clear visibility and better usability on mobile.
+- **Premium Mobile Music Client**
+  - Designed and built a beautiful, fully native mobile music interface styled after monodev-music-client.
+  - Integrated dynamic, device-based routing in MusicActivity to load mobile music UI on mobile devices while preserving Leanback layouts for Android TV.
+  - Created a tabbed mobile music dashboard (Home, Playlists, Recently Played, Settings) with an integrated search bar, HD/FLAC quality badges, and a floating mini-player.
+  - Built an immersive Now Playing screen featuring ambient color glow, actions, and synchronized scrolling lyrics with delay offset settings.
+
+### Improved
+
+- **Login Flow Server Name and Session Caching**
+  - Implemented background fetching of `/System/Info/Public` upon successful logins (both Credentials and QuickConnect) to automatically cache the server name.
+  - Added username caching to JellyfinConfig during QuickConnect logins.
+
+### Fixed
+
+- **Mobile Sign Out / Log Out Button**
+  - Fixed an issue where the main "Log Out" button under the Account settings category was using TV-specific components, rendering it unclickable on mobile/tablet touch screens. Modified to render the appropriate mobile Button layout on touch devices.
+
 ---
 
 ## 2026-06-07

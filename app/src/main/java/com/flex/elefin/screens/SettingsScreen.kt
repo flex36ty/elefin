@@ -178,6 +178,7 @@ fun SettingsScreen(
     var debugOutlinesEnabled by remember { mutableStateOf(settings.showDebugOutlines) }
     var preloadLibraryImagesEnabled by remember { mutableStateOf(settings.preloadLibraryImages) }
     var cacheLibraryImagesEnabled by remember { mutableStateOf(settings.cacheLibraryImages) }
+    var showMusicLibrariesEnabled by remember { mutableStateOf(settings.showMusicLibraries) }
     var useGlideEnabled by remember { mutableStateOf(settings.useGlide) }
     var reducePosterResolutionEnabled by remember { mutableStateOf(settings.reducePosterResolution) }
     var animatedPlayButtonEnabled by remember { mutableStateOf(settings.useAnimatedPlayButton) }
@@ -1946,7 +1947,7 @@ fun SettingsScreen(
                                     settings.cacheLibraryImages = cacheLibraryImagesEnabled
                                 }
                             )
-                            
+
                             // Use Glide
                             SettingToggle(
                                 title = "Use Glide for Images",
@@ -1971,6 +1972,17 @@ fun SettingsScreen(
                         }
                         
                         SettingsCategory.LIBRARY -> {
+                            // Show Music Libraries
+                            SettingToggle(
+                                title = "Show Music Libraries",
+                                description = "Detect and display music libraries in the bottom nav",
+                                isEnabled = showMusicLibrariesEnabled,
+                                onToggle = {
+                                    showMusicLibrariesEnabled = !showMusicLibrariesEnabled
+                                    settings.showMusicLibraries = showMusicLibrariesEnabled
+                                }
+                            )
+
                             // Auto-Refresh Media
                             SettingToggle(
                                 title = "Auto-Refresh Media",
@@ -2168,36 +2180,119 @@ fun SettingsScreen(
                         }
                         
                         SettingsCategory.ACCOUNT -> {
-                            // Log Out
-                            Row(
+                            val accountConfig = remember { JellyfinConfig(context) }
+                            Column(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Log Out",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                    Text(
-                                        text = "Sign out and return to login screen",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                        modifier = Modifier.padding(top = 4.dp)
-                                    )
-                                }
-                                
-                                Button(
-                                    onClick = { showLogoutConfirmation = true },
-                                    colors = ButtonDefaults.colors(
-                                        containerColor = MaterialTheme.colorScheme.error
-                                    )
+                                // Server Name
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Log Out")
+                                    Column {
+                                        Text(
+                                            text = "Server Name",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = accountConfig.serverName.ifEmpty { "Jellyfin Server" },
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                            modifier = Modifier.padding(top = 4.dp)
+                                        )
+                                    }
+                                }
+
+                                // Server Address / IP Address
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = "Server Address (IP)",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = accountConfig.serverUrl.ifEmpty { "Not connected" },
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                            modifier = Modifier.padding(top = 4.dp)
+                                        )
+                                    }
+                                }
+
+                                // Logged In User
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = "Logged In User",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = accountConfig.username.ifEmpty { "Not logged in" },
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                            modifier = Modifier.padding(top = 4.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                // Log Out
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Log Out",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                        Text(
+                                            text = "Sign out and return to login screen",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                            modifier = Modifier.padding(top = 4.dp)
+                                        )
+                                    }
+                                    
+                                    if (isTv) {
+                                        Button(
+                                            onClick = { showLogoutConfirmation = true },
+                                            colors = ButtonDefaults.colors(
+                                                containerColor = MaterialTheme.colorScheme.error
+                                            )
+                                        ) {
+                                            Text("Log Out")
+                                        }
+                                    } else {
+                                        androidx.compose.material3.Button(
+                                            onClick = { showLogoutConfirmation = true },
+                                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                containerColor = androidx.compose.material3.MaterialTheme.colorScheme.error
+                                            )
+                                        ) {
+                                            androidx.compose.material3.Text("Log Out", color = Color.White)
+                                        }
+                                    }
                                 }
                             }
                         }
+
 
                         SettingsCategory.COFFEE -> {
                             Column(

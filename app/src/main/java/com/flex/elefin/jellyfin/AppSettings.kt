@@ -102,6 +102,7 @@ class AppSettings(context: Context) {
         private const val KEY_ROW_CARD_COUNT = "row_card_count"
         private const val KEY_NAVIGATION_SOUNDS_ENABLED = "navigation_sounds_enabled"
         private const val KEY_THEME_COLOR_HEX = "theme_color_hex"
+        private const val KEY_SHOW_MUSIC_LIBRARIES = "show_music_libraries"
     }
 
     var isMpvEnabled: Boolean
@@ -524,5 +525,9 @@ class AppSettings(context: Context) {
     var themeColorHex: String
         get() = prefs.getString(KEY_THEME_COLOR_HEX, "#FFFFFF") ?: "#FFFFFF"
         set(value) = prefs.edit().putString(KEY_THEME_COLOR_HEX, value).apply()
-}
 
+    // Whether music libraries are shown in the mobile bottom nav and content tabs (default: true)
+    var showMusicLibraries: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_MUSIC_LIBRARIES, false) // Disabled by default
+        set(value) = prefs.edit().putBoolean(KEY_SHOW_MUSIC_LIBRARIES, value).apply()
+}

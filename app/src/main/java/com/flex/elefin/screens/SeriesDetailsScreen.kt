@@ -1102,27 +1102,35 @@ fun SeriesBottomContainer(
         }
     }
     
-    // Initialize lastFocusedEpisode to first episode when episodes are loaded
-    LaunchedEffect(episodes.isNotEmpty(), isLoadingEpisodes) {
-        if (episodes.isNotEmpty() && !isLoadingEpisodes && lastFocusedEpisode == null && initialEpisodeId == null) {
-            lastFocusedEpisode = episodes.first()
-        }
-    }
-    
-    // Update lastFocusedEpisode when episodes list refreshes (to get updated UserData)
-    LaunchedEffect(episodes) {
-        if (lastFocusedEpisode != null && episodes.isNotEmpty()) {
-            // Find the refreshed version of the currently focused episode
-            val refreshedEpisode = episodes.find { it.Id == lastFocusedEpisode!!.Id }
-            if (refreshedEpisode != null) {
-                lastFocusedEpisode = refreshedEpisode
-                // Also update focusedEpisode if it matches
-                if (focusedEpisode != null && focusedEpisode!!.Id == refreshedEpisode.Id) {
-                    focusedEpisode = refreshedEpisode
-                    onEpisodeFocused(refreshedEpisode)
-                    Log.d("SeriesBottomContainer", "Updated focusedEpisode with refreshed data: PlayedPercentage=${refreshedEpisode.UserData?.PlayedPercentage}")
+    // Update lastFocusedEpisode and scroll position when episodes list changes or season changes
+    LaunchedEffect(episodes, isLoadingEpisodes) {
+        if (episodes.isNotEmpty() && !isLoadingEpisodes) {
+            if (lastFocusedEpisode != null) {
+                // Find the refreshed version of the currently focused episode
+                val refreshedEpisode = episodes.find { it.Id == lastFocusedEpisode!!.Id }
+                if (refreshedEpisode != null) {
+                    lastFocusedEpisode = refreshedEpisode
+                    // Also update focusedEpisode if it matches
+                    if (focusedEpisode != null && focusedEpisode!!.Id == refreshedEpisode.Id) {
+                        focusedEpisode = refreshedEpisode
+                        onEpisodeFocused(refreshedEpisode)
+                        Log.d("SeriesBottomContainer", "Updated focusedEpisode with refreshed data: PlayedPercentage=${refreshedEpisode.UserData?.PlayedPercentage}")
+                    }
+                    Log.d("SeriesBottomContainer", "Updated lastFocusedEpisode with refreshed data: PlayedPercentage=${refreshedEpisode.UserData?.PlayedPercentage}")
+                } else if (initialEpisodeId == null) {
+                    // Season changed (previous focused episode not in new episodes list)
+                    val firstEp = episodes.first()
+                    lastFocusedEpisode = firstEp
+                    focusedEpisode = null
+                    episodesLazyListState.scrollToItem(0)
+                    Log.d("SeriesBottomContainer", "Season changed: reset focus to first episode (${firstEp.Name}) and scrolled to start")
                 }
-                Log.d("SeriesBottomContainer", "Updated lastFocusedEpisode with refreshed data: PlayedPercentage=${refreshedEpisode.UserData?.PlayedPercentage}")
+            } else if (initialEpisodeId == null) {
+                // Initial load
+                val firstEp = episodes.first()
+                lastFocusedEpisode = firstEp
+                episodesLazyListState.scrollToItem(0)
+                Log.d("SeriesBottomContainer", "Initial load: set lastFocusedEpisode to first episode (${firstEp.Name})")
             }
         }
     }

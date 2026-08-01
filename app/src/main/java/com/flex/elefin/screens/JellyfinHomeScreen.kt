@@ -772,15 +772,19 @@ fun JellyfinHomeScreen(
                 
                 // Library buttons with underlined indicator using TV Material3 TabRow
                 // Add a single "Collections" tab if collections are available
-                val allTabs = remember(libraries, collections) {
+                val showMusicLibraries = remember { settings.showMusicLibraries }
+                val allTabs = remember(libraries, collections, showMusicLibraries) {
                     // Debug: Log all libraries and their CollectionType
                     libraries.forEach { lib ->
                         android.util.Log.d("JellyfinHomeScreen", "📚 Library loaded: ${lib.Name}, Type: ${lib.Type}, CollectionType: ${lib.CollectionType}, Id: ${lib.Id}")
                     }
                     
                     buildList<Pair<String?, String>> {
-                        // Add all libraries (exclude any library named "Collections" to avoid conflicts)
-                        addAll(libraries.filter { !it.Name.equals("Collections", ignoreCase = true) }.map { null to it.Id })
+                        // Add all libraries (exclude "Collections" tab conflicts, and music if disabled)
+                        addAll(libraries.filter { lib ->
+                            !lib.Name.equals("Collections", ignoreCase = true) &&
+                            (showMusicLibraries || lib.CollectionType != "music")
+                        }.map { null to it.Id })
                         // Add a single "Collections" tab if collections exist
                         // Use a unique identifier to avoid conflicts with library names
                         if (collections.isNotEmpty()) {

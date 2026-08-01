@@ -5580,6 +5580,19 @@ private fun PlayerControlButton(
                 shape = RoundedCornerShape(50)
             )
             .onFocusChanged { isFocused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                if (isFocused && event.type == KeyEventType.KeyDown) {
+                    when (event.key) {
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                            onClick()
+                            true
+                        }
+                        else -> false
+                    }
+                } else {
+                    false
+                }
+            }
             .focusable()
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
@@ -5781,6 +5794,19 @@ private fun AspectModeButton(
                 shape = RoundedCornerShape(50)
             )
             .onFocusChanged { isFocused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                if (isFocused && event.type == KeyEventType.KeyDown) {
+                    when (event.key) {
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                            onClick()
+                            true
+                        }
+                        else -> false
+                    }
+                } else {
+                    false
+                }
+            }
             .focusable()
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
@@ -5804,5 +5830,4 @@ private fun AspectModeButton(
         }
     }
 }
-
 
