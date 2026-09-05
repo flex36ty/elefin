@@ -741,7 +741,7 @@ class JellyfinApiService(
                 parameters.append("UserId", userId)
                 // Request UserData fields to get PositionTicks for resume functionality, and IndexNumber/ParentIndexNumber for episodes
                 // Also request Chapters for chapter markers
-                parameters.append("Fields", "MediaSources,Genres,Overview,People,ProviderIds,UserData,ImageTags,IndexNumber,ParentIndexNumber,NextEpisodeId,Chapters")
+                parameters.append("Fields", "MediaSources,Genres,Overview,People,ProviderIds,UserData,ImageTags,IndexNumber,ParentIndexNumber,NextEpisodeId,Chapters,CommunityRating,CriticRating,OfficialRating")
             }.buildString()
             android.util.Log.d("JellyfinAPI", "Fetching item details from: $url")
             

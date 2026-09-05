@@ -1,5 +1,7 @@
 package com.flex.elefin.screens
 
+import com.flex.elefin.components.RatingDisplay
+
 import android.app.Activity
 import android.content.Context
 import android.util.Log
@@ -134,6 +136,7 @@ import java.util.Locale
 import com.flex.elefin.ui.ArtworkPalette
 import com.flex.elefin.ui.PlexPaletteExtractor
 import com.flex.elefin.ui.PlexBackdropGradient
+import com.flex.elefin.ui.PlexAmbientRadialGlow
 import android.graphics.drawable.BitmapDrawable
 import coil.request.SuccessResult
 import kotlinx.coroutines.Dispatchers
@@ -3411,179 +3414,7 @@ private fun formatResolution(width: Int?, height: Int?): String? {
     }
 }
 
-// Rating display with Rotten Tomatoes icon support - matching MovieDetailsScreen/SeriesDetailsScreen
-@Composable
-private fun RatingDisplay(
-    item: JellyfinItem,
-    communityRating: Float?,
-    criticRating: Float?
-) {
-    // Calculate percentages
-    fun calculatePercentage(rating: Float): Int {
-        return if (rating > 10) {
-            // Already in percentage format (0-100)
-            rating.toInt()
-        } else {
-            // Convert from 0-10 scale to percentage
-            (rating * 10).toInt()
-        }
-    }
-    
-    // Determine critic rating type and display if available
-    val criticRatingType: com.flex.elefin.screens.RatingType? = if (criticRating != null) {
-        // Pass null for communityRating to focus on critic rating
-        determineRatingType(item.ProviderIds, null, criticRating, preferCommunity = false)
-    } else {
-        null
-    }
-    
-    // Determine community rating type and display if available (as audience rating)
-    val communityRatingType: com.flex.elefin.screens.RatingType? = if (communityRating != null) {
-        // Pass null for criticRating to focus on community rating
-        determineRatingType(item.ProviderIds, communityRating, null, preferCommunity = true)
-    } else {
-        null
-    }
-    
-    // Show critic rating (RT Fresh/Rotten or generic)
-    if (criticRating != null) {
-        val percentage = calculatePercentage(criticRating)
-        when (criticRatingType) {
-            com.flex.elefin.screens.RatingType.RottenTomatoesFresh -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = com.flex.elefin.R.drawable.ic_rt_fresh,
-                    label = "RT"
-                )
-            }
-            com.flex.elefin.screens.RatingType.RottenTomatoesRotten -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = com.flex.elefin.R.drawable.ic_rt_rotten,
-                    label = "RT"
-                )
-            }
-            com.flex.elefin.screens.RatingType.IMDb -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = com.flex.elefin.R.drawable.ic_imdb,
-                    label = "IMDb"
-                )
-            }
-            else -> {
-                MetadataBox(text = "${percentage}%")
-            }
-        }
-    }
-    
-    // Show audience rating (RT Popcorn or generic) if available and different from critic
-    if (communityRating != null && (criticRating == null || communityRating != criticRating)) {
-        val percentage = calculatePercentage(communityRating)
-        when (communityRatingType) {
-            com.flex.elefin.screens.RatingType.RottenTomatoesAudience -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = com.flex.elefin.R.drawable.ic_rt_popcorn,
-                    label = "RT"
-                )
-            }
-            com.flex.elefin.screens.RatingType.IMDb -> {
-                // Only show IMDb if we didn't already show it for critic
-                if (criticRatingType != com.flex.elefin.screens.RatingType.IMDb) {
-                    RatingBoxWithIcon(
-                        percentage = percentage,
-                        iconRes = com.flex.elefin.R.drawable.ic_imdb,
-                        label = "IMDb"
-                    )
-                }
-            }
-            else -> {
-                // Show generic community rating only if we didn't show critic rating
-                if (criticRating == null) {
-                    MetadataBox(text = "${percentage}%")
-                }
-            }
-        }
-    }
-}
 
-// Determine rating type from ProviderIds and rating values
-private fun determineRatingType(
-    providerIds: Map<String, String>?,
-    communityRating: Float?,
-    criticRating: Float?,
-    preferCommunity: Boolean
-): com.flex.elefin.screens.RatingType {
-    // Check for Rotten Tomatoes provider IDs first
-    val rtId = providerIds?.get("RottenTomatoes") ?: providerIds?.get("rottentomatoes") ?: 
-               providerIds?.get("Rotten Tomatoes") ?: providerIds?.get("RottenTomatoes.tomato") ?:
-               providerIds?.get("RottenTomatoes.audience")
-    
-    // If preferCommunity is true and CommunityRating exists with RT ID, return Audience
-    if (preferCommunity && rtId != null && communityRating != null) {
-        return com.flex.elefin.screens.RatingType.RottenTomatoesAudience
-    }
-    
-    // If CriticRating exists, it's likely RT Fresh/Rotten rating
-    if (criticRating != null && !preferCommunity) {
-        // RT Fresh = 60%+ (6.0/10), RT Rotten = <60%
-        // Show RT icons even if ProviderIds don't explicitly say RT, as CriticRating is typically RT
-        return if (criticRating >= 6.0f) {
-            com.flex.elefin.screens.RatingType.RottenTomatoesFresh
-        } else {
-            com.flex.elefin.screens.RatingType.RottenTomatoesRotten
-        }
-    }
-    
-    // If we have RT provider ID and CommunityRating, it might be RT Audience
-    if (rtId != null && communityRating != null) {
-        return com.flex.elefin.screens.RatingType.RottenTomatoesAudience
-    }
-    
-    // Check for IMDb
-    if (providerIds != null) {
-        val imdbId = providerIds["Imdb"] ?: providerIds["imdb"] ?: providerIds["IMDb"] ?:
-                     providerIds["imdbid"]
-        if (imdbId != null) {
-            return com.flex.elefin.screens.RatingType.IMDb
-        }
-    }
-    
-    return com.flex.elefin.screens.RatingType.Generic
-}
-
-// Rating box with icon - matching MovieDetailsScreen/SeriesDetailsScreen
-@Composable
-private fun RatingBoxWithIcon(
-    percentage: Int,
-    iconRes: Int,
-    label: String
-) {
-    Box(
-        modifier = Modifier
-            .background(Color.Black, RoundedCornerShape(4.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Icon for rating source - height to match metadata item height, width adjusts to preserve aspect ratio
-            Image(
-                painter = painterResource(iconRes),
-                contentDescription = label,
-                modifier = Modifier.height(12.dp), // Match height of labelSmall text in MetadataBox
-                contentScale = ContentScale.Fit // Preserve aspect ratio, fill height
-            )
-            Text(
-                text = "${percentage}%",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White
-            )
-        }
-    }
-}
 
 // =============================================================================
 // A-Z ALPHABET INDEX BAR (Plex-style jump navigation)
@@ -4131,12 +3962,17 @@ private fun TvHomeBackground(
             )
         }
         
-        // Apply Plex-style dynamic gradient overlay
+        // Apply Plex-style dynamic gradient overlay & atmospheric ambient glow
         if (currentArtworkPalette != null && !darkModeEnabled) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(PlexBackdropGradient(currentArtworkPalette!!))
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(PlexAmbientRadialGlow(currentArtworkPalette!!, radius = 1300f))
             )
         }
     }

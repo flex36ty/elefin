@@ -2,6 +2,26 @@
 
 All notable changes to Elefin will be documented in this file.
 
+## 2026-09-05
+
+### Improved
+
+- **Android TV Series Info Screen Layout**
+  - Reworked the season, episode, action, and cast layout so D-pad focus no longer shifts or clips the season selector.
+  - Kept Play, Resume, Audio, Subtitles, Trailer, and watched-status controls consistent with the movie info screen.
+  - Positioned the cast row directly beneath the episode action controls and reduced portrait sizing so cast names remain visible.
+- **Series Season Navigation**
+  - Removed the redundant "Seasons" heading.
+  - Replaced the circular expanding season buttons with Home-style underlined tabs and rectangular focus highlights.
+  - Season tabs now always display complete labels such as "Season 1" instead of collapsing to numbers.
+
+### Fixed
+
+- **Series Info Screen Clipping**
+  - Fixed clipped season labels, hidden or compressed episode action buttons, missing cast content, and excess spacing around the cast row on shorter TV viewports.
+
+---
+
 ## 2026-06-09
 
 ### Improved

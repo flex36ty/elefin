@@ -1,6 +1,7 @@
 package com.flex.elefin.screens
 
 import com.flex.elefin.jellyfin.JellyfinRepository
+import com.flex.elefin.components.RatingDisplay
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -757,7 +758,8 @@ fun BottomContainer(
 fun CastMemberCard(
     person: com.flex.elefin.jellyfin.Person,
     apiService: JellyfinApiService?,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    cardSize: androidx.compose.ui.unit.Dp = 67.dp
 ) {
     val context = LocalContext.current
     val imageUrl = person.Id?.let { personId ->
@@ -766,76 +768,62 @@ fun CastMemberCard(
         }
     } ?: ""
     
-    // Card size - 30% smaller (96.dp * 0.7 = 67.2.dp)
-    val cardSize = 67.dp
-    
     Column(
         modifier = Modifier
             .width(cardSize),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Use StandardCardContainer for proper TV focus styling
-        StandardCardContainer(
-            modifier = Modifier.size(cardSize),
-            imageCard = { interactionSource ->
-                Card(
-                    onClick = {
-                        // Navigate to cast info screen if person has an ID
-                        if (person.Id != null && onClick != null) {
-                            onClick()
-                        } else if (person.Id != null) {
-                            // Default behavior: open CastInfoActivity
-                            val intent = com.flex.elefin.CastInfoActivity.createIntent(
-                                context,
-                                person.Id,
-                                person.Name,
-                                person.Type // Pass the type (Actor, Director, Writer, etc.)
-                            )
-                            context.startActivity(intent)
-                        }
-                    },
-                    interactionSource = interactionSource,
-                    colors = CardDefaults.colors(containerColor = Color.Transparent)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
-                        if (imageUrl.isNotEmpty() && apiService != null) {
-                            val headerMap = apiService.getImageRequestHeaders()
-                            AsyncImage(
-                                model = ImageRequest.Builder(context)
-                                    .data(imageUrl)
-                                    .headers(headerMap)
-                                    .build(),
-                                contentDescription = person.Name,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(CircleShape),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            // Placeholder
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(40.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                )
-                            }
-                        }
-                    }
+        // Apply the circle to the focusable TV Card itself so its focus shape
+        // follows the portrait instead of retaining a square container.
+        Card(
+            onClick = {
+                if (person.Id != null && onClick != null) {
+                    onClick()
+                } else if (person.Id != null) {
+                    val intent = com.flex.elefin.CastInfoActivity.createIntent(
+                        context,
+                        person.Id,
+                        person.Name,
+                        person.Type
+                    )
+                    context.startActivity(intent)
                 }
             },
-            title = { }
-        )
+            modifier = Modifier.size(cardSize),
+            shape = CardDefaults.shape(shape = CircleShape),
+            colors = CardDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (imageUrl.isNotEmpty() && apiService != null) {
+                    val headerMap = apiService.getImageRequestHeaders()
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(imageUrl)
+                            .headers(headerMap)
+                            .build(),
+                        contentDescription = person.Name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            modifier = Modifier.size(40.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                    }
+                }
+            }
+        }
         
         // Cast member name below the card
         Text(
@@ -2294,231 +2282,33 @@ private fun MetadataBox(
     }
 }
 
-// Rating display with Rotten Tomatoes icon support
-@Composable
-private fun RatingDisplay(
-    item: JellyfinItem,
-    communityRating: Float?,
-    criticRating: Float?
-) {
-    // Calculate percentages
-    fun calculatePercentage(rating: Float): Int {
-        return if (rating > 10) {
-            // Already in percentage format (0-100)
-            rating.toInt()
-        } else {
-            // Convert from 0-10 scale to percentage
-            (rating * 10).toInt()
-        }
-    }
-    
-    // Determine critic rating type and display if available
-    val criticRatingType = if (criticRating != null) {
-        // Pass null for communityRating to focus on critic rating
-        determineRatingType(item.ProviderIds, null, criticRating, preferCommunity = false)
-    } else {
-        null
-    }
-    
-    // Determine community rating type and display if available (as audience rating)
-    val communityRatingType = if (communityRating != null) {
-        // Pass null for criticRating to focus on community rating
-        determineRatingType(item.ProviderIds, communityRating, null, preferCommunity = true)
-    } else {
-        null
-    }
-    
-    // Show critic rating (RT Fresh/Rotten or generic)
-    if (criticRating != null) {
-        val percentage = calculatePercentage(criticRating)
-        when (criticRatingType) {
-            RatingType.RottenTomatoesFresh -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = R.drawable.ic_rt_fresh,
-                    label = "RT"
-                )
-            }
-            RatingType.RottenTomatoesRotten -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = R.drawable.ic_rt_rotten,
-                    label = "RT"
-                )
-            }
-            RatingType.IMDb -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = R.drawable.ic_imdb,
-                    label = "IMDb"
-                )
-            }
-            else -> {
-                MetadataBox(text = "${percentage}%")
-            }
-        }
-    }
-    
-    // Show audience rating (RT Popcorn or generic) if available and different from critic
-    if (communityRating != null && (criticRating == null || communityRating != criticRating)) {
-        val percentage = calculatePercentage(communityRating)
-        when (communityRatingType) {
-            RatingType.RottenTomatoesAudience -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = R.drawable.ic_rt_popcorn,
-                    label = "RT"
-                )
-            }
-            RatingType.IMDb -> {
-                // Only show IMDb if we didn't already show it for critic
-                if (criticRatingType != RatingType.IMDb) {
-                    RatingBoxWithIcon(
-                        percentage = percentage,
-                        iconRes = R.drawable.ic_imdb,
-                        label = "IMDb"
-                    )
-                }
-            }
-            else -> {
-                // Show generic community rating only if we didn't show critic rating
-                if (criticRating == null) {
-                    MetadataBox(text = "${percentage}%")
-                }
-            }
-        }
-    }
-}
 
-// Rating type enum
-internal enum class RatingType {
-    RottenTomatoesFresh,
-    RottenTomatoesRotten,
-    RottenTomatoesAudience,
-    IMDb,
-    Generic
-}
 
-// Determine rating type from ProviderIds and rating values
-// Overloaded versions to handle critic-only or community-only scenarios
-private fun determineRatingType(
-    providerIds: Map<String, String>?,
-    communityRating: Float?,
-    criticRating: Float?
-): RatingType {
-    return determineRatingType(providerIds, communityRating, criticRating, false)
-}
-
-private fun determineRatingType(
-    providerIds: Map<String, String>?,
-    communityRating: Float?,
-    criticRating: Float?,
-    preferCommunity: Boolean
-): RatingType {
-    // Check for Rotten Tomatoes provider IDs first
-    val rtId = providerIds?.get("RottenTomatoes") ?: providerIds?.get("rottentomatoes") ?: 
-               providerIds?.get("Rotten Tomatoes") ?: providerIds?.get("RottenTomatoes.tomato") ?:
-               providerIds?.get("RottenTomatoes.audience")
-    
-    // If preferCommunity is true and CommunityRating exists with RT ID, return Audience
-    if (preferCommunity && rtId != null && communityRating != null) {
-        return RatingType.RottenTomatoesAudience
-    }
-    
-    // If CriticRating exists, it's likely RT Fresh/Rotten rating
-    if (criticRating != null && !preferCommunity) {
-        // RT Fresh = 60%+ (6.0/10), RT Rotten = <60%
-        // Show RT icons even if ProviderIds don't explicitly say RT, as CriticRating is typically RT
-        return if (criticRating >= 6.0f) {
-            RatingType.RottenTomatoesFresh
-        } else {
-            RatingType.RottenTomatoesRotten
-        }
-    }
-    
-    // If we have RT provider ID and CommunityRating, it might be RT Audience
-    if (rtId != null && communityRating != null) {
-        return RatingType.RottenTomatoesAudience
-    }
-    
-    // Check for IMDb
-    if (providerIds != null) {
-        val imdbId = providerIds["Imdb"] ?: providerIds["imdb"] ?: providerIds["IMDb"] ?:
-                     providerIds["imdbid"]
-        if (imdbId != null) {
-            return RatingType.IMDb
-        }
-    }
-    
-    return RatingType.Generic
-}
-
-// Rating box with icon
-@Composable
-private fun RatingBoxWithIcon(
-    percentage: Int,
-    iconRes: Int,
-    label: String
-) {
-    Box(
-        modifier = Modifier
-            .background(Color.Black, RoundedCornerShape(4.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Icon for rating source - height to match metadata item height, width adjusts to preserve aspect ratio
-            Image(
-                painter = painterResource(iconRes),
-                contentDescription = label,
-                modifier = Modifier.height(12.dp), // Match height of labelSmall text in MetadataBox
-                contentScale = ContentScale.Fit // Preserve aspect ratio, fill height
-            )
-            Text(
-                text = "${percentage}%",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White
-            )
-        }
-    }
-}
-
-// Time remaining indicator with circular progress bar
 @Composable
 private fun TimeRemainingIndicator(item: JellyfinItem) {
-    // Get runtime and current position
     val runtimeTicks = item.RunTimeTicks ?: return
     val positionTicks = item.UserData?.PositionTicks ?: 0L
     
-    // Don't show if not started or runtime is invalid
     if (runtimeTicks <= 0 || positionTicks <= 0) return
     
-    // Calculate time remaining (10,000,000 ticks = 1 second)
     val remainingTicks = runtimeTicks - positionTicks
-    if (remainingTicks <= 0) return // Don't show if completed
+    if (remainingTicks <= 0) return
     
-    // Convert ticks to milliseconds for accurate calculation
     val runtimeMs = runtimeTicks / 10_000
     val positionMs = positionTicks / 10_000
     val remainingMs = remainingTicks / 10_000
     
-    // Calculate progress percentage (0.0 to 1.0)
     val progress = if (runtimeMs > 0) {
         min(1.0f, positionMs.toFloat() / runtimeMs.toFloat())
     } else {
         0.0f
     }
     
-    // Convert remaining time to hours, minutes, and seconds
     val totalSeconds = (remainingMs / 1000).toInt()
     val hours = totalSeconds / 3600
     val minutes = (totalSeconds % 3600) / 60
     val seconds = totalSeconds % 60
     
-    // Format time remaining text with better precision
     val timeText = when {
         hours > 0 -> {
             if (minutes > 0) {
@@ -2531,15 +2321,13 @@ private fun TimeRemainingIndicator(item: JellyfinItem) {
             if (minutes >= 5) {
                 "${minutes}m left"
             } else {
-                // Show seconds for less than 5 minutes
                 "${minutes}m ${seconds}s left"
             }
         }
         seconds > 0 -> "${seconds}s left"
-        else -> return // Don't show if less than a second
+        else -> return
     }
     
-    // Circular progress bar dimensions - match metadata item height
     val progressSize = 14.dp
     val strokeWidth = 1.5.dp
     
@@ -2553,7 +2341,6 @@ private fun TimeRemainingIndicator(item: JellyfinItem) {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Circular progress bar
             Box(
                 modifier = Modifier.size(progressSize),
                 contentAlignment = Alignment.Center
@@ -2564,7 +2351,6 @@ private fun TimeRemainingIndicator(item: JellyfinItem) {
                     val center = Offset(size.width / 2, size.height / 2)
                     val radius2 = radius * 2
                     
-                    // Background circle (semi-transparent white)
                     drawCircle(
                         color = Color.White.copy(alpha = 0.25f),
                         radius = radius,
@@ -2572,12 +2358,11 @@ private fun TimeRemainingIndicator(item: JellyfinItem) {
                         style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
                     )
                     
-                    // Progress arc (white) - shows how much has been watched
                     if (progress > 0f && progress < 1f) {
                         val sweepAngle = 360f * progress
                         drawArc(
                             color = Color.White,
-                            startAngle = -90f, // Start from top (12 o'clock)
+                            startAngle = -90f,
                             sweepAngle = sweepAngle,
                             useCenter = false,
                             topLeft = Offset(center.x - radius, center.y - radius),
@@ -2585,7 +2370,6 @@ private fun TimeRemainingIndicator(item: JellyfinItem) {
                             style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
                         )
                     } else if (progress >= 1f) {
-                        // Fully watched - draw complete circle
                         drawCircle(
                             color = Color.White,
                             radius = radius,
@@ -2596,7 +2380,6 @@ private fun TimeRemainingIndicator(item: JellyfinItem) {
                 }
             }
             
-            // Time remaining text
             Text(
                 text = timeText,
                 style = MaterialTheme.typography.labelSmall.copy(
@@ -2608,10 +2391,8 @@ private fun TimeRemainingIndicator(item: JellyfinItem) {
     }
 }
 
-// Helper function to format runtime
 private fun getRuntime(item: JellyfinItem): String? {
     val runtimeTicks = item.RunTimeTicks ?: return null
-    // Convert ticks to minutes (10,000,000 ticks = 1 second)
     val totalSeconds = runtimeTicks / 10_000_000
     val hours = totalSeconds / 3600
     val minutes = (totalSeconds % 3600) / 60
@@ -2622,4 +2403,3 @@ private fun getRuntime(item: JellyfinItem): String? {
         else -> null
     }
 }
-

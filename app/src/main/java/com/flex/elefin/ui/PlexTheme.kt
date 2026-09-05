@@ -152,3 +152,44 @@ fun PlexPrimaryButton(
         Text(text)
     }
 }
+
+/**
+ * Cinematic multi-stop gradient for text readability and smooth backdrop fades
+ */
+@Composable
+fun PlexMultiStopGradient(
+    baseColor: Color = Color(0xFF09090B),
+    startY: Float = 0f,
+    endY: Float = Float.POSITIVE_INFINITY
+): Brush {
+    return Brush.verticalGradient(
+        colors = listOf(
+            Color.Transparent,
+            baseColor.copy(alpha = 0.15f),
+            baseColor.copy(alpha = 0.55f),
+            baseColor.copy(alpha = 0.88f),
+            baseColor
+        ),
+        startY = startY,
+        endY = endY
+    )
+}
+
+/**
+ * Atmospheric ambient radial glow brush from palette accent color
+ */
+@Composable
+fun PlexAmbientRadialGlow(
+    palette: ArtworkPalette,
+    radius: Float = 900f
+): Brush {
+    return Brush.radialGradient(
+        colors = listOf(
+            palette.accent.copy(alpha = 0.28f),
+            palette.background.copy(alpha = 0.15f),
+            Color.Transparent
+        ),
+        radius = radius
+    )
+}
+

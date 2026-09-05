@@ -1,6 +1,7 @@
 package com.flex.elefin.screens
 
 import com.flex.elefin.jellyfin.JellyfinRepository
+import com.flex.elefin.components.RatingDisplay
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -490,7 +491,7 @@ fun SeriesDetailsScreen(
         val useLogo = settings.useLogoForTitle
         // Increase container height when logo is used to prevent synopsis cropping
         val topContainerHeight = if (useLogo) 0.30f else 0.2581875f
-        
+
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
@@ -522,7 +523,7 @@ fun SeriesDetailsScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f) // Fill remaining space between top and bottom
+                    .weight(1f)
                     .then(
                         if (showDebugOutlines) {
                             Modifier.border(4.dp, Color.Blue)
@@ -558,52 +559,6 @@ fun SeriesDetailsScreen(
                 )
             }
 
-            // Bottom container - scrollable with Cast
-            val castMembers = displayItem.People?.filter { it.Type == "Actor" } ?: emptyList()
-            val bottomListState = rememberLazyListState()
-            
-            LazyColumn(
-                state = bottomListState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.35f) // Slightly larger to accommodate scrolling
-                    .then(
-                        if (showDebugOutlines) {
-                            Modifier.border(4.dp, Color.Green)
-                        } else {
-                            Modifier
-                        }
-                    ),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(start = 33.6.dp, end = 33.6.dp, top = 0.dp, bottom = 24.dp)
-            ) {
-                // Cast row
-                if (castMembers.isNotEmpty()) {
-                    item {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Text(
-                                text = "Cast",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp) // Add padding for focus scale
-                            ) {
-                                items(castMembers) { person ->
-                                    CastMemberCard(
-                                        person = person,
-                                        apiService = apiService
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -644,7 +599,6 @@ fun SeriesTopContainer(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(start = 30.24.dp, end = 30.24.dp, top = 18.dp, bottom = 16.2.dp) // Reduced all padding by 10%
-                .verticalScroll(rememberScrollState()) // Allow scrolling if synopsis is too long
                 .then(
                     if (showDebugOutlines) {
                         Modifier.border(2.dp, Color.Magenta)
@@ -863,28 +817,68 @@ fun SeriesTopContainer(
                 // Synopsis (from series)
                 displayItem.Overview?.let { synopsis ->
                     if (synopsis.isNotEmpty()) {
-                        Box(
+                        var showSeriesSynopsisDialog by remember { mutableStateOf(false) }
+                        
+                        Text(
+                            text = synopsis,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f,
+                                lineHeight = MaterialTheme.typography.bodyLarge.fontSize * 0.8f * 1.25f
+                            ),
+                            color = Color.White.copy(alpha = 0.9f),
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier
-                                .heightIn(min = 180.dp) // Increased height to allow more synopsis text to be visible
-                                .then(
-                                    if (showDebugOutlines) {
-                                        Modifier.border(1.dp, Color.Magenta)
-                                    } else {
-                                        Modifier
+                                .clickable { showSeriesSynopsisDialog = true }
+                        )
+                        
+                        if (showSeriesSynopsisDialog) {
+                            Dialog(
+                                onDismissRequest = { showSeriesSynopsisDialog = false },
+                                properties = DialogProperties(usePlatformDefaultWidth = false)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.85f))
+                                        .clickable { showSeriesSynopsisDialog = false },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth(0.7f)
+                                            .fillMaxHeight(0.6f),
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = androidx.tv.material3.SurfaceDefaults.colors(
+                                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+                                        )
+                                    ) {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(32.dp)
+                                                .verticalScroll(rememberScrollState())
+                                        ) {
+                                            Text(
+                                                text = "Series Synopsis",
+                                                style = MaterialTheme.typography.headlineMedium,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.padding(bottom = 16.dp)
+                                            )
+                                            Text(
+                                                text = synopsis,
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+                                                lineHeight = MaterialTheme.typography.bodyLarge.fontSize * 1.5f
+                                            )
+                                        }
                                     }
-                                )
-                        ) {
-                            Text(
-                                text = synopsis,
-                                style = MaterialTheme.typography.bodyLarge.copy(
-                                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f,
-                                    lineHeight = MaterialTheme.typography.bodyLarge.fontSize * 0.8f * 1.1f // Reduced line spacing (10% of font size)
-                                ),
-                                color = Color.White.copy(alpha = 0.9f),
-                                maxLines = Int.MAX_VALUE,
-                                modifier = Modifier
-                                    .padding(bottom = 24.dp) // Extra padding to prevent last line from being cropped
-                            )
+                                }
+                                
+                                BackHandler(enabled = showSeriesSynopsisDialog) {
+                                    showSeriesSynopsisDialog = false
+                                }
+                            }
                         }
                     }
                 }
@@ -1146,7 +1140,10 @@ fun SeriesBottomContainer(
                 }
             )
     ) {
-        LazyColumn(
+        // Keep seasons, episodes, actions, and cast fixed within the lower panel.
+        // Scrolling this column caused D-pad focus on the actions to push the
+        // Seasons heading underneath the static series header.
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 33.6.dp, vertical = 8.dp) // Reduced from 16dp to move content up
@@ -1161,145 +1158,77 @@ fun SeriesBottomContainer(
         ) {
             // Season selector row
             if (seasons.isNotEmpty()) {
-            item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp)
-                            .then(
-                                if (showDebugOutlines) {
-                                    Modifier.border(2.dp, Color(0xFFFFA500)) // Orange color
-                                } else {
-                                    Modifier
-                                }
+                TabRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    selectedTabIndex = selectedSeasonIndex,
+                    separator = { Spacer(modifier = Modifier.width(11.dp)) },
+                    indicator = { tabPositions, doesTabRowHaveFocus ->
+                        if (selectedSeasonIndex in tabPositions.indices) {
+                            TabRowDefaults.UnderlinedIndicator(
+                                currentTabPosition = tabPositions[selectedSeasonIndex],
+                                doesTabRowHaveFocus = doesTabRowHaveFocus
                             )
-                    ) {
-                        // "Seasons" title
-                        Text(
-                            text = "Seasons",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        )
-                        
-                        // Season buttons - left aligned
-                        // The selected season always shows full "Season X" text so users know which season they're browsing
-                        val seasonRowState = rememberLazyListState()
-                        
-                        // Scroll to the selected season when it changes
-                        LaunchedEffect(selectedSeasonIndex) {
-                            if (selectedSeasonIndex >= 0 && seasons.isNotEmpty()) {
-                                seasonRowState.animateScrollToItem(selectedSeasonIndex)
-                            }
                         }
-                        
-                        LazyRow(
-                            state = seasonRowState,
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp) // Add padding for focus scale
-                        ) {
-                            items(seasons.size) { index ->
-                                val season = seasons[index]
-                                var isFocused by remember { mutableStateOf(false) }
-                                val isSelected = index == selectedSeasonIndex
-                                // Use the actual season number from API, fallback to index+1 if not available
-                                val seasonNumber = season.IndexNumber ?: (index + 1)
-                                
-                                // Show expanded button if focused OR if this is the selected season
-                                val showExpanded = isFocused || isSelected
-                                
-                                Button(
-                                    onClick = { onSeasonSelected(index) },
-                                    modifier = Modifier
-                                        .then(
-                                            // Add focus requester for first season button
-                                            if (index == 0 && firstSeasonFocusRequester != null) {
-                                                Modifier.focusRequester(firstSeasonFocusRequester)
-                                            } else {
-                                                Modifier
-                                            }
-                                        )
-                                        .then(
-                                            if (showExpanded) {
-                                                Modifier
-                                                    .wrapContentWidth()
-                                                    .height(28.dp)
-                                            } else {
-                                                Modifier.size(28.dp)
-                                            }
-                                        )
-                                        .animateContentSize(
-                                            animationSpec = tween(
-                                                durationMillis = 300,
-                                                easing = FastOutSlowInEasing
-                                            )
-                                        )
-                                        .onFocusChanged { focusState ->
-                                            isFocused = focusState.isFocused
-                                            if (focusState.isFocused) {
-                                                onSeasonFocused(season)
-                                            } else {
-                                                onSeasonFocused(null)
-                                            }
-                                        }
-                                        .onKeyEvent { keyEvent ->
-                                            // When pressing down from season buttons, restore focus to last focused episode
-                                            if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionDown) {
-                                                val episodeToFocus = lastFocusedEpisode ?: episodes.firstOrNull()
-                                                if (episodeToFocus != null) {
-                                                    try {
-                                                        lastFocusedEpisodeRequester[episodeToFocus.Id]?.requestFocus()
-                                                        true
-                                                    } catch (e: Exception) {
-                                                        Log.w("SeriesBottomContainer", "Failed to restore focus to episode: ${e.message}")
-                                                        false
-                                                    }
-                                                } else {
-                                                    false
-                                                }
-                                            } else {
+                    }
+                ) {
+                    seasons.forEachIndexed { index, season ->
+                        var isFocused by remember { mutableStateOf(false) }
+                        val seasonNumber = season.IndexNumber ?: (index + 1)
+
+                        Tab(
+                            selected = index == selectedSeasonIndex,
+                            onFocus = { },
+                            onClick = { onSeasonSelected(index) },
+                            colors = TabDefaults.underlinedIndicatorTabColors(),
+                            modifier = Modifier
+                                .then(
+                                    if (index == 0 && firstSeasonFocusRequester != null) {
+                                        Modifier.focusRequester(firstSeasonFocusRequester)
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                                .onFocusChanged { focusState ->
+                                    isFocused = focusState.isFocused || focusState.hasFocus
+                                    if (isFocused) onSeasonFocused(season) else onSeasonFocused(null)
+                                }
+                                .onKeyEvent { keyEvent ->
+                                    if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionDown) {
+                                        val episodeToFocus = lastFocusedEpisode ?: episodes.firstOrNull()
+                                        if (episodeToFocus != null) {
+                                            try {
+                                                lastFocusedEpisodeRequester[episodeToFocus.Id]?.requestFocus()
+                                                true
+                                            } catch (e: Exception) {
+                                                Log.w("SeriesBottomContainer", "Failed to restore focus to episode: ${e.message}")
                                                 false
                                             }
-                                        }
-                                        .clip(CircleShape),
-                                    colors = ButtonDefaults.colors(
-                                        containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
-                                        contentColor = androidx.compose.ui.graphics.Color.White,
-                                        focusedContainerColor = androidx.compose.ui.graphics.Color.White,
-                                        focusedContentColor = androidx.compose.ui.graphics.Color.Black
-                                    ),
-                                    contentPadding = PaddingValues(8.dp)
-                                ) {
-                                    if (!showExpanded) {
-                                        // Show just the number when unfocused and not selected
-                                        Text(
-                                            text = seasonNumber.toString(),
-                                            style = MaterialTheme.typography.labelLarge.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                                            )
-                                        )
-                                    } else {
-                                        // Show "Season X" when focused or selected
-                                        Text(
-                                            text = "Season $seasonNumber",
-                                            style = MaterialTheme.typography.labelLarge.copy(
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                                            ),
-                                            modifier = Modifier.padding(horizontal = 12.dp)
-                                        )
-                                    }
+                                        } else false
+                                    } else false
                                 }
-                            }
+                                .then(
+                                    if (isFocused) {
+                                        Modifier.background(Color.White, RoundedCornerShape(4.dp))
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                        ) {
+                            Text(
+                                text = "Season $seasonNumber",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.90f
+                                ),
+                                color = if (isFocused) Color.Black else Color.White,
+                                modifier = Modifier.padding(horizontal = 13.44.dp, vertical = 6.dp)
+                            )
                         }
                     }
                 }
             }
             
-            // Episodes row and Play buttons combined in one item to prevent scrolling between them
-            item {
+            // Episodes row and Play buttons remain together in the static layout.
                 Column(
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -1439,6 +1368,35 @@ fun SeriesBottomContainer(
                                 onEpisodesRefreshRequested()
                             }
                         )
+                        }
+                    }
+            }
+
+            // Cast follows the episode actions in the same bounded scroll area, so
+            // the action row is never clipped by a competing fixed-height section.
+            val castMembers = item.People?.filter { it.Type == "Actor" } ?: emptyList()
+            if (castMembers.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Cast",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        items(castMembers) { person ->
+                            CastMemberCard(
+                                person = person,
+                                apiService = apiService,
+                                cardSize = 54.dp
+                            )
                         }
                     }
                 }
@@ -2514,189 +2472,7 @@ fun EpisodeActionButtonsRow(
     }
 }
 
-// Rating display with Rotten Tomatoes icon support
-@Composable
-private fun RatingDisplay(
-    item: JellyfinItem,
-    communityRating: Float?,
-    criticRating: Float?
-) {
-    // Calculate percentages
-    fun calculatePercentage(rating: Float): Int {
-        return if (rating > 10) {
-            // Already in percentage format (0-100)
-            rating.toInt()
-        } else {
-            // Convert from 0-10 scale to percentage
-            (rating * 10).toInt()
-        }
-    }
-    
-    // Determine critic rating type and display if available
-    val criticRatingType = if (criticRating != null) {
-        // Pass null for communityRating to focus on critic rating
-        determineRatingType(item.ProviderIds, null, criticRating, preferCommunity = false)
-    } else {
-        null
-    }
-    
-    // Determine community rating type and display if available (as audience rating)
-    val communityRatingType = if (communityRating != null) {
-        // Pass null for criticRating to focus on community rating
-        determineRatingType(item.ProviderIds, communityRating, null, preferCommunity = true)
-    } else {
-        null
-    }
-    
-    // Show critic rating (RT Fresh/Rotten or generic)
-    if (criticRating != null) {
-        val percentage = calculatePercentage(criticRating)
-        when (criticRatingType) {
-            RatingType.RottenTomatoesFresh -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = R.drawable.ic_rt_fresh,
-                    label = "RT"
-                )
-            }
-            RatingType.RottenTomatoesRotten -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = R.drawable.ic_rt_rotten,
-                    label = "RT"
-                )
-            }
-            RatingType.IMDb -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = R.drawable.ic_imdb,
-                    label = "IMDb"
-                )
-            }
-            else -> {
-                MetadataBox(text = "${percentage}%")
-            }
-        }
-    }
-    
-    // Show audience rating (RT Popcorn or generic) if available and different from critic
-    if (communityRating != null && (criticRating == null || communityRating != criticRating)) {
-        val percentage = calculatePercentage(communityRating)
-        when (communityRatingType) {
-            RatingType.RottenTomatoesAudience -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = R.drawable.ic_rt_popcorn,
-                    label = "RT"
-                )
-            }
-            RatingType.IMDb -> {
-                // Only show IMDb if we didn't already show it for critic
-                if (criticRatingType != RatingType.IMDb) {
-                    RatingBoxWithIcon(
-                        percentage = percentage,
-                        iconRes = R.drawable.ic_imdb,
-                        label = "IMDb"
-                    )
-                }
-            }
-            else -> {
-                // Show generic community rating only if we didn't show critic rating
-                if (criticRating == null) {
-                    MetadataBox(text = "${percentage}%")
-                }
-            }
-        }
-    }
-}
 
-// Determine rating type from ProviderIds and rating values
-// Note: RatingType enum is defined in MovieDetailsScreen.kt (same package, internal visibility)
-// Overloaded versions to handle critic-only or community-only scenarios
-private fun determineRatingType(
-    providerIds: Map<String, String>?,
-    communityRating: Float?,
-    criticRating: Float?
-): RatingType {
-    return determineRatingType(providerIds, communityRating, criticRating, false)
-}
-
-private fun determineRatingType(
-    providerIds: Map<String, String>?,
-    communityRating: Float?,
-    criticRating: Float?,
-    preferCommunity: Boolean
-): RatingType {
-    // Check for Rotten Tomatoes provider IDs first
-    val rtId = providerIds?.get("RottenTomatoes") ?: providerIds?.get("rottentomatoes") ?: 
-               providerIds?.get("Rotten Tomatoes") ?: providerIds?.get("RottenTomatoes.tomato") ?:
-               providerIds?.get("RottenTomatoes.audience")
-    
-    // If preferCommunity is true and CommunityRating exists with RT ID, return Audience
-    if (preferCommunity && rtId != null && communityRating != null) {
-        return RatingType.RottenTomatoesAudience
-    }
-    
-    // If CriticRating exists, it's likely RT Fresh/Rotten rating
-    if (criticRating != null && !preferCommunity) {
-        // RT Fresh = 60%+ (6.0/10), RT Rotten = <60%
-        // Show RT icons even if ProviderIds don't explicitly say RT, as CriticRating is typically RT
-        return if (criticRating >= 6.0f) {
-            RatingType.RottenTomatoesFresh
-        } else {
-            RatingType.RottenTomatoesRotten
-        }
-    }
-    
-    // If we have RT provider ID and CommunityRating, it might be RT Audience
-    if (rtId != null && communityRating != null) {
-        return RatingType.RottenTomatoesAudience
-    }
-    
-    // Check for IMDb
-    if (providerIds != null) {
-        val imdbId = providerIds["Imdb"] ?: providerIds["imdb"] ?: providerIds["IMDb"] ?:
-                     providerIds["imdbid"]
-        if (imdbId != null) {
-            return RatingType.IMDb
-        }
-    }
-    
-    return RatingType.Generic
-}
-
-// Rating box with icon
-@Composable
-private fun RatingBoxWithIcon(
-    percentage: Int,
-    iconRes: Int,
-    label: String
-) {
-    Box(
-        modifier = Modifier
-            .background(Color.Black, RoundedCornerShape(4.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Icon for rating source - height to match metadata item height, width adjusts to preserve aspect ratio
-            Image(
-                painter = painterResource(iconRes),
-                contentDescription = label,
-                modifier = Modifier.height(12.dp), // Match height of labelSmall text in MetadataBox
-                contentScale = ContentScale.Fit // Preserve aspect ratio, fill height
-            )
-            Text(
-                text = "${percentage}%",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White
-            )
-        }
-    }
-}
 
 // Metadata box component
 @Composable
@@ -3501,4 +3277,3 @@ private fun getEpisodeResolution(episode: JellyfinItem): String? {
         null
     }
 }
-

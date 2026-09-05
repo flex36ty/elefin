@@ -132,15 +132,20 @@ fun MpvControls(
                     }
                 }
         ) {
-            // Shadow gradient at bottom
+            // Multi-stop shadow gradient at bottom
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(300.dp)
+                    .height(340.dp)
                     .background(
                         Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f))
+                            colors = listOf(
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.25f),
+                                Color.Black.copy(alpha = 0.65f),
+                                Color.Black.copy(alpha = 0.92f)
+                            )
                         )
                     )
             )
@@ -150,7 +155,7 @@ fun MpvControls(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(horizontal = 48.dp, vertical = 32.dp)
+                    .padding(horizontal = 48.dp, vertical = 28.dp)
             ) {
                 // Time display
                 Row(
@@ -181,81 +186,88 @@ fun MpvControls(
                 
                 if (videoResolution.isNotEmpty()) {
                     androidx.tv.material3.Surface(
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(12.dp),
                         colors = androidx.tv.material3.SurfaceDefaults.colors(
-                            containerColor = Color.Black.copy(alpha = 0.5f),
+                            containerColor = Color.White.copy(alpha = 0.12f),
                             contentColor = Color.White
                         ),
                         modifier = Modifier.padding(top = 8.dp)
                     ) {
                         Text(
                             text = videoResolution,
-                            color = Color.White.copy(alpha = 0.9f),
+                            color = Color.White.copy(alpha = 0.95f),
                             style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
-                // Control buttons row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
+                // Control buttons row wrapped in a floating glassmorphic pill
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .background(Color.Black.copy(alpha = 0.40f), RoundedCornerShape(28.dp))
+                        .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(28.dp))
+                        .padding(horizontal = 24.dp, vertical = 10.dp)
                 ) {
-                    // Rewind button
-                    PlayerControlButton(
-                        icon = Icons.Filled.FastRewind,
-                        contentDescription = "Rewind 15s",
-                        onClick = onFastRewind
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Rewind button
+                        PlayerControlButton(
+                            icon = Icons.Filled.FastRewind,
+                            contentDescription = "Rewind 15s",
+                            onClick = onFastRewind
+                        )
 
-                    Spacer(modifier = Modifier.width(32.dp))
+                        Spacer(modifier = Modifier.width(32.dp))
 
-                    // Play/Pause button - DEFAULT FOCUS TARGET
-                    PlayerControlButton(
-                        icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        onClick = onPlayPause,
-                        modifier = Modifier.focusRequester(playPauseFocusRequester)
-                    )
+                        // Play/Pause button - DEFAULT FOCUS TARGET
+                        PlayerControlButton(
+                            icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (isPlaying) "Pause" else "Play",
+                            onClick = onPlayPause,
+                            modifier = Modifier.focusRequester(playPauseFocusRequester)
+                        )
 
-                    Spacer(modifier = Modifier.width(32.dp))
+                        Spacer(modifier = Modifier.width(32.dp))
 
-                    // Fast forward button
-                    PlayerControlButton(
-                        icon = Icons.Filled.FastForward,
-                        contentDescription = "Forward 15s",
-                        onClick = onFastForward
-                    )
+                        // Fast forward button
+                        PlayerControlButton(
+                            icon = Icons.Filled.FastForward,
+                            contentDescription = "Forward 15s",
+                            onClick = onFastForward
+                        )
 
-                    Spacer(modifier = Modifier.width(32.dp))
+                        Spacer(modifier = Modifier.width(32.dp))
 
-                    // Picture Mode / Aspect Ratio button
-                    AspectModeButton(
-                        currentMode = currentAspectMode,
-                        onClick = onAspectModeChange
-                    )
+                        // Picture Mode / Aspect Ratio button
+                        AspectModeButton(
+                            currentMode = currentAspectMode,
+                            onClick = onAspectModeChange
+                        )
 
-                    Spacer(modifier = Modifier.width(32.dp))
+                        Spacer(modifier = Modifier.width(32.dp))
 
-                    // CC (Subtitles) button - quick access to subtitles menu
-                    PlayerControlButton(
-                        icon = Icons.Filled.ClosedCaption,
-                        contentDescription = "Subtitles",
-                        onClick = { onOpenSettings("subtitles") }
-                    )
+                        // CC (Subtitles) button - quick access to subtitles menu
+                        PlayerControlButton(
+                            icon = Icons.Filled.ClosedCaption,
+                            contentDescription = "Subtitles",
+                            onClick = { onOpenSettings("subtitles") }
+                        )
 
-                    Spacer(modifier = Modifier.width(32.dp))
+                        Spacer(modifier = Modifier.width(32.dp))
 
-                    // Settings button
-                    PlayerControlButton(
-                        icon = Icons.Filled.Settings,
-                        contentDescription = "Settings",
-                        onClick = { onOpenSettings("main") }
-                    )
+                        // Settings button
+                        PlayerControlButton(
+                            icon = Icons.Filled.Settings,
+                            contentDescription = "Settings",
+                            onClick = { onOpenSettings("main") }
+                        )
+                    }
                 }
             }
         }

@@ -1,5 +1,8 @@
 package com.flex.elefin.screens
 
+import com.flex.elefin.components.RatingType
+import com.flex.elefin.components.RatingDisplay
+
 import android.util.Log
 import com.flex.elefin.ui.TvBringIntoViewProvider
 import androidx.compose.animation.Crossfade
@@ -2248,169 +2251,18 @@ private fun MovieMetadataBox(text: String) {
     }
 }
 
-// Rating display with Rotten Tomatoes icon support - matching home screen
+// Rating display with Rotten Tomatoes icon support
 @Composable
 private fun MovieRatingDisplay(
     item: JellyfinItem,
     communityRating: Float?,
     criticRating: Float?
 ) {
-    // Calculate percentages
-    fun calculatePercentage(rating: Float): Int {
-        return if (rating > 10) {
-            // Already in percentage format (0-100)
-            rating.toInt()
-        } else {
-            // Convert from 0-10 scale to percentage
-            (rating * 10).toInt()
-        }
-    }
-    
-    // Determine critic rating type and display if available
-    val criticRatingType: RatingType? = if (criticRating != null) {
-        determineMovieRatingType(item.ProviderIds, null, criticRating, preferCommunity = false)
-    } else {
-        null
-    }
-    
-    // Determine community rating type and display if available (as audience rating)
-    val communityRatingType: RatingType? = if (communityRating != null) {
-        determineMovieRatingType(item.ProviderIds, communityRating, null, preferCommunity = true)
-    } else {
-        null
-    }
-    
-    // Show critic rating (RT Fresh/Rotten or generic)
-    if (criticRating != null) {
-        val percentage = calculatePercentage(criticRating)
-        when (criticRatingType) {
-            RatingType.RottenTomatoesFresh -> {
-                MovieRatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = com.flex.elefin.R.drawable.ic_rt_fresh,
-                    label = "RT"
-                )
-            }
-            RatingType.RottenTomatoesRotten -> {
-                MovieRatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = com.flex.elefin.R.drawable.ic_rt_rotten,
-                    label = "RT"
-                )
-            }
-            RatingType.IMDb -> {
-                MovieRatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = com.flex.elefin.R.drawable.ic_imdb,
-                    label = "IMDb"
-                )
-            }
-            else -> {
-                MovieMetadataBox(text = "${percentage}%")
-            }
-        }
-    }
-    
-    // Show audience rating (RT Popcorn or generic) if available and different from critic
-    if (communityRating != null && (criticRating == null || communityRating != criticRating)) {
-        val percentage = calculatePercentage(communityRating)
-        when (communityRatingType) {
-            RatingType.RottenTomatoesAudience -> {
-                MovieRatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = com.flex.elefin.R.drawable.ic_rt_popcorn,
-                    label = "RT"
-                )
-            }
-            RatingType.IMDb -> {
-                // Only show IMDb if we didn't already show it for critic
-                if (criticRatingType != RatingType.IMDb) {
-                    MovieRatingBoxWithIcon(
-                        percentage = percentage,
-                        iconRes = com.flex.elefin.R.drawable.ic_imdb,
-                        label = "IMDb"
-                    )
-                }
-            }
-            else -> {
-                // Show generic community rating only if we didn't show critic rating
-                if (criticRating == null) {
-                    MovieMetadataBox(text = "${percentage}%")
-                }
-            }
-        }
-    }
-}
-
-// Determine rating type based on provider IDs - matching home screen
-private fun determineMovieRatingType(
-    providerIds: Map<String, String>?,
-    communityRating: Float?,
-    criticRating: Float?,
-    preferCommunity: Boolean = false
-): RatingType {
-    val hasRottenTomatoes = providerIds?.containsKey("TmdbId") == true || 
-                           providerIds?.containsKey("Imdb") == true
-    val hasIMDb = providerIds?.containsKey("Imdb") == true
-    
-    // Determine which rating to display based on what's available
-    if (preferCommunity && communityRating != null) {
-        // For community/audience ratings, prefer RT Popcorn if RT is available
-        if (hasRottenTomatoes) {
-            return RatingType.RottenTomatoesAudience
-        }
-        if (hasIMDb) {
-            return RatingType.IMDb
-        }
-    } else if (!preferCommunity && criticRating != null) {
-        // For critic ratings, use RT Fresh/Rotten based on percentage
-        if (hasRottenTomatoes) {
-            val percentage = if (criticRating > 10) criticRating.toInt() else (criticRating * 10).toInt()
-            return if (percentage >= 60) {
-                RatingType.RottenTomatoesFresh
-            } else {
-                RatingType.RottenTomatoesRotten
-            }
-        }
-        if (hasIMDb) {
-            return RatingType.IMDb
-        }
-    }
-    
-    return RatingType.Generic
-}
-
-// Rating box with icon - matching home screen
-@Composable
-private fun MovieRatingBoxWithIcon(
-    percentage: Int,
-    iconRes: Int,
-    label: String
-) {
-    Box(
-        modifier = Modifier
-            .background(Color.Black, RoundedCornerShape(4.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Icon for rating source - height to match metadata item height, width adjusts to preserve aspect ratio
-            Image(
-                painter = painterResource(iconRes),
-                contentDescription = label,
-                modifier = Modifier.height(12.dp), // Match height of labelSmall text in MetadataBox
-                contentScale = ContentScale.Fit // Preserve aspect ratio, fill height
-            )
-            Text(
-                text = "${percentage}%",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White
-            )
-        }
-    }
+    RatingDisplay(
+        item = item,
+        communityRating = communityRating,
+        criticRating = criticRating
+    )
 }
 
 // =============================================================================
