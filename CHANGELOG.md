@@ -2,7 +2,7 @@
 
 All notable changes to Elefin will be documented in this file.
 
-## 2026-09-06
+## 1.1.27 — 2026-09-06
 
 ### Improved
 
