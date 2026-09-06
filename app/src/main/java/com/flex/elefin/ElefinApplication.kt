@@ -14,6 +14,9 @@ class ElefinApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         NewPipe.init(ElefinDownloader())
+        // Include HLS manifests when YouTube does not return direct media streams.
+        org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeStreamExtractor
+            .setFetchVisionosClient(true)
     }
 
     override fun newImageLoader(): ImageLoader {

@@ -182,6 +182,16 @@ class MpvTvPlayerActivity : ComponentActivity() {
         super.onDestroy()
         mpvView?.destroy()
         mpvView = null
+        if (isFinishing && intent.getBooleanExtra(EXTRA_IS_TRAILER, false)) {
+            listOf(EXTRA_URL, EXTRA_AUDIO_URL).forEach { extra ->
+                intent.getStringExtra(extra)?.let { path ->
+                    val file = java.io.File(path)
+                    if (file.parentFile == cacheDir && file.name.startsWith("elefin-trailer-")) {
+                        file.delete()
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -972,10 +982,10 @@ private fun MpvPlayerScreen(
                                 MPVLib.command(arrayOf("apply-profile", "trailer"))
                             }
 
-                            playFile(url)
+                            playFile(url, externalAudioFile = externalAudioUrl.takeIf { isTrailer })
 
                             // AUDIO TRACK
-                            if (externalAudioUrl != null) {
+                            if (externalAudioUrl != null && !isTrailer) {
                                 // Use Handler to ensure the main file load has initialized the player core
                                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                                      Log.d("MpvTvPlayer", "Executing delayed audio-add: $externalAudioUrl")
@@ -1474,7 +1484,6 @@ private fun writeMpvTvConfig(dir: File) {
         [trailer]
         profile=default
         hwdec=mediacodec-copy
-        vo=gpu
         scale=bilinear
         dither=no
         interpolation=no

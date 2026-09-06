@@ -1,5 +1,6 @@
 package com.flex.elefin.screens
 
+import com.flex.elefin.ui.expandingActionButton
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -88,22 +89,7 @@ fun AnimatedPlayButton(
     // Button container that extends horizontally when focused
     Box(
         modifier = modifier
-            .then(
-                if (focused) {
-                    Modifier
-                        .wrapContentWidth()
-                        .height(28.dp)
-                } else {
-                    Modifier.size(28.dp) // Circular when unfocused
-                }
-            )
-            .animateContentSize(
-                animationSpec = tween(
-                    durationMillis = 300,
-                    easing = FastOutSlowInEasing
-                )
-            )
-            .background(currentContainerColor, androidx.compose.foundation.shape.CircleShape)
+            .expandingActionButton(focused)
             .focusable()
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },

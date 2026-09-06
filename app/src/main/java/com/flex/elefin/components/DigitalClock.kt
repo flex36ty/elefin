@@ -11,6 +11,8 @@ import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
+import java.util.Locale
 
 /**
  * A digital clock component that displays the current time and updates every second.
@@ -21,17 +23,19 @@ fun DigitalClock(
     modifier: Modifier = Modifier,
     use24HourFormat: Boolean = false
 ) {
-    var currentTime by remember { mutableStateOf(LocalTime.now()) }
+    var currentTime by remember { mutableStateOf(LocalTime.now().truncatedTo(ChronoUnit.MINUTES)) }
 
     LaunchedEffect(Unit) {
         while (true) {
-            currentTime = LocalTime.now()
+            // Poll for clock adjustments, but only invalidate UI when the displayed minute changes.
+            currentTime = LocalTime.now().truncatedTo(ChronoUnit.MINUTES)
             delay(1000)
         }
     }
 
     val pattern = if (use24HourFormat) "HH:mm" else "h:mm a"
-    val formatter = DateTimeFormatter.ofPattern(pattern)
+    val locale = Locale.getDefault()
+    val formatter = remember(pattern, locale) { DateTimeFormatter.ofPattern(pattern, locale) }
     val timeString = currentTime.format(formatter)
     
     // Match the 30% reduction scaling used in navigation tabs (1.17 * 0.7 = 0.819f)

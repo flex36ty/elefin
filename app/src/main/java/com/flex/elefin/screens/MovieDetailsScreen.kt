@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
+import com.flex.elefin.ui.expandingActionButton
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.lazy.LazyColumn
@@ -529,6 +530,7 @@ fun TopContainer(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun BottomContainer(
     item: JellyfinItem,
@@ -586,6 +588,17 @@ fun BottomContainer(
     // Scrollable container with cast and movie rows
     val scrollState = rememberLazyListState()
     
+    val horizontalScrollSpec = remember { com.flex.elefin.ui.TvBringIntoViewSpec(vertical = false) }
+    val focusTolerance = with(androidx.compose.ui.platform.LocalDensity.current) { 8.dp.toPx() }
+    val rowEdgeInset = with(androidx.compose.ui.platform.LocalDensity.current) { 24.dp.toPx() }
+    val verticalScrollSpec = remember(focusTolerance, rowEdgeInset) {
+        com.flex.elefin.ui.TvBringIntoViewSpec(
+            vertical = true, edgeInset = rowEdgeInset, focusTolerance = focusTolerance
+        )
+    }
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides verticalScrollSpec
+    ) {
     LazyColumn(
         state = scrollState,
         modifier = Modifier
@@ -603,7 +616,7 @@ fun BottomContainer(
     ) {
         // Cast row - now focusable so selector can navigate to it
         if (castMembers.isNotEmpty()) {
-            item {
+            item(key = "cast") {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -613,6 +626,9 @@ fun BottomContainer(
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides horizontalScrollSpec
+                    ) {
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp), // Extra padding for focus scale animation
@@ -625,6 +641,7 @@ fun BottomContainer(
                             )
                         }
                     }
+                    }
                 }
             }
         }
@@ -632,7 +649,7 @@ fun BottomContainer(
         // Chapters row
         val chapters = item.Chapters ?: emptyList()
         if (chapters.isNotEmpty()) {
-            item {
+            item(key = "chapters") {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -642,6 +659,9 @@ fun BottomContainer(
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides horizontalScrollSpec
+                    ) {
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp),
@@ -678,13 +698,14 @@ fun BottomContainer(
                             )
                         }
                     }
+                    }
                 }
             }
         }
         
         // Movies similar to row
         if (firstGenre != null && (!isLoadingSimilar && similarMovies.isNotEmpty())) {
-            item {
+            item(key = "similar_movies") {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -694,12 +715,15 @@ fun BottomContainer(
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides horizontalScrollSpec
+                    ) {
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp), // Extra padding for focus scale animation
                         modifier = Modifier.graphicsLayer { clip = false } // Prevent clipping of scaled cards
                     ) {
-                        items(similarMovies) { movie ->
+                        items(similarMovies, key = { it.Id }) { movie ->
                             JellyfinHorizontalCard(
                                 item = movie,
                                 apiService = apiService,
@@ -713,13 +737,14 @@ fun BottomContainer(
                             )
                         }
                     }
+                    }
                 }
             }
         }
         
         // More movies with [cast member] row
         if (firstCastMember != null && (!isLoadingCastMovies && moviesWithCast.isNotEmpty())) {
-            item {
+            item(key = "cast_movies") {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -729,12 +754,15 @@ fun BottomContainer(
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides horizontalScrollSpec
+                    ) {
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp), // Extra padding for focus scale animation
                         modifier = Modifier.graphicsLayer { clip = false } // Prevent clipping of scaled cards
                     ) {
-                        items(moviesWithCast) { movie ->
+                        items(moviesWithCast, key = { it.Id }) { movie ->
                             JellyfinHorizontalCard(
                                 item = movie,
                                 apiService = apiService,
@@ -748,9 +776,11 @@ fun BottomContainer(
                             )
                         }
                     }
+                    }
                 }
             }
         }
+    }
     }
 }
 
@@ -1764,27 +1794,12 @@ fun ActionButtonsRow(
                     },
                     modifier = Modifier
                         .focusRequester(resumeFocusRequester)
-                        .then(
-                            if (resumeFocused) {
-                                Modifier
-                                    .wrapContentWidth()
-                                    .height(28.dp)
-                            } else {
-                                Modifier.size(28.dp)
-                            }
-                        )
-                        .animateContentSize(
-                            animationSpec = tween(
-                                durationMillis = 300,
-                                easing = FastOutSlowInEasing
-                            )
-                        )
-                        .onFocusChanged { resumeFocused = it.isFocused }
-                        .clip(CircleShape),
+                        .expandingActionButton(focused = resumeFocused)
+                    .onFocusChanged { resumeFocused = it.isFocused },
                     colors = ButtonDefaults.colors(
-                        containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                        containerColor = androidx.compose.ui.graphics.Color.Transparent,
                         contentColor = androidx.compose.ui.graphics.Color.White,
-                        focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                        focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                         focusedContentColor = androidx.compose.ui.graphics.Color.Black
                     ),
                     shape = ButtonDefaults.shape(CircleShape),
@@ -1846,27 +1861,12 @@ fun ActionButtonsRow(
                     // Don't finish - let back button return to movie details screen
                 },
                 modifier = Modifier
-                    .then(
-                        if (playFocused) {
-                            Modifier
-                                .wrapContentWidth()
-                                .height(28.dp)
-                        } else {
-                            Modifier.size(28.dp)
-                        }
-                    )
-                    .animateContentSize(
-                        animationSpec = tween(
-                            durationMillis = 300,
-                            easing = FastOutSlowInEasing
-                        )
-                    )
-                    .onFocusChanged { playFocused = it.isFocused }
-                    .clip(CircleShape),
+                    .expandingActionButton(focused = playFocused)
+                    .onFocusChanged { playFocused = it.isFocused },
                 colors = ButtonDefaults.colors(
-                    containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
                     contentColor = androidx.compose.ui.graphics.Color.White,
-                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                     focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
                     shape = ButtonDefaults.shape(CircleShape),
@@ -1902,6 +1902,7 @@ fun ActionButtonsRow(
         
 
 
+
         // Audio track button (only show if media has multiple audio tracks)
         if (hasMultiAudio) {
         var audioFocused by remember { mutableStateOf(false) }
@@ -1911,39 +1912,18 @@ fun ActionButtonsRow(
                 showAudioDialog = true
             },
             modifier = Modifier
-                .then(
-                    if (audioFocused) {
-                        Modifier
-                            .wrapContentWidth()
-                            .height(28.dp)
-                    } else {
-                        Modifier.size(28.dp)
-                    }
-                )
-                .animateContentSize(
-                    animationSpec = tween(
-                        durationMillis = 300,
-                        easing = FastOutSlowInEasing
-                    )
-                )
-                .onFocusChanged { audioFocused = it.isFocused }
-                .clip(CircleShape),
+                .expandingActionButton(focused = audioFocused, expandLeft = true)
+                    .onFocusChanged { audioFocused = it.isFocused },
                 colors = ButtonDefaults.colors(
-                    containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
                     contentColor = androidx.compose.ui.graphics.Color.White,
-                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                     focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
                 shape = ButtonDefaults.shape(CircleShape),
                 contentPadding = PaddingValues(8.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.VolumeUp,
-                contentDescription = "Audio Track",
-                modifier = Modifier.size(14.3.dp)
-            )
             if (audioFocused) {
-                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = "Audio",
                     style = MaterialTheme.typography.labelLarge.copy(
@@ -1951,7 +1931,13 @@ fun ActionButtonsRow(
                     ),
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
-                }
+                    Spacer(modifier = Modifier.width(6.dp))
+            }
+            Icon(
+                imageVector = Icons.Default.VolumeUp,
+                contentDescription = "Audio Track",
+                modifier = Modifier.size(14.3.dp)
+            )
             }
         }
         
@@ -1963,39 +1949,18 @@ fun ActionButtonsRow(
                 showSubtitleDialog = true
             },
             modifier = Modifier
-                .then(
-                    if (subtitleFocused) {
-                        Modifier
-                            .wrapContentWidth()
-                            .height(28.dp)
-                    } else {
-                        Modifier.size(28.dp)
-                    }
-                )
-                .animateContentSize(
-                    animationSpec = tween(
-                        durationMillis = 300,
-                        easing = FastOutSlowInEasing
-                    )
-                )
-                .onFocusChanged { subtitleFocused = it.isFocused }
-                .clip(CircleShape),
+                .expandingActionButton(focused = subtitleFocused, expandLeft = true)
+                    .onFocusChanged { subtitleFocused = it.isFocused },
             colors = ButtonDefaults.colors(
-                containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                containerColor = androidx.compose.ui.graphics.Color.Transparent,
                 contentColor = androidx.compose.ui.graphics.Color.White,
-                focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                 focusedContentColor = androidx.compose.ui.graphics.Color.Black
             ),
             shape = ButtonDefaults.shape(CircleShape),
             contentPadding = PaddingValues(8.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Language,
-                contentDescription = "Subtitles",
-                modifier = Modifier.size(14.3.dp)
-            )
             if (subtitleFocused) {
-                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = "Subtitles",
                     style = MaterialTheme.typography.labelLarge.copy(
@@ -2003,7 +1968,13 @@ fun ActionButtonsRow(
                     ),
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
+                Spacer(modifier = Modifier.width(6.dp))
             }
+            Icon(
+                imageVector = Icons.Default.Language,
+                contentDescription = "Subtitles",
+                modifier = Modifier.size(14.3.dp)
+            )
         }
         
         // Trailer button - always shows
@@ -2026,39 +1997,18 @@ fun ActionButtonsRow(
                 }
             },
             modifier = Modifier
-                .then(
-                    if (trailerFocused) {
-                        Modifier
-                            .wrapContentWidth()
-                            .height(28.dp)
-                    } else {
-                        Modifier.size(28.dp)
-                    }
-                )
-                .animateContentSize(
-                    animationSpec = tween(
-                        durationMillis = 300,
-                        easing = FastOutSlowInEasing
-                    )
-                )
-                .onFocusChanged { trailerFocused = it.isFocused }
-                .clip(CircleShape),
+                .expandingActionButton(focused = trailerFocused, expandLeft = true)
+                    .onFocusChanged { trailerFocused = it.isFocused },
             colors = ButtonDefaults.colors(
-                containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                containerColor = androidx.compose.ui.graphics.Color.Transparent,
                 contentColor = androidx.compose.ui.graphics.Color.White,
-                focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                 focusedContentColor = androidx.compose.ui.graphics.Color.Black
             ),
             shape = ButtonDefaults.shape(CircleShape),
             contentPadding = PaddingValues(8.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Movie,
-                contentDescription = "Watch Trailer",
-                modifier = Modifier.size(14.3.dp)
-            )
             if (trailerFocused) {
-                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = "Watch Trailer",
                     style = MaterialTheme.typography.labelLarge.copy(
@@ -2066,7 +2016,13 @@ fun ActionButtonsRow(
                     ),
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
+                Spacer(modifier = Modifier.width(6.dp))
             }
+            Icon(
+                imageVector = Icons.Default.Movie,
+                contentDescription = "Watch Trailer",
+                modifier = Modifier.size(14.3.dp)
+            )
         }
 
         // Mark as Watched/Unwatched button
@@ -2112,46 +2068,31 @@ fun ActionButtonsRow(
                 }
             },
             modifier = Modifier
-                .then(
-                    if (watchedFocused) {
-                        Modifier
-                            .wrapContentWidth()
-                            .height(28.dp)
-                    } else {
-                        Modifier.size(28.dp)
-                    }
-                )
-                .animateContentSize(
-                    animationSpec = tween(
-                        durationMillis = 300,
-                        easing = FastOutSlowInEasing
-                    )
-                )
-                .onFocusChanged { watchedFocused = it.isFocused }
-                .clip(CircleShape),
+                .expandingActionButton(focused = watchedFocused, expandLeft = true)
+                    .onFocusChanged { watchedFocused = it.isFocused },
             colors = ButtonDefaults.colors(
-                containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                containerColor = androidx.compose.ui.graphics.Color.Transparent,
                 contentColor = androidx.compose.ui.graphics.Color.White,
-                focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                 focusedContentColor = androidx.compose.ui.graphics.Color.Black
             ),
             shape = ButtonDefaults.shape(CircleShape),
             contentPadding = PaddingValues(8.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Check,
-                contentDescription = if (isAlreadyWatched) "Mark As Unwatched" else "Mark As Watched",
-                modifier = Modifier.size(14.3.dp)
-            )
             if (watchedFocused) {
-                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = if (isAlreadyWatched) "Mark As Unwatched" else "Mark As Watched",
                     style = MaterialTheme.typography.labelLarge.copy(
                         fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
                     )
                 )
+                Spacer(modifier = Modifier.width(6.dp))
             }
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = if (isAlreadyWatched) "Mark As Unwatched" else "Mark As Watched",
+                modifier = Modifier.size(14.3.dp)
+            )
         }
         
         // Right side: Spacer to push audio/subtitle display to the right

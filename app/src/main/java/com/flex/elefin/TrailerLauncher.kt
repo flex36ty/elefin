@@ -4,32 +4,37 @@ import android.content.Context
 import android.util.Log
 import android.widget.Toast
 import com.flex.elefin.player.mpv.MpvTvPlayerActivity
-import com.flex.elefin.ui.DeviceUtils
+
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.schabi.newpipe.extractor.NewPipe
+
 import org.schabi.newpipe.extractor.ServiceList
-import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeStreamExtractor
-import org.schabi.newpipe.extractor.stream.StreamInfoItem
+
+
 
 /**
  * Utility to launch trailers using NewPipe Extractor to play in-app.
  */
 class TrailerLauncher {
     companion object {
+        private val loading = java.util.concurrent.atomic.AtomicBoolean(false)
         fun launchTmdbTrailer(context: Context, key: String, title: String) {
+            if (!loading.compareAndSet(false, true)) return
+            Toast.makeText(context, "Loading trailer…", Toast.LENGTH_SHORT).show()
             val youtubeUrl = "https://www.youtube.com/watch?v=$key"
             
             CoroutineScope(Dispatchers.IO).launch {
+                val cachedFiles = mutableListOf<java.io.File>()
+                var handedToPlayer = false
                 try {
                     // Use ServiceList.YouTube (id 0)
                     val streamingService = ServiceList.YouTube
                     val extractor = streamingService.getStreamExtractor(youtubeUrl)
                     extractor.fetchPage()
                     
-                    val streamInfo = extractor as? YoutubeStreamExtractor
+
                     
                     // PRODUCTION FIX: Force 1080p (FHD). Avoid 4K.
                     // Priority:
@@ -50,8 +55,11 @@ class TrailerLauncher {
                         
                     if (fhdVideo != null) {
                         // Find best M4A audio
-                        val bestAudio = audioStreams.find { it.id == "141" } // 256k
-                            ?: audioStreams.find { it.id == "140" } // 128k
+                        val preferredAudio = audioStreams.filter {
+                            it.audioTrackType == org.schabi.newpipe.extractor.stream.AudioTrackType.ORIGINAL
+                        }.ifEmpty { audioStreams }
+                        val bestAudio = preferredAudio.find { it.id == "141" }
+                            ?: preferredAudio.find { it.id == "140" }
                             
                         if (bestAudio != null) {
                              streamUrl = fhdVideo.content
@@ -102,8 +110,31 @@ class TrailerLauncher {
                         }
                     }
 
+                    if (streamUrl.isEmpty()) {
+                        streamUrl = extractor.hlsUrl
+                        if (streamUrl.isNotEmpty()) {
+                            Log.d("TrailerLauncher", "Selected HLS manifest for $key")
+                        }
+                    }
+
                     if (streamUrl.isNotEmpty()) {
+                        // Direct YouTube URLs reject MPV's open-ended Range requests.
+                        // Download complete, bounded chunks before handing media to MPV.
+                        if (android.net.Uri.parse(streamUrl).host?.endsWith(".googlevideo.com") == true
+                            && android.net.Uri.parse(streamUrl).path == "/videoplayback") {
+                            fun cacheMedia(mediaUrl: String, suffix: String): String {
+                                val file = java.io.File.createTempFile("elefin-trailer-", suffix, context.cacheDir)
+                                cachedFiles += file
+                                com.flex.elefin.networking.TrailerMediaDownloader.download(mediaUrl, file)
+                                return file.absolutePath
+                            }
+                            streamUrl = cacheMedia(streamUrl, ".mp4")
+                            audioUrl = audioUrl?.let { cacheMedia(it, ".m4a") }
+                        }
                         withContext(Dispatchers.Main) {
+                            if (context is android.app.Activity && (context.isFinishing || context.isDestroyed)) {
+                                return@withContext
+                            }
                             Log.d("TrailerLauncher", "Launching trailer: $streamUrl")
                             val intent = MpvTvPlayerActivity.createIntent(
                                 context,
@@ -121,31 +152,32 @@ class TrailerLauncher {
                                 putExtra("is_trailer", true)
                             }
                             context.startActivity(intent)
+                            handedToPlayer = true
                         }
                         return@launch
                     }
                     throw Exception("No playable YouTube stream found")
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
-                    Log.e("TrailerLauncher", "Error extracting trailer, falling back to YouTube App", e)
+                    Log.e("TrailerLauncher", "In-app trailer playback failed for $key", e)
                     withContext(Dispatchers.Main) {
-                        val appIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("vnd.youtube:$key"))
-                        val webIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=$key"))
-                        try {
-                            if (context !is android.app.Activity) {
-                                appIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            context.startActivity(appIntent)
-                        } catch (ex: Exception) {
-                            try {
-                                if (context !is android.app.Activity) {
-                                    webIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(webIntent)
-                            } catch (exc: Exception) {
-                                Toast.makeText(context, "Error playing trailer: ${e.message}", Toast.LENGTH_SHORT).show()
-                            }
+                        if (context is android.app.Activity && (context.isFinishing || context.isDestroyed)) {
+                            return@withContext
                         }
+                        if (e !is org.schabi.newpipe.extractor.exceptions.PrivateContentException) {
+                            context.startActivity(TrailerWebPlayerActivity.createIntent(context, key).apply {
+                                if (context !is android.app.Activity) addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            })
+                            return@withContext
+                        }
+                        Toast.makeText(context,
+                            "This trailer is private and cannot be played.",
+                            Toast.LENGTH_LONG).show()
                     }
+                } finally {
+                    if (!handedToPlayer) cachedFiles.forEach { it.delete() }
+                    loading.set(false)
                 }
             }
         }

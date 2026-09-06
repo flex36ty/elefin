@@ -142,4 +142,12 @@ public final class InnertubeClientRequestInfo {
                 new InnertubeClientRequestInfo.DeviceInfo(MOBILE_CLIENT_PLATFORM, "Apple",
                         IOS_DEVICE_MODEL, "iOS", IOS_OS_VERSION, -1));
     }
+
+    @Nonnull
+    public static InnertubeClientRequestInfo ofVisionosClient() {
+        return new InnertubeClientRequestInfo(
+                new ClientInfo("VISIONOS", "1.02", "101", WATCH_CLIENT_SCREEN, null),
+                new DeviceInfo(MOBILE_CLIENT_PLATFORM, "Apple", "RealityDevice17,1",
+                        "visionOS", "26.5.23O471", -1));
+    }
 }

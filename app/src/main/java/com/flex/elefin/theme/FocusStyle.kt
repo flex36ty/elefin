@@ -28,8 +28,8 @@ fun Modifier.focusStyle(themeConfig: ThemeConfig?): Modifier = composed {
     val animatedScale by animateFloatAsState(
         targetValue = if (isFocused) focusConfig.scale else 1f,
         animationSpec = spring(
-            stiffness = Spring.StiffnessLow,
-            dampingRatio = Spring.DampingRatioMediumBouncy
+            stiffness = Spring.StiffnessMedium,
+            dampingRatio = Spring.DampingRatioNoBouncy
         ),
         label = "focusScale"
     )

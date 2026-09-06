@@ -2,6 +2,37 @@
 
 All notable changes to Elefin will be documented in this file.
 
+## 2026-09-06
+
+### Improved
+
+- **TV Home Screen**
+  - Refined backdrop colors and scrims with synchronized image transitions and cached color sampling.
+  - Reduced repeated card setup, limited image prefetch batches, and cancelled obsolete prefetch requests.
+  - Prepared visible cards in upcoming shelves and deferred hero/backdrop updates during vertical scrolling.
+  - Kept portrait posters and the existing layout, with consistent rounded focus outlines and lighter focus animations.
+  - Limited clock updates to changes in the displayed minute.
+- **Details Screen Controls**
+  - Rounded expanding action buttons throughout their focus animation.
+  - Expanded the right-hand controls toward the left while keeping the action buttons grouped together.
+
+### Fixed
+
+- **Card and Row Clipping**
+  - Raised watched-progress bars above card outlines.
+  - Stabilized movie details rows during horizontal scrolling and improved vertical positioning and focus restoration.
+- **Trailer Playback**
+  - Updated the bundled NewPipe extractor with an additional player client and HLS support in the launcher.
+  - Cached direct trailer media with bounded requests before native playback to avoid rejected open-ended requests.
+  - Preferred original audio and attached it after MPV reports that the video has loaded.
+  - Added a remote-controllable embedded YouTube fallback inside Elefin without launching the external YouTube app.
+  - Cleaned up temporary trailer files when the native player closes.
+- **Season Restoration After Playback**
+  - Removed a competing first-season refresh that could overwrite episodes from the selected season.
+  - Preserved season selection by ID and routed episode refreshes through one loader.
+
+---
+
 ## 2026-09-05
 
 ### Improved

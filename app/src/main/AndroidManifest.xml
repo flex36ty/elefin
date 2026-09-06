@@ -56,6 +56,11 @@
             android:screenOrientation="unspecified"
             android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation" />
         <activity
+            android:name=".TrailerWebPlayerActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation" />
+        <activity
             android:name=".MovieDetailsActivity"
             android:exported="false"
             android:screenOrientation="unspecified" />

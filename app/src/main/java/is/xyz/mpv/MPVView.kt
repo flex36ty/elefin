@@ -30,6 +30,29 @@ class MPVView(context: Context, attrs: AttributeSet? = null) : SurfaceView(conte
     private var voInUse: String = "gpu"
     private var httpHeaders: String? = null
     private var isInitialized = false
+    private var pendingAudioFile: String? = null
+    private val audioHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val audioObserver = object : MPVLib.EventObserver {
+        override fun eventProperty(property: String) = Unit
+        override fun eventProperty(property: String, value: Long) = Unit
+        override fun eventProperty(property: String, value: Boolean) = Unit
+        override fun eventProperty(property: String, value: String) = Unit
+        override fun eventProperty(property: String, value: Double) = Unit
+        override fun event(eventId: Int) {
+            if (eventId == MPVLib.MpvEvent.MPV_EVENT_FILE_LOADED) {
+                // Leave the native event callback before issuing another player command.
+                audioHandler.post {
+                    if (isInitialized) {
+                        pendingAudioFile?.let { audio ->
+                            pendingAudioFile = null
+                            MPVLib.command(arrayOf("audio-add", audio, "select"))
+                            Log.d(TAG, "Attached and selected external audio after video loaded")
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     constructor(context: Context) : this(context, null)
 
@@ -94,6 +117,7 @@ class MPVView(context: Context, attrs: AttributeSet? = null) : SurfaceView(conte
         MPVLib.setOptionString("idle", "yes")  // Stay idle instead of exiting
 
         holder.addCallback(this)
+        MPVLib.addObserver(audioObserver)
         observeProperties()
         
         isInitialized = true
@@ -218,6 +242,9 @@ class MPVView(context: Context, attrs: AttributeSet? = null) : SurfaceView(conte
         if (!isInitialized) return
         
         holder.removeCallback(this)
+        MPVLib.removeObserver(audioObserver)
+        audioHandler.removeCallbacksAndMessages(null)
+        pendingAudioFile = null
         MPVLib.destroy()
         isInitialized = false
         Log.d(TAG, "MPV destroyed")
@@ -226,8 +253,9 @@ class MPVView(context: Context, attrs: AttributeSet? = null) : SurfaceView(conte
     /**
      * Load and play a file.
      */
-    fun playFile(filePath: String) {
+    fun playFile(filePath: String, externalAudioFile: String? = null) {
         this.filePath = filePath
+        pendingAudioFile = externalAudioFile
     }
 
     /**

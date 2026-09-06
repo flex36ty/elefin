@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.wrapContentWidth
+import com.flex.elefin.ui.expandingActionButton
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
@@ -173,7 +174,11 @@ fun SeriesDetailsScreen(
     var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     var seasons by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
     var episodes by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
-    var selectedSeasonIndex by remember { mutableStateOf(0) }
+    var selectedSeasonId by androidx.compose.runtime.saveable.rememberSaveable(item.Id) {
+        mutableStateOf<String?>(null)
+    }
+    val selectedSeasonIndex = seasons.indexOfFirst { it.Id == selectedSeasonId }.coerceAtLeast(0)
+    val activeSeasonId = seasons.getOrNull(selectedSeasonIndex)?.Id
     var focusedEpisode by remember { mutableStateOf<JellyfinItem?>(null) }
     var focusedSeason by remember { mutableStateOf<JellyfinItem?>(null) }
     var isLoadingSeasons by remember { mutableStateOf(true) }
@@ -216,15 +221,14 @@ fun SeriesDetailsScreen(
                     itemDetails = details
                     
                     val seriesSeasons = seasonsDeferred.await()
+                    if (seriesSeasons.none { it.Id == selectedSeasonId }) {
+                        selectedSeasonId = seriesSeasons.firstOrNull()?.Id
+                    }
                     seasons = seriesSeasons
                     isLoadingSeasons = false
                     
-                    // Load first season's episodes (already started loading while we awaited seasons)
-                    if (seriesSeasons.isNotEmpty()) {
-                        val seasonEpisodes = apiService.getEpisodes(item.Id, seriesSeasons[0].Id)
-                        episodes = seasonEpisodes
-                        isLoadingEpisodes = false
-                    }
+                    // Episode loading belongs exclusively to the selected-season effect below.
+                    // A resume refresh must not overwrite it with the first season's episodes.
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     // Ignore cancellation exceptions - they're expected when composition changes
                     throw e // Re-throw to properly handle cancellation
@@ -240,28 +244,30 @@ fun SeriesDetailsScreen(
         }
     }
     
-    // Fetch episodes when selected season changes
-    LaunchedEffect(selectedSeasonIndex, seasons, apiService, refreshTrigger) {
-        if (apiService != null && seasons.isNotEmpty() && selectedSeasonIndex < seasons.size) {
-            withContext(Dispatchers.IO) {
-                try {
-                    isLoadingEpisodes = true
-                    val seasonEpisodes = apiService.getEpisodes(item.Id, seasons[selectedSeasonIndex].Id)
-                    episodes = seasonEpisodes
-                    isLoadingEpisodes = false
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    // Ignore cancellation exceptions - they're expected when composition changes
-                    throw e // Re-throw to properly handle cancellation
-                } catch (e: Exception) {
-                    Log.e("SeriesDetailsScreen", "Error fetching episodes", e)
-                    isLoadingEpisodes = false
+    // One loader owns the episode list. Capture the season ID for this request and
+    // commit on the main thread only after the cancellable fetch completes.
+    LaunchedEffect(item.Id, activeSeasonId, apiService, refreshTrigger, isLoadingSeasons) {
+        if (apiService != null && activeSeasonId != null) {
+            isLoadingEpisodes = true
+            try {
+                val seasonEpisodes = withContext(Dispatchers.IO) {
+                    apiService.getEpisodes(item.Id, activeSeasonId)
                 }
+                episodes = seasonEpisodes
+                isLoadingEpisodes = false
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                Log.e("SeriesDetailsScreen", "Error fetching episodes for $activeSeasonId", e)
+                isLoadingEpisodes = false
             }
+        } else if (!isLoadingSeasons) {
+            episodes = emptyList()
+            isLoadingEpisodes = false
         }
     }
-    
     // Track if we've already done the initial focus to prevent refocusing when seasons change
-    var hasPerformedInitialFocus by remember { mutableStateOf(false) }
+    var hasPerformedInitialFocus by androidx.compose.runtime.saveable.rememberSaveable(item.Id) { mutableStateOf(false) }
 
     // Sync focusedEpisode with updated episodes list (to get fresh UserData/streams after refresh)
     LaunchedEffect(episodes) {
@@ -302,11 +308,11 @@ fun SeriesDetailsScreen(
                                 // Found the episode in this season - switch to it
                                 Log.d("SeriesDetailsScreen", "✅ Found episode in season ${season.IndexNumber ?: index}: ${episodeInSeason.Name}")
                                 withContext(Dispatchers.Main) {
-                                    selectedSeasonIndex = index
-                                    episodes = seasonEpisodes
+                                    selectedSeasonId = season.Id
+                                    // The selected-season loader publishes episodes.
                                     focusedEpisode = episodeInSeason
                                     Log.d("SeriesDetailsScreen", "Switched to season index=$index with ${seasonEpisodes.size} episodes, SeriesBottomContainer will handle focus")
-                                    // Don't set hasPerformedInitialFocus here - let SeriesBottomContainer handle focus
+                                    hasPerformedInitialFocus = true
                                 }
                                 found = true
                                 break
@@ -347,55 +353,14 @@ fun SeriesDetailsScreen(
     // State to trigger episodes refresh after marking as watched
     var refreshEpisodesAfterWatched by remember { mutableStateOf(false) }
     
-    // Refresh episodes list when an episode is marked as watched
-    LaunchedEffect(refreshEpisodesAfterWatched, apiService, seasons.size, selectedSeasonIndex, item.Id) {
-        if (refreshEpisodesAfterWatched && apiService != null && seasons.isNotEmpty() && selectedSeasonIndex < seasons.size) {
-            val currentApiService = apiService
-            val currentSeasons = seasons
-            val currentSeasonIndex = selectedSeasonIndex
-            val currentItemId = item.Id
-            
-            withContext(Dispatchers.IO) {
-                try {
-                    // Add a small delay to ensure server has processed the watched status
-                    delay(300)
-                    val season = currentSeasons[currentSeasonIndex]
-                    val refreshedEpisodes = currentApiService.getEpisodes(currentItemId, season.Id)
-                    Log.d("SeriesDetails", "Refreshed ${refreshedEpisodes.size} episodes after marking as watched")
-                    // Log the watched status of episodes
-                    refreshedEpisodes.forEach { ep ->
-                        Log.d("SeriesDetails", "Episode ${ep.Name}: PlayedPercentage=${ep.UserData?.PlayedPercentage}")
-                    }
-                    withContext(Dispatchers.Main) {
-                        // Store the currently focused episode ID before refreshing
-                        val currentFocusedEpisodeId = focusedEpisode?.Id
-                        
-                        // Create a new list to ensure Compose detects the change
-                        episodes = refreshedEpisodes.toList()
-                        Log.d("SeriesDetails", "Episodes list updated with ${episodes.size} episodes, triggering recomposition")
-                        
-                        // Log watched status of episodes for debugging
-                        refreshedEpisodes.forEach { ep ->
-                            Log.d("SeriesDetails", "Episode ${ep.Name} (${ep.Id}): PlayedPercentage=${ep.UserData?.PlayedPercentage}")
-                        }
-                        
-                        // Update focusedEpisode to point to the refreshed episode if it exists
-                        if (currentFocusedEpisodeId != null) {
-                            val refreshedFocusedEpisode = refreshedEpisodes.find { it.Id == currentFocusedEpisodeId }
-                            if (refreshedFocusedEpisode != null) {
-                                focusedEpisode = refreshedFocusedEpisode
-                                Log.d("SeriesDetails", "Updated focusedEpisode with refreshed data: PlayedPercentage=${refreshedFocusedEpisode.UserData?.PlayedPercentage}")
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e("SeriesDetails", "Error refreshing episodes after marking as watched", e)
-                }
-            }
-            refreshEpisodesAfterWatched = false // Reset flag
+    // Route watched-state refreshes through the same loader instead of racing it.
+    LaunchedEffect(refreshEpisodesAfterWatched) {
+        if (refreshEpisodesAfterWatched) {
+            delay(300)
+            refreshTrigger++
+            refreshEpisodesAfterWatched = false
         }
     }
-
     val displayItem = itemDetails ?: item
     val selectedSeason = if (seasons.isNotEmpty() && selectedSeasonIndex < seasons.size) {
         seasons[selectedSeasonIndex]
@@ -552,7 +517,7 @@ fun SeriesDetailsScreen(
                     seasons = seasons,
                     selectedSeasonIndex = selectedSeasonIndex,
                     onSeasonSelected = { index ->
-                        selectedSeasonIndex = index
+                        selectedSeasonId = seasons.getOrNull(index)?.Id
                     },
                     firstSeasonFocusRequester = firstSeasonFocusRequester,
                     onShowSettings = { showSettings = true }
@@ -2046,20 +2011,12 @@ fun EpisodeActionButtonsRow(
                             context.startActivity(intent)
                         },
                         modifier = Modifier
-                            .then(
-                                if (resumeFocused) {
-                                    Modifier.wrapContentWidth().height(28.dp)
-                                } else {
-                                    Modifier.size(28.dp)
-                                }
-                            )
-                            .animateContentSize()
-                            .onFocusChanged { resumeFocused = it.isFocused }
-                            .clip(CircleShape),
+                            .expandingActionButton(focused = resumeFocused)
+                    .onFocusChanged { resumeFocused = it.isFocused },
                         colors = ButtonDefaults.colors(
-                            containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                            containerColor = androidx.compose.ui.graphics.Color.Transparent,
                             contentColor = androidx.compose.ui.graphics.Color.White,
-                            focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                            focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                             focusedContentColor = androidx.compose.ui.graphics.Color.Black
                         ),
                         shape = ButtonDefaults.shape(CircleShape),
@@ -2105,20 +2062,12 @@ fun EpisodeActionButtonsRow(
                         context.startActivity(intent)
                     },
                     modifier = Modifier
-                        .then(
-                            if (playFocused) {
-                                Modifier.wrapContentWidth().height(28.dp)
-                            } else {
-                                Modifier.size(28.dp)
-                            }
-                        )
-                        .animateContentSize()
-                        .onFocusChanged { playFocused = it.isFocused }
-                        .clip(CircleShape),
+                        .expandingActionButton(focused = playFocused)
+                    .onFocusChanged { playFocused = it.isFocused },
                     colors = ButtonDefaults.colors(
-                        containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                        containerColor = androidx.compose.ui.graphics.Color.Transparent,
                         contentColor = androidx.compose.ui.graphics.Color.White,
-                        focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                        focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                         focusedContentColor = androidx.compose.ui.graphics.Color.Black
                     ),
                     shape = ButtonDefaults.shape(CircleShape),
@@ -2133,7 +2082,8 @@ fun EpisodeActionButtonsRow(
             }
         }
             
-            // Audio track button (only show if media has multiple audio tracks)
+
+        // Audio track button (only show if media has multiple audio tracks)
             if (hasMultiAudio) {
             var audioFocused by remember { mutableStateOf(false) }
             
@@ -2142,39 +2092,18 @@ fun EpisodeActionButtonsRow(
                     showAudioDialog = true
                 },
                 modifier = Modifier
-                    .then(
-                        if (audioFocused) {
-                            Modifier
-                                .wrapContentWidth()
-                                .height(28.dp)
-                        } else {
-                            Modifier.size(28.dp)
-                        }
-                    )
-                    .animateContentSize(
-                        animationSpec = tween(
-                            durationMillis = 300,
-                            easing = FastOutSlowInEasing
-                        )
-                    )
-                    .onFocusChanged { audioFocused = it.isFocused }
-                    .clip(CircleShape),
+                    .expandingActionButton(focused = audioFocused, expandLeft = true)
+                    .onFocusChanged { audioFocused = it.isFocused },
                 colors = ButtonDefaults.colors(
-                    containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
                     contentColor = androidx.compose.ui.graphics.Color.White,
-                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                     focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
                 shape = ButtonDefaults.shape(CircleShape),
                 contentPadding = PaddingValues(8.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.VolumeUp,
-                    contentDescription = "Audio Track",
-                    modifier = Modifier.size(14.3.dp)
-                )
                 if (audioFocused) {
-                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "Audio",
                         style = MaterialTheme.typography.labelLarge.copy(
@@ -2182,7 +2111,13 @@ fun EpisodeActionButtonsRow(
                         ),
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )
-                    }
+                        Spacer(modifier = Modifier.width(6.dp))
+            }
+            Icon(
+                    imageVector = Icons.Default.VolumeUp,
+                    contentDescription = "Audio Track",
+                    modifier = Modifier.size(14.3.dp)
+                )
                 }
             }
             
@@ -2194,39 +2129,18 @@ fun EpisodeActionButtonsRow(
                     showSubtitleDialog = true
                 },
                 modifier = Modifier
-                    .then(
-                        if (subtitleFocused) {
-                            Modifier
-                                .wrapContentWidth()
-                                .height(28.dp)
-                        } else {
-                            Modifier.size(28.dp)
-                        }
-                    )
-                    .animateContentSize(
-                        animationSpec = tween(
-                            durationMillis = 300,
-                            easing = FastOutSlowInEasing
-                        )
-                    )
-                    .onFocusChanged { subtitleFocused = it.isFocused }
-                    .clip(CircleShape),
+                    .expandingActionButton(focused = subtitleFocused, expandLeft = true)
+                    .onFocusChanged { subtitleFocused = it.isFocused },
                 colors = ButtonDefaults.colors(
-                    containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
                     contentColor = androidx.compose.ui.graphics.Color.White,
-                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                     focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
                 shape = ButtonDefaults.shape(CircleShape),
                 contentPadding = PaddingValues(8.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Language,
-                    contentDescription = "Subtitles",
-                    modifier = Modifier.size(14.3.dp)
-                )
                 if (subtitleFocused) {
-                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "Subtitles",
                         style = MaterialTheme.typography.labelLarge.copy(
@@ -2234,7 +2148,13 @@ fun EpisodeActionButtonsRow(
                         ),
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )
-                }
+                    Spacer(modifier = Modifier.width(6.dp))
+            }
+            Icon(
+                    imageVector = Icons.Default.Language,
+                    contentDescription = "Subtitles",
+                    modifier = Modifier.size(14.3.dp)
+                )
             }
             
             // Trailer button - always shows
@@ -2257,39 +2177,18 @@ fun EpisodeActionButtonsRow(
                     }
                 },
                 modifier = Modifier
-                    .then(
-                        if (trailerFocused) {
-                            Modifier
-                                .wrapContentWidth()
-                                .height(28.dp)
-                        } else {
-                            Modifier.size(28.dp)
-                        }
-                    )
-                    .animateContentSize(
-                        animationSpec = tween(
-                            durationMillis = 300,
-                            easing = FastOutSlowInEasing
-                        )
-                    )
-                    .onFocusChanged { trailerFocused = it.isFocused }
-                    .clip(CircleShape),
+                    .expandingActionButton(focused = trailerFocused, expandLeft = true)
+                    .onFocusChanged { trailerFocused = it.isFocused },
                 colors = ButtonDefaults.colors(
-                    containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
                     contentColor = androidx.compose.ui.graphics.Color.White,
-                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                     focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
                 shape = ButtonDefaults.shape(CircleShape),
                 contentPadding = PaddingValues(8.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Movie,
-                    contentDescription = "Watch Trailer",
-                    modifier = Modifier.size(14.3.dp)
-                )
                 if (trailerFocused) {
-                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "Watch Trailer",
                         style = MaterialTheme.typography.labelLarge.copy(
@@ -2297,7 +2196,13 @@ fun EpisodeActionButtonsRow(
                         ),
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )
-                }
+                    Spacer(modifier = Modifier.width(6.dp))
+            }
+            Icon(
+                    imageVector = Icons.Default.Movie,
+                    contentDescription = "Watch Trailer",
+                    modifier = Modifier.size(14.3.dp)
+                )
             }
 
             // Mark as Watched/Unwatched button
@@ -2354,46 +2259,31 @@ fun EpisodeActionButtonsRow(
                     }
                 },
                 modifier = Modifier
-                    .then(
-                        if (watchedFocused) {
-                            Modifier
-                                .wrapContentWidth()
-                                .height(28.dp)
-                        } else {
-                            Modifier.size(28.dp)
-                        }
-                    )
-                    .animateContentSize(
-                        animationSpec = tween(
-                            durationMillis = 300,
-                            easing = FastOutSlowInEasing
-                        )
-                    )
-                    .onFocusChanged { watchedFocused = it.isFocused }
-                    .clip(CircleShape),
+                    .expandingActionButton(focused = watchedFocused, expandLeft = true)
+                    .onFocusChanged { watchedFocused = it.isFocused },
                 colors = ButtonDefaults.colors(
-                    containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
                     contentColor = androidx.compose.ui.graphics.Color.White,
-                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                     focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
                 shape = ButtonDefaults.shape(CircleShape),
                 contentPadding = PaddingValues(8.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = if (isAlreadyWatched) "Mark As Unwatched" else "Mark As Watched",
-                    modifier = Modifier.size(14.3.dp)
-                )
                 if (watchedFocused) {
-                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = if (isAlreadyWatched) "Mark As Unwatched" else "Mark As Watched",
                         style = MaterialTheme.typography.labelLarge.copy(
                             fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
                         )
                     )
-                }
+                    Spacer(modifier = Modifier.width(6.dp))
+            }
+            Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = if (isAlreadyWatched) "Mark As Unwatched" else "Mark As Watched",
+                    modifier = Modifier.size(14.3.dp)
+                )
             }
             
             // Right side: Selected subtitle and Watched indicator
