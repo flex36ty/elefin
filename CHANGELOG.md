@@ -8,6 +8,9 @@ All notable changes to Elefin will be documented in this file.
 
 - **TV Home Screen**
   - Refined backdrop colors and scrims with synchronized image transitions and cached color sampling.
+  - Extended the dominant artwork color through the bottom background, with a gentle 1.86-second color dissolve and 1.4-second artwork fade after loading completes.
+  - Unified Home, Movies, and TV Shows backdrop rendering, including Recommendations and Discover, with matching shading, palette caching, and scroll-aware updates.
+  - Matched library artwork focus delays to Home at 400 milliseconds and kept the previous artwork visible while loading its replacement.
   - Reduced repeated card setup, limited image prefetch batches, and cancelled obsolete prefetch requests.
   - Prepared visible cards in upcoming shelves and deferred hero/backdrop updates during vertical scrolling.
   - Kept portrait posters and the existing layout, with consistent rounded focus outlines and lighter focus animations.
@@ -19,6 +22,7 @@ All notable changes to Elefin will be documented in this file.
 ### Fixed
 
 - **Card and Row Clipping**
+  - Added separation below the home synopsis and clipped library shelves to their scrolling area to prevent cards overlapping the text.
   - Raised watched-progress bars above card outlines.
   - Stabilized movie details rows during horizontal scrolling and improved vertical positioning and focus restoration.
 - **Trailer Playback**

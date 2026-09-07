@@ -76,6 +76,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
@@ -1226,7 +1227,8 @@ fun JellyfinHomeScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(0.6f)
-                        .padding(start = 54.dp, top = 0.dp, end = 38.dp, bottom = 0.dp)
+                        .padding(start = 54.dp, top = 36.dp, end = 38.dp, bottom = 0.dp)
+                            .clipToBounds()
                         .then(
                             if (debugOutlinesEnabled) {
                                 Modifier.border(3.dp, Color.Yellow)
@@ -1369,7 +1371,8 @@ fun JellyfinHomeScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(0.6f)
-                            .padding(start = 54.dp, top = 0.dp, end = 38.dp, bottom = 0.dp)
+                            .padding(start = 54.dp, top = 36.dp, end = 38.dp, bottom = 0.dp)
+                            .clipToBounds()
                             .then(
                                 if (debugOutlinesEnabled) {
                                     Modifier.border(3.dp, Color.Yellow)

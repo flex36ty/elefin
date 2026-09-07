@@ -2,6 +2,9 @@ package com.flex.elefin.ui
 
 import android.content.Context
 import android.graphics.Bitmap
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,7 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Core data model (what Plex effectively caches)
+ * Artwork-derived colors used by library screens
  */
 data class ArtworkPalette(
     val background: Color,
@@ -30,7 +33,7 @@ data class ArtworkPalette(
 )
 
 /**
- * Palette extractor (Plex-style rules)
+ * Palette extraction on a background dispatcher
  */
 object PlexPaletteExtractor {
 
@@ -39,21 +42,13 @@ object PlexPaletteExtractor {
         bitmap: Bitmap
     ): ArtworkPalette = withContext(Dispatchers.Default) {
 
-        // ⚠️ Downscale aggressively (Plex does this)
+        // Bound palette work to a small sample.
         val scaled = Bitmap.createScaledBitmap(bitmap, 64, 64, true)
 
         val palette = Palette.from(scaled)
             .maximumColorCount(16)
-            .clearFilters() // Plex does NOT use the default white/black filters
+            .clearFilters()
             .generate()
-
-        // Preferred order (very Plex-like)
-        val bgColor = when {
-            palette.darkMutedSwatch != null -> palette.darkMutedSwatch!!
-            palette.darkVibrantSwatch != null -> palette.darkVibrantSwatch!!
-            palette.mutedSwatch != null -> palette.mutedSwatch!!
-            else -> palette.dominantSwatch
-        }?.rgb ?: Color.DarkGray.toArgb()
 
         val accentColor = when {
             palette.vibrantSwatch != null -> palette.vibrantSwatch!!
@@ -62,38 +57,21 @@ object PlexPaletteExtractor {
             else -> palette.dominantSwatch
         }?.rgb ?: Color.White.toArgb()
 
-        val background = clampForBackground(Color(bgColor))
+        val background = extractHomeTone(bitmap, 16f / 9f)
         val accent = clampForAccent(Color(accentColor))
 
         val onBackground = if (ColorUtils.calculateLuminance(background.toArgb()) < 0.35)
             Color.White else Color.Black
 
+        if (scaled !== bitmap) scaled.recycle()
         ArtworkPalette(
             background = background,
-            backgroundDark = background.darken(0.15f),
+            backgroundDark = background,
             accent = accent,
             onBackground = onBackground
         )
     }
 
-    /**
-     * Plex-style color clamps (THIS is why it looks good)
-     * Background clamp (dark, cinematic, muted)
-     */
-    private fun clampForBackground(color: Color): Color {
-        val hsl = FloatArray(3)
-        ColorUtils.colorToHSL(color.toArgb(), hsl)
-
-        // Plex-like rules
-        hsl[1] = hsl[1].coerceAtMost(0.60f)   // kill neon saturation (relaxed to 0.60f)
-        hsl[2] = hsl[2].coerceIn(0.15f, 0.40f) // force dark luminance (relaxed to 0.40f)
-
-        return Color(ColorUtils.HSLToColor(hsl))
-    }
-
-    /**
-     * Accent clamp (still visible, never neon)
-     */
     private fun clampForAccent(color: Color): Color {
         val hsl = FloatArray(3)
         ColorUtils.colorToHSL(color.toArgb(), hsl)
@@ -117,19 +95,19 @@ fun Color.darken(amount: Float): Color {
 
 /**
  * Compose: Plex-style background gradient
- * This is exactly how Plex layers it visually.
+ * Keep the artwork hue through the bottom edge on every screen size.
  */
 @Composable
-fun PlexBackdropGradient(palette: ArtworkPalette): Brush {
+fun PlexBackdropGradient(palette: ArtworkPalette, disableAnimations: Boolean = false): Brush {
+    val tone by animateColorAsState(palette.background,
+        animationSpec = tween(if (disableAnimations) 0 else 1200,
+            easing = FastOutSlowInEasing), label = "artwork_scrim")
     return Brush.verticalGradient(
-        colors = listOf(
-            palette.background.copy(alpha = 0f), // Transparent top to show artwork
-            palette.background.copy(alpha = 0.6f),
-            palette.backgroundDark,
-            Color.Black
-        ),
-        startY = 0f,
-        endY = 1400f
+        0f to tone.copy(alpha = 0.04f),
+        0.24f to tone.copy(alpha = 0.15f),
+        0.46f to tone.copy(alpha = 0.90f),
+        0.66f to tone,
+        1f to tone
     )
 }
 

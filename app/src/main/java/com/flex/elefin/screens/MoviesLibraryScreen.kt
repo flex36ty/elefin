@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.graphicsLayer
@@ -94,11 +95,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Locale
-import com.flex.elefin.ui.ArtworkPalette
-import com.flex.elefin.ui.PlexPaletteExtractor
-import com.flex.elefin.ui.PlexBackdropGradient
-import android.graphics.drawable.BitmapDrawable
-import coil.request.SuccessResult
 import coil.annotation.ExperimentalCoilApi
 
 /**
@@ -252,7 +248,8 @@ fun MoviesLibraryScreen(
     var backgroundChangeJob by remember { mutableStateOf<Job?>(null) }
     
     // Plex-style dynamic background palette
-    var currentArtworkPalette by remember { mutableStateOf<ArtworkPalette?>(null) }
+    val recommendationsScrollState = rememberLazyListState()
+    val discoverScrollState = rememberLazyListState()
     
     // Focus requester for initial focus
     val focusRequester = remember { FocusRequester() }
@@ -512,141 +509,20 @@ fun MoviesLibraryScreen(
     // Wrap with TV-optimized bring-into-view behavior for better focus handling
     TvBringIntoViewProvider {
     Box(Modifier.fillMaxSize()) {
-        // Featured carousel with backdrop - extends behind bottom container
-        Box(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // Get image URL for current highlighted item - use backdrop photo
-            // For discover tab, use TMDB backdrop (via Jellyseerr); for recommendations, use Jellyfin backdrop
-            val imageUrl = if (selectedTab == "discover") {
+        // Share the same artwork, palette, shading and transition pipeline as main Home.
+        com.flex.elefin.ui.HomeBackdrop(
+            item = if (selectedTab == "recommendations") highlightedItem else null,
+            api = apiService,
+            darkMode = darkModeEnabled || (selectedTab != "recommendations" && selectedTab != "discover"),
+            lowPower = lowPowerMode.value,
+            use4K = settings.use4KBackgrounds,
+            disableAnimations = disableUIAnimations.value,
+            isScrolling = { recommendationsScrollState.isScrollInProgress || discoverScrollState.isScrollInProgress },
+            artworkUrl = if (selectedTab == "discover")
                 discoverHighlightedMovie?.backdropPath?.let { JellyseerrImageUrl.backdrop(it) } ?: ""
-            } else {
-                highlightedItem?.let { item ->
-                    // Low power mode uses 720p, normal mode uses 1080p, 4K mode uses 2160p
-                    val bgMaxWidth = if (lowPowerMode.value) 1280 else if (settings.use4KBackgrounds) 3840 else 1920
-                    val bgMaxHeight = if (lowPowerMode.value) 720 else if (settings.use4KBackgrounds) 2160 else 1080
-                    val bgQuality = if (lowPowerMode.value) 75 else if (settings.use4KBackgrounds) 95 else 90
-                    
-                    val backdropUrl = apiService?.getImageUrl(item.Id, "Backdrop", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
-                    if (backdropUrl.isNotEmpty()) {
-                        backdropUrl
-                    } else {
-                        // Fall back to primary image if no backdrop
-                        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
-                    }
-                } ?: ""
-            }
-            
-            // Extract palette from the current image URL
-            LaunchedEffect(imageUrl) {
-                if (imageUrl.isNotEmpty()) {
-                    withContext(Dispatchers.IO) {
-                        try {
-                            val loader = coil.ImageLoader(context)
-                            val request = ImageRequest.Builder(context)
-                                .data(imageUrl)
-                                .allowHardware(false) // Required for Palette
-                                .build()
-                            
-                            val result = loader.execute(request)
-                            if (result is SuccessResult) {
-                                val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
-                                if (bitmap != null) {
-                                    val palette = PlexPaletteExtractor.extract(context, bitmap)
-                                    withContext(Dispatchers.Main) {
-                                        currentArtworkPalette = palette
-                                    }
-                                }
-                            }
-                        } catch (e: Exception) {
-                            Log.e("MoviesLibraryScreen", "Error extracting palette", e)
-                        }
-                    }
-                } else {
-                    currentArtworkPalette = null
-                }
-            }
-            
-            // Use Crossfade for smooth fade in/out animation (same as home screen)
-            if (!darkModeEnabled && (selectedTab == "recommendations" || selectedTab == "discover")) {
-                Crossfade(
-                    targetState = imageUrl,
-                    animationSpec = tween(durationMillis = 500),
-                    label = "background_fade"
-                ) { currentUrl ->
-                    if (currentUrl.isNotEmpty()) {
-                        // For recommendations, use Jellyfin headers; for discover, no headers needed
-                        val headerMap = if (selectedTab == "recommendations" && apiService != null) {
-                            apiService.getImageRequestHeaders()
-                        } else {
-                            okhttp3.Headers.Builder().build()
-                        }
-                        AsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data(currentUrl)
-                                .headers(headerMap)
-                                .memoryCachePolicy(CachePolicy.ENABLED)
-                                .diskCachePolicy(CachePolicy.ENABLED)
-                                .crossfade(300)
-                                .allowHardware(true)
-                                .build(),
-                            contentDescription = if (selectedTab == "discover") discoverHighlightedMovie?.title ?: "" else highlightedItem?.Name ?: "",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.FillBounds,
-                            alignment = Alignment.Center
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                        )
-                    }
-                }
-            } else {
-                // Dark mode or Library view: use Material dark background
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surface)
-                )
-            }
-            
-            // Dark overlay and scrim (same as home screen)
-            if (!darkModeEnabled && (selectedTab == "recommendations" || selectedTab == "discover")) {
-                // Default view: 5% darkness (reduced from 10% for vibrancy)
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.05f))
-                )
-                
-                // Scrim gradient overlay - only show if NOT using dynamic Plex background
-                if (currentArtworkPalette == null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .carouselGradient()
-                    )
-                }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.5f))
-                )
-            }
-            
-            // Apply Plex-style dynamic gradient overlay
-            if (currentArtworkPalette != null && !darkModeEnabled && (selectedTab == "recommendations" || selectedTab == "discover")) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(PlexBackdropGradient(currentArtworkPalette!!))
-                )
-            }
-        }
-        
+                else null
+        )
+
         // Top row with buttons and tabs (same as home screen)
         Box(
             modifier = Modifier
@@ -1085,11 +961,13 @@ fun MoviesLibraryScreen(
                 
                 // Content rows (same as home screen - 60% for rows)
                 LazyColumn(
+                        state = recommendationsScrollState,
                     contentPadding = PaddingValues(bottom = 20.dp * 1.15f),
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(0.6f)
-                        .padding(start = 54.dp, top = 0.dp, end = 38.dp, bottom = 0.dp)
+                        .padding(start = 54.dp, top = 36.dp, end = 38.dp, bottom = 0.dp)
+                            .clipToBounds()
                         .then(
                             if (debugOutlinesEnabled) {
                                 Modifier.border(3.dp, Color.Yellow)
@@ -1138,7 +1016,7 @@ fun MoviesLibraryScreen(
                                                     instantHighlightedItem = item
                                                     backgroundChangeJob?.cancel()
                                                     backgroundChangeJob = scope.launch {
-                                                        delay(1000)
+                                                        delay(400)
                                                         highlightedItem = item
                                                     }
                                                 }
@@ -1181,7 +1059,7 @@ fun MoviesLibraryScreen(
                                                     instantHighlightedItem = item
                                                     backgroundChangeJob?.cancel()
                                                     backgroundChangeJob = scope.launch {
-                                                        delay(1000)
+                                                        delay(400)
                                                         highlightedItem = item
                                                     }
                                                 }
@@ -1224,7 +1102,7 @@ fun MoviesLibraryScreen(
                                                     instantHighlightedItem = item
                                                     backgroundChangeJob?.cancel()
                                                     backgroundChangeJob = scope.launch {
-                                                        delay(1000)
+                                                        delay(400)
                                                         highlightedItem = item
                                                     }
                                                 }
@@ -1267,7 +1145,7 @@ fun MoviesLibraryScreen(
                                                     instantHighlightedItem = item
                                                     backgroundChangeJob?.cancel()
                                                     backgroundChangeJob = scope.launch {
-                                                        delay(1000)
+                                                        delay(400)
                                                         highlightedItem = item
                                                     }
                                                 }
@@ -1310,7 +1188,7 @@ fun MoviesLibraryScreen(
                                                     instantHighlightedItem = item
                                                     backgroundChangeJob?.cancel()
                                                     backgroundChangeJob = scope.launch {
-                                                        delay(1000)
+                                                        delay(400)
                                                         highlightedItem = item
                                                     }
                                                 }
@@ -1353,7 +1231,7 @@ fun MoviesLibraryScreen(
                                                     instantHighlightedItem = item
                                                     backgroundChangeJob?.cancel()
                                                     backgroundChangeJob = scope.launch {
-                                                        delay(1000)
+                                                        delay(400)
                                                         highlightedItem = item
                                                     }
                                                 }
@@ -1396,7 +1274,7 @@ fun MoviesLibraryScreen(
                                                     instantHighlightedItem = item
                                                     backgroundChangeJob?.cancel()
                                                     backgroundChangeJob = scope.launch {
-                                                        delay(1000)
+                                                        delay(400)
                                                         highlightedItem = item
                                                     }
                                                 }
@@ -1439,7 +1317,7 @@ fun MoviesLibraryScreen(
                                                     instantHighlightedItem = item
                                                     backgroundChangeJob?.cancel()
                                                     backgroundChangeJob = scope.launch {
-                                                        delay(1000)
+                                                        delay(400)
                                                         highlightedItem = item
                                                     }
                                                 }
@@ -1482,7 +1360,7 @@ fun MoviesLibraryScreen(
                                                     instantHighlightedItem = item
                                                     backgroundChangeJob?.cancel()
                                                     backgroundChangeJob = scope.launch {
-                                                        delay(1000)
+                                                        delay(400)
                                                         highlightedItem = item
                                                     }
                                                 }
@@ -1525,7 +1403,7 @@ fun MoviesLibraryScreen(
                                                     instantHighlightedItem = item
                                                     backgroundChangeJob?.cancel()
                                                     backgroundChangeJob = scope.launch {
-                                                        delay(1000)
+                                                        delay(400)
                                                         highlightedItem = item
                                                     }
                                                 }
@@ -1568,7 +1446,7 @@ fun MoviesLibraryScreen(
                                                     instantHighlightedItem = item
                                                     backgroundChangeJob?.cancel()
                                                     backgroundChangeJob = scope.launch {
-                                                        delay(1000)
+                                                        delay(400)
                                                         highlightedItem = item
                                                     }
                                                 }
@@ -1699,7 +1577,7 @@ fun MoviesLibraryScreen(
                                                     instantHighlightedItem = item
                                                     backgroundChangeJob?.cancel()
                                                     backgroundChangeJob = scope.launch {
-                                                        delay(1000)
+                                                        delay(400)
                                                         highlightedItem = item
                                                     }
                                                 }
@@ -1909,11 +1787,13 @@ fun MoviesLibraryScreen(
                     
                     // Content rows (60% for rows)
                     LazyColumn(
+                        state = discoverScrollState,
                         contentPadding = PaddingValues(bottom = 20.dp * 1.15f),
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(0.6f)
-                            .padding(start = 54.dp, top = 0.dp, end = 38.dp, bottom = 0.dp)
+                            .padding(start = 54.dp, top = 36.dp, end = 38.dp, bottom = 0.dp)
+                            .clipToBounds()
                             .then(
                                 if (debugOutlinesEnabled) {
                                     Modifier.border(3.dp, Color.Yellow)
