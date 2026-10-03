@@ -107,7 +107,7 @@ class JellyfinMusicApi(
             Log.d(TAG, "Fetching artists (via Items): $url")
 
             val response: MusicItemsResponse = client.get(url) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             response.Items.map { item ->
@@ -143,7 +143,7 @@ class JellyfinMusicApi(
             Log.d(TAG, "Fetching albums for artist $artistId: $url")
 
             val response: MusicItemsResponse = client.get(url) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             response.Items.map { item ->
@@ -183,7 +183,7 @@ class JellyfinMusicApi(
             Log.d(TAG, "Fetching all albums: $url")
 
             val response: MusicItemsResponse = client.get(url) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             response.Items.map { item ->
@@ -223,7 +223,7 @@ class JellyfinMusicApi(
             Log.d(TAG, "Fetching all tracks: $url")
 
             val response: MusicItemsResponse = client.get(url) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             response.Items.map { item ->
@@ -275,7 +275,7 @@ class JellyfinMusicApi(
             Log.d(TAG, "Fetching recently added albums: $url")
 
             val response: MusicItemsResponse = client.get(url) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             response.Items.map { item ->
@@ -313,7 +313,7 @@ class JellyfinMusicApi(
             Log.d(TAG, "Fetching tracks for album $albumId: $url")
 
             val response: MusicItemsResponse = client.get(url) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             response.Items.map { item ->
@@ -366,7 +366,7 @@ class JellyfinMusicApi(
             Log.d(TAG, "Fetching tracks for artist $artistId: $url")
 
             val response: MusicItemsResponse = client.get(url) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             response.Items.map { item ->
@@ -418,7 +418,7 @@ class JellyfinMusicApi(
             }.buildString()
 
             val artistsResponse: MusicItemsResponse = client.get(artistsUrl) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             val artists = artistsResponse.Items.map { item ->
@@ -440,7 +440,7 @@ class JellyfinMusicApi(
             }.buildString()
 
             val albumsResponse: MusicItemsResponse = client.get(albumsUrl) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             val albums = albumsResponse.Items.map { item ->
@@ -465,7 +465,7 @@ class JellyfinMusicApi(
             }.buildString()
 
             val tracksResponse: MusicItemsResponse = client.get(tracksUrl) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             val tracks = tracksResponse.Items.map { item ->
@@ -508,7 +508,7 @@ class JellyfinMusicApi(
             Log.d(TAG, "Fetching recommended tracks: $url")
 
             val response: MusicItemsResponse = client.get(url) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             response.Items.map { item ->

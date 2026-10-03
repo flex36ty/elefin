@@ -21,7 +21,7 @@ object MpvUrlBuilder {
     ): String = buildString {
         append("User-Agent: $clientName/MPV\r\n")
         append("Authorization: MediaBrowser Token=\"$accessToken\"\r\n")
-        append("X-Emby-Authorization: MediaBrowser ")
+        append("Authorization: MediaBrowser ")
         append("Client=\"$clientName\", Device=\"${com.flex.elefin.ui.DeviceUtils.getDeviceName()}\", DeviceId=\"$deviceId\", ")
         append("Token=\"$accessToken\", Version=\"$version\"\r\n")
         append("Accept: */*\r\n")

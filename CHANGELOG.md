@@ -2,6 +2,20 @@
 
 All notable changes to Elefin will be documented in this file.
 
+## 1.1.28 — 2026-10-03
+
+### Fixed
+
+- **Jellyfin 12 Authentication**
+  - Replaced legacy authentication headers with the standard Authorization header to fix HTTP 400 errors during Quick Connect initiation and support password login.
+  - Updated API, artwork, music, and playback requests to use standard authorization with client identity and session tokens.
+
+### Security
+
+- Removed passwords, Quick Connect codes and secrets, and access-token excerpts from login debug logs.
+
+---
+
 ## 1.1.27 — 2026-09-06
 
 ### Improved

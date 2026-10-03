@@ -88,17 +88,13 @@ class JellyfinAuthService(
             val embyAuthHeader = "MediaBrowser Client=\"$clientName\", Device=\"$deviceName\", DeviceId=\"$deviceId\", Version=\"$clientVersion\""
             
             println("Authenticating to: $url")
-            println("DeviceId: $deviceId")
-            println("Username: $username")
             
             val requestBody = AuthenticationRequest(Username = username, Pw = password)
-            val jsonBody = Json.encodeToString(AuthenticationRequest.serializer(), requestBody)
-            println("Request body: $jsonBody")
             
             val response: HttpResponse = client.post(url) {
                 header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
                 header(HttpHeaders.Accept, ContentType.Application.Json.toString())
-                header("X-Emby-Authorization", embyAuthHeader)
+                header("Authorization", embyAuthHeader)
                 setBody(requestBody)
             }
             

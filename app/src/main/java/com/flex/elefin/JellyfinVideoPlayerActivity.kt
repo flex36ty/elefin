@@ -144,7 +144,7 @@ class JellyfinVideoPlayerActivity : ComponentActivity() {
             lifecycleScope.launch {
                 var finalUrl: String
                 var extraSubtitleUrl: String? = null
-                val headers = "X-Emby-Token: $accessToken" // Basic header needed
+                val headers = "Authorization: ${com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken)}" // Basic header needed
 
                 // Fetch PlaybackInfo to check for transcoding needs and subtitle details
                 val playbackInfo = apiService.getPlaybackInfo(
