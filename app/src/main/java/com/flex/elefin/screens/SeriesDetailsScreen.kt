@@ -370,17 +370,21 @@ fun SeriesDetailsScreen(
     // We prefer the focused season, then the selected season, then the series details
     // BUT only if they actually have a Backdrop image tag to avoid showing a blank background
     val backgroundItem = remember(focusedSeason, selectedSeason, itemDetails, item) {
-        val focusedWithBackdrop = focusedSeason?.takeIf { it.ImageTags?.containsKey("Backdrop") == true }
-        val selectedWithBackdrop = selectedSeason?.takeIf { it.ImageTags?.containsKey("Backdrop") == true }
-        val detailsWithBackdrop = itemDetails?.takeIf { it.ImageTags?.containsKey("Backdrop") == true }
+        val focusedWithBackdrop = focusedSeason?.takeIf { !it.BackdropImageTags.isNullOrEmpty() || it.ImageTags?.containsKey("Backdrop") == true }
+        val selectedWithBackdrop = selectedSeason?.takeIf { !it.BackdropImageTags.isNullOrEmpty() || it.ImageTags?.containsKey("Backdrop") == true }
+        val detailsWithBackdrop = itemDetails?.takeIf { !it.BackdropImageTags.isNullOrEmpty() || it.ImageTags?.containsKey("Backdrop") == true }
         
         focusedWithBackdrop ?: selectedWithBackdrop ?: detailsWithBackdrop ?: item
     }
 
-    val backdropUrl = remember(backgroundItem) {
-        apiService?.getImageUrl(backgroundItem.Id, "Backdrop", null, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
+    val backdropUrls = remember(backgroundItem.Id, displayItem.Id, apiService) {
+        listOf(backgroundItem.Id, displayItem.Id).distinct().flatMap { id ->
+            listOf("Backdrop", "Thumb", "Primary").mapNotNull { type ->
+                apiService?.getImageUrl(id, type, null, maxWidth = 1920, maxHeight = 1080, quality = 90)
+            }
+        }
     }
-
+    var backdropIndex by remember(backdropUrls) { mutableStateOf(0) }
     Box(modifier = Modifier.fillMaxSize()) {
         // Backdrop background - absolutely positioned to fill entire screen
         Box(
@@ -388,13 +392,8 @@ fun SeriesDetailsScreen(
                 .fillMaxSize()
                 .align(Alignment.Center)
         ) {
-            val imageUrl = if (backdropUrl.isNotEmpty()) {
-                backdropUrl
-            } else {
-                // Fallback to primary image with 1080p resolution
-                apiService?.getImageUrl(displayItem.Id, "Primary", null, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
-            }
-            
+            val imageUrl = backdropUrls.getOrNull(backdropIndex).orEmpty()
+
             // In dark mode, don't show background image - use Material dark background instead
             if (!darkModeEnabled) {
                 Crossfade(
@@ -413,6 +412,9 @@ fun SeriesDetailsScreen(
                                 .crossfade(300) // Smooth 300ms crossfade when loading
                                 .allowHardware(true) // Use GPU memory for faster rendering
                                 .build(),
+                            onError = {
+                                if (currentUrl == backdropUrls.getOrNull(backdropIndex) && backdropIndex < backdropUrls.lastIndex) backdropIndex++
+                            },
                             contentDescription = displayItem.Name,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.FillBounds,

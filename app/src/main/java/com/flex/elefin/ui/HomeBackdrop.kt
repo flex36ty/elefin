@@ -65,7 +65,7 @@ fun HomeBackdrop(
                 return@LaunchedEffect
             }
             val urls = if (artworkUrl != null) listOf(artworkUrl).filter { it.isNotBlank() }
-                else if (itemId != null && api != null) listOf("Backdrop", "Primary").map { type ->
+                else if (itemId != null && api != null) listOf("Backdrop", "Thumb", "Primary").map { type ->
                     api.getImageUrl(itemId, type, null, maxWidth = width,
                         maxHeight = height, quality = if (lowPower) 75 else 90)
                 } else emptyList()

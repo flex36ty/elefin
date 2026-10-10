@@ -76,7 +76,8 @@ data class JellyfinItem(
     val ChildCount: Int? = null, // Number of child items (e.g., seasons for Series)
     val RecursiveItemCount: Int? = null, // Total recursive item count (e.g., total episodes for Series)
     val NextEpisodeId: String? = null, // ID of the next episode for autoplay
-    val Chapters: List<ChapterInfo>? = null // Chapter markers for the video
+    val Chapters: List<ChapterInfo>? = null, // Chapter markers for the video
+    val BackdropImageTags: List<String>? = null
 ) {
     // Helper to get the last played date from either UserData or calculate from position
     fun getLastPlayedDateForSort(): String {
