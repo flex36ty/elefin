@@ -2,6 +2,227 @@
 
 All notable changes to Elefin will be documented in this file.
 
+## 1.1.32 — 2026-10-12
+
+### Added
+
+- Elefin Cinema shows movie/show logos with the player controls, with title-text fallback and episode information underneath.
+- Cinema supports next-episode autoplay with the existing countdown setting and an Up Next overlay. Back cancels autoplay; pausing, buffering, or opening a player menu pauses the timer.
+- Cinema shows an **OK · Skip intro** prompt for Jellyfin intro segments or clearly named intro chapters with a known endpoint.
+- Cinema shows an **OK · Skip credits** prompt for Jellyfin credits segments or named ending-credits chapters. A following chapter is preserved; otherwise skipping advances to the next episode or returns to the info screen.
+- Save multiple Jellyfin server logins and switch in Settings → Accounts or the TV drawer header. The picker includes the server address and username.
+- TV navigation drawer is enabled by default when no preference is saved, with server branding, library destinations, animated focus, gradient scrim, and compact spacing. Existing choices are preserved; the original top navigation remains available through Settings → Appearance.
+- New elephant app icon and high-resolution splash artwork.
+
+### Improved
+
+- Drawer-enabled movie and TV libraries use Recommendations and Browse Library tabs, with the library name alongside them. Tabs activate with OK.
+- Browse Library places Sort and Genres below the tabs, uses translucent inline dropdowns, lists genres supplied by the library, and moves the alphabet index to the right.
+- Home and library shelves refresh from Jellyfin library notifications, with a one-minute fallback while visible. New-card animations respect Low Power Mode and Disable UI Animations.
+- Recommendation shelves remember their focused card during vertical navigation; closing the drawer returns to the first card of the remembered row.
+- Request higher-resolution poster and Continue Watching artwork while decoding images to their displayed size.
+- Cinema resolves later episodes across seasons, reports completed playback as watched, and returns movies and final episodes to their info screen without a playback-finished error popup.
+- Without credits markers, the existing final-seconds autoplay countdown remains in use. Intro skipping is unavailable when no reliable endpoint is known.
+
+### Fixed
+
+- Make Settings left/right navigation return to the active category and restore the last control. New categories start at the top; Appearance switches no longer jump into the color palette.
+- Use contrasting text on accent-filled Settings buttons and the Jellyseerr request button, fixing white-on-white labels with the white accent.
+- Preserve per-item audio and subtitle preferences separately for each saved server/account. Failed or cancelled add-server login leaves the active connection unchanged.
+
+---
+
+## 1.1.31 — 2026-10-11
+
+### Fixed
+
+- Fix downloaded APK installation handoff on NVIDIA Shield and other Android devices by setting the APK URI and MIME type together, granting read access, and launching the installer directly.
+
+---
+
+## 1.1.30 — 2026-10-11
+
+### Improved
+
+- Split movie and TV library recommendations into individual lazy-list shelves so off-screen rows can be managed independently.
+- Cache movie and TV-show details artwork and scrims together to reduce full-screen redraw work while scrolling.
+- Reuse details backdrop, cast, and episode image requests, and remove the duplicate backdrop image fade.
+
+- Elefin Cinema (MPV) is now the default when no player choice is saved; explicit player selections remain respected.
+- Native trailers use Elefin MPV controls, with matching title, timeline, and playback buttons in the embedded YouTube fallback.
+- Prepare adjacent off-screen Home shelves in both directions during idle time, including direction reversals.
+- Pause backdrop dissolves during vertical scrolling and avoid updating all composed shelves when recording card focus.
+- Bake artwork and scrims on a worker thread to reduce repeated rendering work.
+- Add a non-debug, debug-signed performance build for testing without clearing existing debug-installation settings.
+- Add compact left/right remote seeking and thumbnail previews when Jellyfin provides trickplay images.
+- Apply subtitle text size, color, and background preferences to Elefin MPV text subtitles.
+- Select device-language audio when no explicit track is selected.
+- Use the compatible hardware-copy decoder immediately for known Realtek H.264 playback and remember successful decoder recovery.
+- Refresh new libraries and include library names in Recently Added, Recently Released, and Recently Added Episodes headings.
+
+- Added Elefin Cinema (MPV), an independently written TV player with cinematic controls, track and speed menus, subtitle downloads, and Jellyfin resume/progress reporting. Existing MPV and ExoPlayer choices remain available.
+
+- Find and download subtitles through Jellyfin server providers from movie/episode details and both players, without entering OpenSubtitles credentials in Elefin. Downloaded tracks are verified before selection.
+
+- Home and library backgrounds blend four artwork colors over two seconds with brightness limits and scroll-aware updates.
+- Trailer buttons try Jellyfin's local trailers, then server-provided remote YouTube or direct video URLs, before the optional TMDB fallback. Server-provided trailers need no user TMDB key.
+- Subtitle tracks preserve forced/default/SDH metadata and recognize more file-extension fallbacks.
+
+### Fixed
+
+- Recover stalled or failed playback through decoder recovery and a server-stream fallback when available.
+- Improve Dolby Vision playback compatibility, downloaded subtitle selection, subtitle language labels, and initial subtitle-picker focus.
+- Report playback start, progress, pause, and stop more reliably for Jellyfin resume tracking.
+- Preserve horizontal row positions during vertical Home navigation and prevent Back from resetting the row.
+- Match cast-card focus outlines to their circular shape.
+
+- Escape commas and backslashes in MPV HTTP headers so Jellyfin authorization stays in one header, fixing Cinema playback failing with HTTP 400 before decoding starts.
+
+- Main Home shows one complete shelf and only the following shelf's header, preventing the next row's cards from peeking through the bottom. Up/down navigation aligns shelves before transferring focus.
+- Subtitle caches distinguish media versions and servers; incomplete downloads are rejected and cleaned up.
+- Trailer preparation supports cancellation when leaving the details screen and removes incomplete cached media.
+
+## 1.1.29 — 2026-10-09
+
+### Fixed
+
+- **TV Show Artwork Fallbacks**
+  - Try thumbnail artwork before posters when backdrop previews are unavailable on Home, library home screens, and TV show details.
+  - Retry alternative artwork on show-details image failures and recognize Jellyfin's backdrop image tags.
+
+---
+
+## 1.1.28 — 2026-10-03
+
+### Fixed
+
+- **Jellyfin 12 Authentication**
+  - Replaced legacy authentication headers with the standard Authorization header to fix HTTP 400 errors during Quick Connect initiation and support password login.
+  - Updated API, artwork, music, and playback requests to use standard authorization with client identity and session tokens.
+
+### Security
+
+- Removed passwords, Quick Connect codes and secrets, and access-token excerpts from login debug logs.
+
+---
+
+## 1.1.27 — 2026-09-06
+
+### Improved
+
+- **TV Home Screen**
+  - Refined backdrop colors and scrims with synchronized image transitions and cached color sampling.
+  - Extended the dominant artwork color through the bottom background, with a gentle 1.86-second color dissolve and 1.4-second artwork fade after loading completes.
+  - Unified Home, Movies, and TV Shows backdrop rendering, including Recommendations and Discover, with matching shading, palette caching, and scroll-aware updates.
+  - Matched library artwork focus delays to Home at 400 milliseconds and kept the previous artwork visible while loading its replacement.
+  - Reduced repeated card setup, limited image prefetch batches, and cancelled obsolete prefetch requests.
+  - Prepared visible cards in upcoming shelves and deferred hero/backdrop updates during vertical scrolling.
+  - Kept portrait posters and the existing layout, with consistent rounded focus outlines and lighter focus animations.
+  - Limited clock updates to changes in the displayed minute.
+- **Details Screen Controls**
+  - Rounded expanding action buttons throughout their focus animation.
+  - Expanded the right-hand controls toward the left while keeping the action buttons grouped together.
+
+### Fixed
+
+- **Card and Row Clipping**
+  - Added separation below the home synopsis and clipped library shelves to their scrolling area to prevent cards overlapping the text.
+  - Raised watched-progress bars above card outlines.
+  - Stabilized movie details rows during horizontal scrolling and improved vertical positioning and focus restoration.
+- **Trailer Playback**
+  - Updated the bundled NewPipe extractor with an additional player client and HLS support in the launcher.
+  - Cached direct trailer media with bounded requests before native playback to avoid rejected open-ended requests.
+  - Preferred original audio and attached it after MPV reports that the video has loaded.
+  - Added a remote-controllable embedded YouTube fallback inside Elefin without launching the external YouTube app.
+  - Cleaned up temporary trailer files when the native player closes.
+- **Season Restoration After Playback**
+  - Removed a competing first-season refresh that could overwrite episodes from the selected season.
+  - Preserved season selection by ID and routed episode refreshes through one loader.
+
+---
+
+## 2026-09-05
+
+### Improved
+
+- **Android TV Series Info Screen Layout**
+  - Reworked the season, episode, action, and cast layout so D-pad focus no longer shifts or clips the season selector.
+  - Kept Play, Resume, Audio, Subtitles, Trailer, and watched-status controls consistent with the movie info screen.
+  - Positioned the cast row directly beneath the episode action controls and reduced portrait sizing so cast names remain visible.
+- **Series Season Navigation**
+  - Removed the redundant "Seasons" heading.
+  - Replaced the circular expanding season buttons with Home-style underlined tabs and rectangular focus highlights.
+  - Season tabs now always display complete labels such as "Season 1" instead of collapsing to numbers.
+
+### Fixed
+
+- **Series Info Screen Clipping**
+  - Fixed clipped season labels, hidden or compressed episode action buttons, missing cast content, and excess spacing around the cast row on shorter TV viewports.
+
+---
+
+## 2026-06-09
+
+### Improved
+
+- **Mobile Series Info Screen Layout**
+  - Moved the "Similar Shows" row to the bottom of the screen, below the list of episodes, when viewing a TV series on mobile.
+
+---
+
+## 2026-06-08
+
+### Added
+
+- **Jellyfin Server Details in Account Settings**
+  - Added Server Name, Server IP address (URL), and Logged In User displays under the Account category in Settings.
+- **Mobile Library Sorting and Genre Filtering**
+  - Added new "Release Date" sorting options along with "Alphabetical" and "Recently Added" sorting in mobile library views.
+  - Implemented dynamic genre extraction and a genre selection filter dialog to filter movies and TV shows.
+  - Added text labels alongside both the sort and filter icons for clear visibility and better usability on mobile.
+- **Premium Mobile Music Client**
+  - Designed and built a beautiful, fully native mobile music interface styled after monodev-music-client.
+  - Integrated dynamic, device-based routing in MusicActivity to load mobile music UI on mobile devices while preserving Leanback layouts for Android TV.
+  - Created a tabbed mobile music dashboard (Home, Playlists, Recently Played, Settings) with an integrated search bar, HD/FLAC quality badges, and a floating mini-player.
+  - Built an immersive Now Playing screen featuring ambient color glow, actions, and synchronized scrolling lyrics with delay offset settings.
+
+### Improved
+
+- **Login Flow Server Name and Session Caching**
+  - Implemented background fetching of `/System/Info/Public` upon successful logins (both Credentials and QuickConnect) to automatically cache the server name.
+  - Added username caching to JellyfinConfig during QuickConnect logins.
+
+### Fixed
+
+- **Mobile Sign Out / Log Out Button**
+  - Fixed an issue where the main "Log Out" button under the Account settings category was using TV-specific components, rendering it unclickable on mobile/tablet touch screens. Modified to render the appropriate mobile Button layout on touch devices.
+
+---
+
+## 2026-06-07
+
+### Added
+
+- **Expanded Theme Accent Colors**
+  - Added new color presets to the settings appearance menu: Matte Black, Teal, Pink, Lavender, and Cyan.
+
+### Improved
+
+- **Android TV Home Screen Scroll Performance**
+  - Restructured the TV Home Screen layout to completely eliminate vertical scrolling lag.
+  - Optimized background image rendering and color transitions to prevent interface stutter when switching selections.
+  - Streamlined library filtering and scrolling behavior to ensure a smooth, stable frame rate.
+- **Jellyfin Device Name Reporting**
+  - Replaced hardcoded "Android TV" / "AndroidTV" client device name reporting with the device's actual make and model (e.g. "Google Pixel 8", "NVIDIA Shield TV") to show correct info in the Jellyfin Server Dashboard.
+
+### Fixed
+
+- **Android TV Theme Accent Color Picker**
+  - Fixed an issue where changing the accent color in Settings on Android TV would not update the app theme, causing it to remain stuck on the default yellow.
+  - Added dynamic text contrast checks that automatically switch text/icon overlays to white when using dark accent colors like Matte Black, ensuring readable menus.
+- **Mobile Video Player Title Overlay**
+  - Suppressed the startup video title overlay on mobile devices because the title is already shown in the mobile player's top bar, keeping it active on Android TV.
+
 ---
 
 ## 2026-06-06
@@ -27,10 +248,10 @@ All notable changes to Elefin will be documented in this file.
 ### Improved
 
 - **Android TV Home Screen Scroll Performance**
-  - Refactored the Home Screen layout on Android TV to decompose row structures into a single unified vertical scroll layout (`LazyColumn`), enabling item recycling and improving performance on budget hardware.
-  - Implemented a 250ms focus debounce mechanism for metadata/synopsis header updates, preventing rendering lag and image loading spikes when rapidly navigating TV cards.
-  - Resolved vertical scrolling lag when navigating down the home screen by adding stable keys (`key = { it.Id }`) and contentTypes to all dynamic library rows (`LazyRow` lists for movies, shows, and episodes), enabling efficient view reuse and skipping unnecessary recompositions.
-  - Isolated the metadata/synopsis header layout into a separate standalone Composable (`MetadataSection`) and deferred state reads using lambda providers. This ensures focus updates only recompose the metadata panel, leaving the rest of the home screen and its lazy rows completely untouched during scrolling.
+  - Refactored the Home Screen layout to significantly improve performance on budget streaming devices.
+  - Added a brief focus delay for header updates to prevent lag when rapidly navigating items.
+  - Improved list caching and rendering efficiency to ensure fluid vertical scrolling.
+  - Isolated description and detail panel updates so that browsing items no longer impacts the scroll smoothness of the rest of the page.
 
 ### Fixed
 
