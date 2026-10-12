@@ -5,6 +5,34 @@ import android.content.SharedPreferences
 
 class AppSettings(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    // Capture the session for this settings instance; old screens never adopt a new server's keys.
+    private val mediaScope = JellyfinConfig(context).let {
+        if (it.isConfigured()) serverAccountId(it.serverUrl, it.userId) else "unconfigured"
+    }
+    init {
+        if (mediaScope != "unconfigured" && !prefs.getBoolean("media_scope_migrated", false)) {
+            val edit = prefs.edit()
+            for ((key, value) in prefs.all) {
+                if (value is Int && (key.startsWith("audio_") || key.startsWith("subtitle_"))) {
+                    edit.putInt("media:$mediaScope:$key", value).remove(key)
+                }
+            }
+            edit.putBoolean("media_scope_migrated", true).apply()
+        }
+    }
+
+
+    var modalNavigationDrawerEnabled: Boolean
+        get() = prefs.getBoolean("modal_navigation_drawer", true)
+        set(value) = prefs.edit().putBoolean("modal_navigation_drawer", value).apply()
+
+    fun observeModalNavigationDrawer(onChanged: (Boolean) -> Unit): () -> Unit {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "modal_navigation_drawer") onChanged(modalNavigationDrawerEnabled)
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        return { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
 
     companion object {
         private const val PREFS_NAME = "app_settings"
@@ -177,16 +205,16 @@ class AppSettings(context: Context) {
     
     // Subtitle preferences per episode/item
     fun getSubtitlePreference(itemId: String): Int? {
-        val index = prefs.getInt("subtitle_$itemId", -1)
+        val index = prefs.getInt("media:$mediaScope:subtitle_$itemId", -1)
         return if (index >= 0) index else null
     }
     
     fun setSubtitlePreference(itemId: String, subtitleIndex: Int?) {
         prefs.edit().apply {
             if (subtitleIndex != null) {
-                putInt("subtitle_$itemId", subtitleIndex)
+                putInt("media:$mediaScope:subtitle_$itemId", subtitleIndex)
             } else {
-                remove("subtitle_$itemId")
+                remove("media:$mediaScope:subtitle_$itemId")
             }
             apply()
         }
@@ -194,16 +222,16 @@ class AppSettings(context: Context) {
     
     // Audio track preferences per episode/item
     fun getAudioPreference(itemId: String): Int? {
-        val index = prefs.getInt("audio_$itemId", -1)
+        val index = prefs.getInt("media:$mediaScope:audio_$itemId", -1)
         return if (index >= 0) index else null
     }
     
     fun setAudioPreference(itemId: String, audioIndex: Int?) {
         prefs.edit().apply {
             if (audioIndex != null) {
-                putInt("audio_$itemId", audioIndex)
+                putInt("media:$mediaScope:audio_$itemId", audioIndex)
             } else {
-                remove("audio_$itemId")
+                remove("media:$mediaScope:audio_$itemId")
             }
             apply()
         }

@@ -61,8 +61,8 @@ class JellyfinRepository(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
-    suspend fun fetchContinueWatching() {
-        _isLoading.value = true
+    suspend fun fetchContinueWatching(showLoading: Boolean = true) {
+        if (showLoading) _isLoading.value = true
         _error.value = null
         try {
             val items = apiService.getContinueWatching(limit = settings.rowCardCount)
@@ -74,7 +74,7 @@ class JellyfinRepository(
             e.printStackTrace()
             _error.value = "Error: ${e.message ?: e.javaClass.simpleName}"
         } finally {
-            _isLoading.value = false
+            if (showLoading) _isLoading.value = false
         }
     }
 
@@ -391,6 +391,17 @@ class JellyfinRepository(
             e.printStackTrace()
             println("Error fetching collection items: ${e.message}")
         }
+    }
+
+    /** Refresh populated shelves in place without changing loading/focus or artwork caches. */
+    suspend fun refreshLibraryRows() {
+        fetchContinueWatching(showLoading = false)
+        fetchNextUp()
+        fetchLibraries()
+        fetchRecentlyAddedMovies()
+        fetchRecentlyReleasedMovies()
+        fetchRecentlyAddedShows()
+        fetchRecentlyAddedEpisodes()
     }
 
     /**

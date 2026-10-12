@@ -324,7 +324,10 @@ fun JellyseerrDetailsScreen(
                             Button(
                                 onClick = requestAction,
                                 enabled = !isRequesting,
-                                colors = ButtonDefaults.colors(containerColor = MaterialTheme.colorScheme.primary)
+                                colors = ButtonDefaults.colors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                )
                             ) {
                                 if (isRequesting) {
                                     androidx.compose.material3.CircularProgressIndicator(

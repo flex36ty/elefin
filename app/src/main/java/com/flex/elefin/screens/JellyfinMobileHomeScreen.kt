@@ -1,5 +1,7 @@
 package com.flex.elefin.screens
 
+import com.flex.elefin.ui.shelfUpdateModifier
+
 import com.flex.elefin.components.RatingDisplay
 
 import android.content.Context
@@ -129,6 +131,10 @@ fun JellyfinMobileHomeScreen(
     }
 
     // Load initial data
+    LiveLibraryUpdates(repository.apiService) {
+        repository.refreshLibraryRows()
+    }
+
     LaunchedEffect(Unit) {
         if (config.isConfigured()) {
             repository.fetchContinueWatching()
@@ -427,7 +433,8 @@ private fun MobileHomeContent(
                     contentType = { "media_card" }
                 ) { item ->
                     val clickCallback = remember(item) { { onItemClick(item, (item.UserData?.PositionTicks ?: 0L) / 10000) } }
-                    MobileMediaCard(
+                    Box(shelfUpdateModifier(!repository.settings.disableUIAnimations && !repository.settings.lowPowerMode)) {
+                        MobileMediaCard(
                         item = item,
                         onClick = clickCallback,
                         showProgress = true,
@@ -435,6 +442,7 @@ private fun MobileHomeContent(
                         enableCaching = cacheLibraryImages,
                         repository = repository
                     )
+                    }
                 }
             }
         }
@@ -459,7 +467,8 @@ private fun MobileHomeContent(
                     contentType = { "media_card" }
                 ) { item ->
                     val clickCallback = remember(item) { { onItemClick(item, 0) } }
-                    MobileMediaCard(
+                    Box(shelfUpdateModifier(!repository.settings.disableUIAnimations && !repository.settings.lowPowerMode)) {
+                        MobileMediaCard(
                         item = item,
                         onClick = clickCallback,
                         showProgress = false,
@@ -467,6 +476,7 @@ private fun MobileHomeContent(
                         enableCaching = cacheLibraryImages,
                         repository = repository
                     )
+                    }
                 }
             }
         }
@@ -494,7 +504,8 @@ private fun MobileHomeContent(
                         contentType = { "media_card" }
                     ) { item ->
                         val clickCallback = remember(item) { { onItemClick(item, 0) } }
-                        MobileMediaCard(
+                        Box(shelfUpdateModifier(!repository.settings.disableUIAnimations && !repository.settings.lowPowerMode)) {
+                            MobileMediaCard(
                             item = item,
                             onClick = clickCallback,
                             showProgress = false,
@@ -502,6 +513,7 @@ private fun MobileHomeContent(
                             enableCaching = cacheLibraryImages,
                             repository = repository
                         )
+                        }
                     }
                 }
             }
@@ -527,13 +539,15 @@ private fun MobileHomeContent(
                     contentType = { "media_card" }
                 ) { item ->
                     val clickCallback = remember(item) { { onItemClick(item, 0) } }
-                    MobileMediaCard(
+                    Box(shelfUpdateModifier(!repository.settings.disableUIAnimations && !repository.settings.lowPowerMode)) {
+                        MobileMediaCard(
                         item = item,
                         onClick = clickCallback,
                         showProgress = false,
                         reduceResolution = reducePosterResolution,
                         repository = repository
                     )
+                    }
                 }
             }
         }
@@ -561,7 +575,8 @@ private fun MobileHomeContent(
                         contentType = { "media_card" }
                     ) { item ->
                         val clickCallback = remember(item) { { onItemClick(item, 0) } }
-                        MobileMediaCard(
+                        Box(shelfUpdateModifier(!repository.settings.disableUIAnimations && !repository.settings.lowPowerMode)) {
+                            MobileMediaCard(
                             item = item,
                             onClick = clickCallback,
                             showProgress = false,
@@ -569,6 +584,7 @@ private fun MobileHomeContent(
                             enableCaching = cacheLibraryImages,
                             repository = repository
                         )
+                        }
                     }
                 }
             }
@@ -597,7 +613,8 @@ private fun MobileHomeContent(
                         contentType = { "media_card" }
                     ) { item ->
                         val clickCallback = remember(item) { { onItemClick(item, 0) } }
-                        MobileMediaCard(
+                        Box(shelfUpdateModifier(!repository.settings.disableUIAnimations && !repository.settings.lowPowerMode)) {
+                            MobileMediaCard(
                             item = item,
                             onClick = clickCallback,
                             showProgress = false,
@@ -605,6 +622,7 @@ private fun MobileHomeContent(
                             enableCaching = cacheLibraryImages,
                             repository = repository
                         )
+                        }
                     }
                 }
             }
@@ -630,13 +648,15 @@ private fun MobileHomeContent(
                     contentType = { "media_card" }
                 ) { item ->
                     val clickCallback = remember(item) { { onItemClick(item, 0) } }
-                    MobileMediaCard(
+                    Box(shelfUpdateModifier(!repository.settings.disableUIAnimations && !repository.settings.lowPowerMode)) {
+                        MobileMediaCard(
                         item = item,
                         onClick = clickCallback,
                         showProgress = false,
                         reduceResolution = reducePosterResolution,
                         repository = repository
                     )
+                    }
                 }
             }
         }

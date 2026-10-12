@@ -39,6 +39,7 @@ internal class CinemaController(private val context: Context, private val reques
     val title = request.getStringExtra("title") ?: "Video"
     var displayTitle by mutableStateOf(title); private set
     var episodeTitle by mutableStateOf(""); private set
+    var logoUrl by mutableStateOf<String?>(null); private set
     val api = JellyfinConfig(context).let { config ->
         if (config.isConfigured() && !request.getBooleanExtra("is_trailer", false))
             JellyfinApiService(config.serverUrl, config.accessToken, config.userId, config) else null
@@ -50,6 +51,17 @@ internal class CinemaController(private val context: Context, private val reques
     var speed by mutableStateOf(1.0); private set
     var aspectMode by mutableStateOf(com.flex.elefin.screens.AspectMode.FIT); private set
     var resolution by mutableStateOf(""); private set
+    var playingItem: JellyfinItem? = null; private set
+    var completed by mutableStateOf(false); private set
+    var nextEpisode by mutableStateOf<JellyfinItem?>(null); private set
+    var nextEpisodeResolved by mutableStateOf(false); private set
+    var creditsStartMs by mutableStateOf<Long?>(null); private set
+    private var introStartMs by mutableStateOf<Long?>(null)
+    private var introEndMs by mutableStateOf<Long?>(null)
+    val introRange get() = if (playingItem?.Type == "Episode")
+        cinemaIntroRange(introStartMs, introEndMs, chapters, (duration * 1000).toLong()) else null
+    private var chapters by mutableStateOf<List<ChapterInfo>>(emptyList())
+    val creditsChapter get() = cinemaCreditsChapter(chapters, (duration * 1000).toLong())
     var error by mutableStateOf<String?>(null); private set
     var tracks by mutableStateOf<List<CinemaTrack>>(emptyList()); private set
     var audioId by mutableStateOf(-1); private set
@@ -83,7 +95,7 @@ internal class CinemaController(private val context: Context, private val reques
                     catch (e: Exception) { buffering = false; error = "Playback settings could not be loaded. Retry or exit." }
                     MPVLib.MpvEvent.MPV_EVENT_END_FILE -> if (!released) {
                         buffering = false
-                        if (loaded && MPVLib.getPropertyBoolean("eof-reached") == true) error = "Playback finished"
+                        if (loaded && MPVLib.getPropertyBoolean("eof-reached") == true) completePlayback()
                         else retryServerStream()
                     }
                 }
@@ -102,7 +114,8 @@ internal class CinemaController(private val context: Context, private val reques
                     catch (e: Exception) { buffering = false; error = "Playback settings could not be loaded. Retry or exit." }
                 } },
                 onTracks = { scope.launch { if (!released) refreshTracks() } },
-                onError = { if (it == "Playback finished") { buffering = false; error = it } else retryServerStream() })
+                onEnded = { completePlayback() },
+                onError = { retryServerStream() })
             dolby = engine
             scope.launch {
                 while (isActive) {
@@ -179,7 +192,7 @@ internal class CinemaController(private val context: Context, private val reques
                             subtitleId = engine.sid
                             if (engine.eofReached == true && error == null) {
                                 paused = true
-                                error = "Playback finished"
+                                completePlayback()
                             }
                         }
                         delay(300)
@@ -190,7 +203,7 @@ internal class CinemaController(private val context: Context, private val reques
                     var lastPosition = position
                     while (isActive && !released) {
                         delay(1_000)
-                        if (!loaded || paused || error != null || kotlin.math.abs(position - lastPosition) > 0.2) {
+                        if (!loaded || completed || paused || error != null || kotlin.math.abs(position - lastPosition) > 0.2) {
                             unchangedSince = android.os.SystemClock.elapsedRealtime()
                             lastPosition = position
                             continue
@@ -257,6 +270,47 @@ internal class CinemaController(private val context: Context, private val reques
         }
     }
 
+    private fun completePlayback() {
+        if (released || completed) return
+        completed = true
+        buffering = false
+        paused = true
+    }
+
+    private fun resolveNextEpisode(details: JellyfinItem?) {
+        scope.launch {
+            try {
+                val service = api ?: return@launch
+                val markers = withTimeoutOrNull(3_000) { service.getMediaSegments(itemId) }
+                creditsStartMs = markers?.creditsStartMs
+                introStartMs = markers?.introStartMs
+                introEndMs = markers?.introEndMs
+                val seriesId = details?.SeriesId
+                val seasonNumber = details?.ParentIndexNumber
+                val episodeNumber = details?.IndexNumber
+                if (details?.Type != "Episode" || seriesId == null || seasonNumber == null || episodeNumber == null) return@launch
+                withTimeoutOrNull(12_000) {
+                    withContext(Dispatchers.IO) {
+                        val seasons = service.getSeasons(seriesId).filter { it.IndexNumber != null }
+                            .sortedBy { it.IndexNumber }
+                        for (season in seasons.filter { it.IndexNumber!! >= seasonNumber }) {
+                            val candidate = service.getEpisodes(seriesId, season.Id)
+                                .filter { it.Id != itemId && it.IndexNumber != null &&
+                                    (season.IndexNumber!! > seasonNumber || it.IndexNumber!! > episodeNumber) }
+                                .minByOrNull { it.IndexNumber!! }
+                            if (candidate != null) {
+                                withContext(Dispatchers.Main) { nextEpisode = candidate }
+                                break
+                            }
+                        }
+                    }
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { android.util.Log.w("CinemaPlayer", "Next episode lookup unavailable", e) }
+            finally { nextEpisodeResolved = true }
+        }
+    }
+
     private suspend fun onLoaded() {
         if (loaded) return
         loaded = true
@@ -266,6 +320,9 @@ internal class CinemaController(private val context: Context, private val reques
         view?.paused = paused
         if (api != null && itemId.isNotEmpty()) {
             val details = withTimeoutOrNull(8_000) { withContext(Dispatchers.IO) { api.getItemDetails(itemId) } }
+            playingItem = details
+            chapters = details?.Chapters.orEmpty()
+            resolveNextEpisode(details)
             source = details?.MediaSources?.firstOrNull()
             trickplayInfo = details?.Trickplay?.entries?.firstOrNull {
                 it.key.replace("-", "").equals(previewSourceId.replace("-", ""), ignoreCase = true)
@@ -280,12 +337,25 @@ internal class CinemaController(private val context: Context, private val reques
             } else {
                 displayTitle = details?.Name?.takeIf { it.isNotBlank() } ?: title
             }
+            val logoTag = details?.ImageTags?.get("Logo")
+            val logoId = when {
+                details == null -> null
+                details.Type == "Episode" -> details.SeriesId?.takeIf { it.isNotBlank() }
+                    ?: details.Id.takeIf { logoTag != null }
+                logoTag != null -> details.Id
+                else -> null
+            }
+            logoUrl = logoId?.let {
+                api.getImageUrl(it, "Logo", logoTag.takeIf { logoId == details?.Id },
+                    maxWidth = 960, maxHeight = 300, quality = 90)
+            }
             serverSubtitleTracks = source?.MediaStreams.orEmpty().filter { it.Type == "Subtitle" && it.IsExternal == true } +
                 com.flex.elefin.subtitles.OpenSubtitlesApi.getDownloadedSubtitles(context, itemId).map {
                     MediaStream(Type = "Subtitle", IsExternal = true, Path = it.filePath,
                         Codec = File(it.filePath).extension, Language = it.language, DisplayTitle = it.release)
                 }
         }
+        if (api == null || itemId.isEmpty()) nextEpisodeResolved = true
         if (released) return
         source?.MediaStreams?.firstOrNull { it.Type == "Video" }?.let {
             resolution = "${it.Width ?: 0} x ${it.Height ?: 0}" + if (requiresNativeDolbyVision(it)) "  Dolby Vision" else ""
@@ -450,7 +520,7 @@ internal class CinemaController(private val context: Context, private val reques
     }
 
     private fun ticks() = (position.coerceAtLeast(0.0) * 10_000_000).toLong()
-    fun release() {
+    fun release(markWatched: Boolean = false) {
         if (released) return
         released = true
         try {
@@ -473,6 +543,7 @@ internal class CinemaController(private val context: Context, private val reques
             reportJob?.cancel()
             job.cancel()
         }
+        if (completed && duration > 0) position = duration
         // A bounded final report owns its own job so Activity destruction cannot cancel it.
         if (reporting) CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
@@ -480,7 +551,10 @@ internal class CinemaController(private val context: Context, private val reques
                     withTimeoutOrNull(10_000) {
                         repeat(3) {
                             if (!sessionReported) sessionReported = api?.reportPlaybackStart(itemId, ticks(), audioIndex, subtitleIndex) == true
-                            if (api?.reportPlaybackStopped(itemId, ticks(), audioIndex, subtitleIndex) == true) return@withTimeoutOrNull
+                            if (api?.reportPlaybackStopped(itemId, ticks(), audioIndex, subtitleIndex) == true) {
+                                if (completed || markWatched) api?.markAsWatched(itemId)
+                                return@withTimeoutOrNull
+                            }
                             delay(500)
                         }
                     }

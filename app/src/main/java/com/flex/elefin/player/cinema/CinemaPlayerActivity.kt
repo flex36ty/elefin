@@ -12,6 +12,11 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImagePainter
+import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -55,6 +60,62 @@ class CinemaPlayerActivity : ComponentActivity() {
     private var lastSeekKeyTime = 0L
     private var menu by mutableStateOf<String?>(null)
     private var interaction by mutableStateOf(0L)
+    private var nextCountdown by mutableStateOf<Int?>(null)
+    private var autoplayCancelled by mutableStateOf(false)
+    private var advancing = false
+    private var creditsSkipped by mutableStateOf(false)
+    private var resumed by mutableStateOf(false)
+    override fun onResume() { super.onResume(); resumed = true }
+    private fun startNextEpisode() {
+        val next = controller.nextEpisode ?: return
+        if (advancing || isFinishing) return
+        advancing = true
+        nextCountdown = null
+        controller.release(markWatched = true)
+        startActivity(com.flex.elefin.JellyfinVideoPlayerActivity.createIntent(this, next.Id, itemName = next.Name))
+        finish()
+    }
+    private val canSkipIntro: Boolean
+        get() {
+            if (!::controller.isInitialized || controls || menu != null || controller.error != null || controller.completed || advancing) return false
+            val intro = controller.introRange ?: return false
+            val positionMs = (controller.position * 1000).toLong()
+            return positionMs >= intro.startMs && positionMs < intro.endMs
+        }
+    private val canSkipCredits: Boolean
+        get() {
+            if (!::controller.isInitialized || controls || menu != null || controller.error != null || controller.completed || advancing || !controller.nextEpisodeResolved) return false
+            val positionMs = (controller.position * 1000).toLong()
+            val chapter = controller.creditsChapter
+            return if (chapter != null) positionMs >= chapter.startMs && positionMs < chapter.endMs
+            else controller.creditsStartMs?.let { it > 0 && positionMs >= it && positionMs < controller.duration * 1000 } == true
+        }
+    private fun skipCredits() {
+        val chapter = controller.creditsChapter
+        if (chapter != null && chapter.endMs < (controller.duration * 1000).toLong()) {
+            creditsSkipped = true
+            nextCountdown = null
+            controller.seekTo(chapter.endMs)
+            return
+        }
+        if (controller.nextEpisode != null) startNextEpisode() else returnToInfo(markWatched = true)
+    }
+    private fun returnToInfo(markWatched: Boolean = false) {
+        if (advancing || isFinishing) return
+        advancing = true
+        val item = controller.playingItem
+        controller.release(markWatched = markWatched)
+        val detailsIntent = when {
+            item?.Type == "Episode" && item.SeriesId != null ->
+                com.flex.elefin.SeriesDetailsActivity.createIntent(this,
+                    item.copy(Id = item.SeriesId, Name = item.SeriesName ?: item.Name, Type = "Series"),
+                    episodeId = item.Id, autoFocusNextUp = true)
+            item?.Type == "Movie" -> com.flex.elefin.MovieDetailsActivity.createIntent(this, item)
+            else -> null
+        }
+        detailsIntent?.let { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)) }
+        finish()
+    }
     companion object {
         fun createIntent(context: Context, url: String, headers: String, title: String,
                          itemId: String, resumePositionMs: Long = 0L) =
@@ -79,9 +140,21 @@ class CinemaPlayerActivity : ComponentActivity() {
         outState.putLong("position_ms", (controller.position * 1000).toLong())
         super.onSaveInstanceState(outState)
     }
-    override fun onPause() { if (::controller.isInitialized) controller.pause(); super.onPause() }
+    override fun onPause() { resumed = false; if (::controller.isInitialized) controller.pause(); super.onPause() }
     override fun onDestroy() { if (::controller.isInitialized) controller.release(); super.onDestroy() }
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (canSkipIntro && event.keyCode in listOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+            if (event.action == KeyEvent.ACTION_UP) controller.introRange?.let { controller.seekTo(it.endMs) }
+            return true
+        }
+        if (canSkipCredits && event.keyCode in listOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+            if (event.action == KeyEvent.ACTION_UP) skipCredits()
+            return true
+        }
+        if (nextCountdown != null && event.keyCode == KeyEvent.KEYCODE_BACK) {
+            if (event.action == KeyEvent.ACTION_UP) { autoplayCancelled = true; nextCountdown = null }
+            return true
+        }
         val horizontal = event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT || event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
         if (::controller.isInitialized && horizontal && !controls && menu == null && controller.error == null) {
             if (event.action == KeyEvent.ACTION_DOWN) {
@@ -119,7 +192,46 @@ class CinemaPlayerActivity : ComponentActivity() {
     @Composable
     private fun Player() {
         val playFocus = remember { FocusRequester() }
+        // Keep the painter alive while controls hide so reopening them uses the loaded logo.
+        val logoRequest = remember(controller.logoUrl) {
+            controller.logoUrl?.let { url ->
+                ImageRequest.Builder(this@CinemaPlayerActivity).data(url)
+                    .headers(controller.api!!.getImageRequestHeaders()).build()
+            }
+        }
+        val logoPainter = rememberAsyncImagePainter(logoRequest)
+
         var timelineFocused by remember { mutableStateOf(false) }
+        val autoplaySettings = remember { com.flex.elefin.jellyfin.AppSettings(this@CinemaPlayerActivity) }
+        LaunchedEffect(controller) {
+            var elapsed = 0L
+            while (true) {
+                delay(250)
+                if (!resumed || advancing || controller.error != null) continue
+                val next = controller.nextEpisode
+                val canAdvance = autoplaySettings.autoplayNextEpisode && !autoplayCancelled && next != null
+                if (controller.completed && controller.nextEpisodeResolved && !canAdvance) {
+                    returnToInfo()
+                    return@LaunchedEffect
+                }
+                val countdownSeconds = autoplaySettings.autoplayCountdownSeconds
+                val nearEnd = cinemaAutoplayDue(controller.completed, controller.duration,
+                    controller.position, if (creditsSkipped) null else controller.creditsStartMs, countdownSeconds)
+                if (!canAdvance || !nearEnd) {
+                    nextCountdown = null
+                    elapsed = 0
+                    continue
+                }
+                if (menu != null || (!controller.completed && (controller.paused || controller.buffering))) continue
+                if (nextCountdown == null) { elapsed = 0; controls = false; seekOverlay = false }
+                nextCountdown = (countdownSeconds - elapsed / 1000).toInt().coerceAtLeast(0)
+                if (elapsed >= countdownSeconds * 1000L) {
+                    startNextEpisode()
+                    return@LaunchedEffect
+                }
+                elapsed += 250
+            }
+        }
         BackHandler {
             when { menu != null && menu != "Settings" -> menu = "Settings"; menu != null -> menu = null; controls -> controls = false; seekOverlay -> seekOverlay = false; else -> finish() }
         }
@@ -152,8 +264,18 @@ class CinemaPlayerActivity : ComponentActivity() {
                         colors = SurfaceDefaults.colors(containerColor = Color.Black.copy(alpha = .5f), contentColor = Color.White)
                     ) {
                         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                            Text(controller.displayTitle, style = MaterialTheme.typography.titleLarge, color = Color.White,
-                                maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            if (logoPainter.state is AsyncImagePainter.State.Success) {
+                                Image(
+                                    painter = logoPainter,
+                                    contentDescription = controller.displayTitle,
+                                    modifier = Modifier.width(280.dp).height(80.dp),
+                                    alignment = Alignment.CenterStart,
+                                    contentScale = ContentScale.Fit
+                                )
+                            } else {
+                                Text(controller.displayTitle, style = MaterialTheme.typography.titleLarge, color = Color.White,
+                                    maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            }
                             if (controller.episodeTitle.isNotEmpty()) {
                                 Text(controller.episodeTitle, style = MaterialTheme.typography.titleMedium,
                                     color = Color.White.copy(alpha = .9f), modifier = Modifier.padding(top = 4.dp),
@@ -216,6 +338,28 @@ class CinemaPlayerActivity : ComponentActivity() {
                         drawRoundRect(Color.White.copy(alpha = .3f), cornerRadius = radius)
                         if (fraction > 0) drawRoundRect(Color.White, size = androidx.compose.ui.geometry.Size(size.width * fraction, size.height), cornerRadius = radius)
                     }
+                }
+            }
+            if (canSkipIntro || canSkipCredits) {
+                Surface(
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 32.dp, bottom = if (nextCountdown == null) 48.dp else 250.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = SurfaceDefaults.colors(containerColor = Color.White, contentColor = Color.Black)
+                ) {
+                    Text(if (canSkipIntro) "OK  ·  Skip intro" else "OK  ·  Skip credits", color = Color.Black,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.titleMedium)
+                }
+            }
+            nextCountdown?.let { seconds ->
+                controller.nextEpisode?.let { next ->
+                    com.flex.elefin.screens.NextUpOverlay(next, seconds) {
+                        autoplayCancelled = true
+                        nextCountdown = null
+                    }
+                    Text("Press Back to cancel autoplay", color = Color.White,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(end = 56.dp, bottom = 12.dp),
+                        style = MaterialTheme.typography.labelMedium)
                 }
             }
             controller.error?.let { message ->

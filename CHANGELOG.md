@@ -2,6 +2,44 @@
 
 All notable changes to Elefin will be documented in this file.
 
+## 1.1.32 — 2026-10-12
+
+### Added
+
+- Elefin Cinema shows movie/show logos with the player controls, with title-text fallback and episode information underneath.
+- Cinema supports next-episode autoplay with the existing countdown setting and an Up Next overlay. Back cancels autoplay; pausing, buffering, or opening a player menu pauses the timer.
+- Cinema shows an **OK · Skip intro** prompt for Jellyfin intro segments or clearly named intro chapters with a known endpoint.
+- Cinema shows an **OK · Skip credits** prompt for Jellyfin credits segments or named ending-credits chapters. A following chapter is preserved; otherwise skipping advances to the next episode or returns to the info screen.
+- Save multiple Jellyfin server logins and switch in Settings → Accounts or the TV drawer header. The picker includes the server address and username.
+- TV navigation drawer is enabled by default when no preference is saved, with server branding, library destinations, animated focus, gradient scrim, and compact spacing. Existing choices are preserved; the original top navigation remains available through Settings → Appearance.
+- New elephant app icon and high-resolution splash artwork.
+
+### Improved
+
+- Drawer-enabled movie and TV libraries use Recommendations and Browse Library tabs, with the library name alongside them. Tabs activate with OK.
+- Browse Library places Sort and Genres below the tabs, uses translucent inline dropdowns, lists genres supplied by the library, and moves the alphabet index to the right.
+- Home and library shelves refresh from Jellyfin library notifications, with a one-minute fallback while visible. New-card animations respect Low Power Mode and Disable UI Animations.
+- Recommendation shelves remember their focused card during vertical navigation; closing the drawer returns to the first card of the remembered row.
+- Request higher-resolution poster and Continue Watching artwork while decoding images to their displayed size.
+- Cinema resolves later episodes across seasons, reports completed playback as watched, and returns movies and final episodes to their info screen without a playback-finished error popup.
+- Without credits markers, the existing final-seconds autoplay countdown remains in use. Intro skipping is unavailable when no reliable endpoint is known.
+
+### Fixed
+
+- Make Settings left/right navigation return to the active category and restore the last control. New categories start at the top; Appearance switches no longer jump into the color palette.
+- Use contrasting text on accent-filled Settings buttons and the Jellyseerr request button, fixing white-on-white labels with the white accent.
+- Preserve per-item audio and subtitle preferences separately for each saved server/account. Failed or cancelled add-server login leaves the active connection unchanged.
+
+---
+
+## 1.1.31 — 2026-10-11
+
+### Fixed
+
+- Fix downloaded APK installation handoff on NVIDIA Shield and other Android devices by setting the APK URI and MIME type together, granting read access, and launching the installer directly.
+
+---
+
 ## 1.1.30 — 2026-10-11
 
 ### Improved

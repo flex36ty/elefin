@@ -205,8 +205,7 @@ object UpdateService {
     }
     
     /**
-     * Attempts to install an APK file. First tries Intent.ACTION_VIEW, 
-     * then falls back to PackageInstaller if needed.
+     * Opens Android's installer for a downloaded APK with temporary read permission.
      * @param context Application context
      * @param apkUri URI of the APK file to install
      * @return true if installation started successfully, false otherwise
@@ -216,37 +215,17 @@ object UpdateService {
             try {
                 Log.d(TAG, "Attempting to launch installer with URI: $apkUri")
                 
-                // Grant URI permissions to allow the installer to access the file
-                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                context.grantUriPermission(
-                    "android",
-                    apkUri,
-                    flags
-                )
-                
-                // Try Intent.ACTION_VIEW with the APK file
+                // Set both together: Intent.setType clears a previously assigned data URI.
                 val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                    data = apkUri
-                    type = "application/vnd.android.package-archive"
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    addFlags(flags)
+                    setDataAndType(apkUri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    clipData = android.content.ClipData.newRawUri("Elefin update", apkUri)
                 }
-                
-                // Try to find any activity that can handle this
-                val resolveInfo = context.packageManager.queryIntentActivities(installIntent, 0)
-                if (resolveInfo.isNotEmpty()) {
-                    try {
-                        context.startActivity(installIntent)
-                        Log.d(TAG, "Installer activity launched successfully")
-                        return@withContext true
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to start installer activity", e)
-                    }
-                }
-                
-                Log.e(TAG, "No installer activity found")
-                false
+                // Package visibility can filter queryIntentActivities even when Android
+                // can launch the installer. Launch directly and handle failure below.
+                context.startActivity(installIntent)
+                Log.d(TAG, "Installer activity launched successfully")
+                true
             } catch (e: Exception) {
                 Log.e(TAG, "Error launching installer", e)
                 false

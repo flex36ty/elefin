@@ -1,5 +1,14 @@
 package com.flex.elefin.screens
 
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Collections
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.VideoLibrary
+
+import com.flex.elefin.ui.shelfUpdateModifier
+
 import com.flex.elefin.components.RatingType
 import com.flex.elefin.components.RatingDisplay
 
@@ -263,6 +272,13 @@ fun MoviesLibraryScreen(
         }
     }
     
+    LiveLibraryUpdates(apiService) {
+        if (!isLoading && apiService != null) {
+            recentlyAddedMovies = apiService.getRecentlyAddedMoviesFromLibrary(libraryId, settings.rowCardCount)
+            recentlyReleasedMovies = apiService.getRecentlyReleasedMoviesFromLibrary(libraryId, settings.rowCardCount)
+        }
+    }
+
     // Fetch recommendations data - using library-specific API methods
     // This ensures "Movies" and "Movies 4K" (and other movie libraries) are treated separately
     LaunchedEffect(apiService, libraryId) {
@@ -507,7 +523,116 @@ fun MoviesLibraryScreen(
     
     // Main content (same structure as home screen)
     // Wrap with TV-optimized bring-into-view behavior for better focus handling
+    val drawerEnabled = rememberTvDrawerEnabled(settings)
+    val openDrawerSettings: () -> Unit = {
+                            darkModeWhenSettingsOpened = settings.darkModeEnabled
+                            debugOutlinesWhenSettingsOpened = settings.showDebugOutlines
+                            disableUIAnimationsWhenSettingsOpened = settings.disableUIAnimations
+                            lowPowerModeWhenSettingsOpened = settings.lowPowerMode
+                            useSimpleCardsWhenSettingsOpened = settings.useSimpleCards
+                            useGoogleTvCardsWhenSettingsOpened = settings.useGoogleTvCards
+                            use24HourTimeWhenSettingsOpened = settings.use24HourTime
+                            rowCardCountWhenSettingsOpened = settings.rowCardCount
+                            showSettings = true
+                        }
+    val refreshFromDrawer: () -> Unit = {
+                            if (selectedTab == "library") {
+                                // Show sort dialog when library tab is selected
+                                showSortDialog = true
+                            } else {
+                                // Refresh when on recommendations tab
+                                if (!isRefreshing && apiService != null) {
+                                    isRefreshing = true
+                                    scope.launch {
+                                        try {
+                                            // Clear image cache
+                                            withContext(Dispatchers.IO) {
+                                                val imageLoader = context.imageLoader
+                                                imageLoader.diskCache?.clear()
+                                                imageLoader.memoryCache?.clear()
+                                            }
+
+                                            // Pick 5 new random unique genres
+                                            val shuffledGenres = if (availableGenres.isNotEmpty()) {
+                                                availableGenres.filter { it in movieGenres }.shuffled().take(5).ifEmpty {
+                                                    availableGenres.shuffled().take(5)
+                                                }
+                                            } else {
+                                                movieGenres.shuffled().take(5)
+                                            }
+
+                                            val genre1 = shuffledGenres.getOrNull(0) ?: movieGenres.random()
+                                            val genre2 = shuffledGenres.getOrNull(1) ?: movieGenres.random()
+                                            val genre3 = shuffledGenres.getOrNull(2) ?: movieGenres.random()
+                                            val genre4 = shuffledGenres.getOrNull(3) ?: movieGenres.random()
+                                            val genre5 = shuffledGenres.getOrNull(4) ?: movieGenres.random()
+
+                                            selectedGenre1 = genre1
+                                            selectedGenre2 = genre2
+                                            selectedGenre3 = genre3
+                                            selectedGenre4 = genre4
+                                            selectedGenre5 = genre5
+
+                                            // Refresh data - using library-specific methods
+                                            withContext(Dispatchers.IO) {
+                                                coroutineScope {
+                                                    val continueWatchingDeferred = async { apiService?.getContinueWatchingMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
+                                                    val recentlyReleasedDeferred = async { apiService?.getRecentlyReleasedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
+                                                    val recentlyAddedDeferred = async { apiService?.getRecentlyAddedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
+                                                    val topUnwatchedDeferred = async { apiService?.getTopUnwatchedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
+                                                    val recentlyWatchedDeferred = async { apiService?.getRecentlyWatchedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
+                                                    val favoritesDeferred = async { apiService?.getFavoriteMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
+                                                    val genre1Deferred = async { apiService?.getMoviesByGenreFromLibrary(libraryId, genre1, settings.rowCardCount) ?: emptyList() }
+                                                    val genre2Deferred = async { apiService?.getMoviesByGenreFromLibrary(libraryId, genre2, settings.rowCardCount) ?: emptyList() }
+                                                    val genre3Deferred = async { apiService?.getMoviesByGenreFromLibrary(libraryId, genre3, settings.rowCardCount) ?: emptyList() }
+                                                    val genre4Deferred = async { apiService?.getMoviesByGenreFromLibrary(libraryId, genre4, settings.rowCardCount) ?: emptyList() }
+                                                    val genre5Deferred = async { apiService?.getMoviesByGenreFromLibrary(libraryId, genre5, settings.rowCardCount) ?: emptyList() }
+                                                    val libraryDeferred = async { apiService?.getAllLibraryItems(libraryId) ?: emptyList() }
+
+                                                    continueWatchingMovies = continueWatchingDeferred.await()
+                                                    recentlyReleasedMovies = recentlyReleasedDeferred.await()
+                                                    recentlyAddedMovies = recentlyAddedDeferred.await()
+                                                    topUnwatchedMovies = topUnwatchedDeferred.await()
+                                                    recentlyWatchedMovies = recentlyWatchedDeferred.await()
+                                                    favoriteMovies = favoritesDeferred.await()
+                                                    genreMovies1 = genre1Deferred.await()
+                                                    genreMovies2 = genre2Deferred.await()
+                                                    genreMovies3 = genre3Deferred.await()
+                                                    genreMovies4 = genre4Deferred.await()
+                                                    genreMovies5 = genre5Deferred.await()
+                                                    libraryItems = libraryDeferred.await()
+                                                }
+                                            }
+
+                                            Log.d("MoviesLibraryScreen", "Manual refresh completed")
+                                        } catch (e: Exception) {
+                                            Log.e("MoviesLibraryScreen", "Manual refresh error", e)
+                                        } finally {
+                                            isRefreshing = false
+                                        }
+                                    }
+                                }
+                            }
+                        }
+    val recommendationDrawerReturn = remember { RecommendationDrawerReturn(focusRequester) }
+    val browseToolsFocus = remember { FocusRequester() }
+    val libraryDrawerEntries = rememberLibraryDrawerEntries(drawerEnabled, apiService, settings, libraryId, libraryName)
+    val drawerEntries = listOf(
+        TvDrawerEntry("search", "Search", Icons.Default.Search) { showSearch = true },
+        TvDrawerEntry("home", "Home", Icons.Default.Home, onClick = onBackPressed)
+    ) + libraryDrawerEntries + if (selectedTab == "library") emptyList() else listOf(
+        TvDrawerEntry("refresh", if (selectedTab == "library") "Sort" else "Refresh", if (selectedTab == "library") Icons.Default.SwapVert else Icons.Default.Refresh,
+            enabled = !isRefreshing || selectedTab == "library", onClick = refreshFromDrawer)
+    )
+
     TvBringIntoViewProvider {
+        TvNavigationDrawer(
+            enabled = drawerEnabled,
+            entries = drawerEntries,
+            recommendationReturn = recommendationDrawerReturn.takeIf { selectedTab == "recommendations" },
+            settingsEntry = TvDrawerEntry("settings", "Settings", Icons.Default.Settings, onClick = openDrawerSettings)
+        ) {
+
     Box(Modifier.fillMaxSize()) {
         // Share the same artwork, palette, shading and transition pipeline as main Home.
         com.flex.elefin.ui.HomeBackdrop(
@@ -522,9 +647,11 @@ fun MoviesLibraryScreen(
                 discoverHighlightedMovie?.backdropPath?.let { JellyseerrImageUrl.backdrop(it) } ?: ""
                 else null
         )
+        Box(Modifier.fillMaxSize().padding(start = if (drawerEnabled) 16.dp else 0.dp)) {
+
 
         // Top row with buttons and tabs (same as home screen)
-        Box(
+        if (!drawerEnabled) Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
@@ -549,17 +676,7 @@ fun MoviesLibraryScreen(
                 ) {
                     // Settings button
                     IconButton(
-                        onClick = {
-                            darkModeWhenSettingsOpened = settings.darkModeEnabled
-                            debugOutlinesWhenSettingsOpened = settings.showDebugOutlines
-                            disableUIAnimationsWhenSettingsOpened = settings.disableUIAnimations
-                            lowPowerModeWhenSettingsOpened = settings.lowPowerMode
-                            useSimpleCardsWhenSettingsOpened = settings.useSimpleCards
-                            useGoogleTvCardsWhenSettingsOpened = settings.useGoogleTvCards
-                            use24HourTimeWhenSettingsOpened = settings.use24HourTime
-                            rowCardCountWhenSettingsOpened = settings.rowCardCount
-                            showSettings = true
-                        },
+                        onClick = openDrawerSettings,
                         colors = IconButtonDefaults.colors(
                             containerColor = MaterialTheme.colorScheme.surface,
                             contentColor = MaterialTheme.colorScheme.onSurface
@@ -608,85 +725,7 @@ fun MoviesLibraryScreen(
                     val isLibraryTab = selectedTab == "library"
                     
                     IconButton(
-                        onClick = {
-                            if (isLibraryTab) {
-                                // Show sort dialog when library tab is selected
-                                showSortDialog = true
-                            } else {
-                                // Refresh when on recommendations tab
-                                if (!isRefreshing && apiService != null) {
-                                    isRefreshing = true
-                                    scope.launch {
-                                        try {
-                                            // Clear image cache
-                                            withContext(Dispatchers.IO) {
-                                                val imageLoader = context.imageLoader
-                                                imageLoader.diskCache?.clear()
-                                                imageLoader.memoryCache?.clear()
-                                            }
-                                            
-                                            // Pick 5 new random unique genres
-                                            val shuffledGenres = if (availableGenres.isNotEmpty()) {
-                                                availableGenres.filter { it in movieGenres }.shuffled().take(5).ifEmpty { 
-                                                    availableGenres.shuffled().take(5)
-                                                }
-                                            } else {
-                                                movieGenres.shuffled().take(5)
-                                            }
-                                            
-                                            val genre1 = shuffledGenres.getOrNull(0) ?: movieGenres.random()
-                                            val genre2 = shuffledGenres.getOrNull(1) ?: movieGenres.random()
-                                            val genre3 = shuffledGenres.getOrNull(2) ?: movieGenres.random()
-                                            val genre4 = shuffledGenres.getOrNull(3) ?: movieGenres.random()
-                                            val genre5 = shuffledGenres.getOrNull(4) ?: movieGenres.random()
-                                            
-                                            selectedGenre1 = genre1
-                                            selectedGenre2 = genre2
-                                            selectedGenre3 = genre3
-                                            selectedGenre4 = genre4
-                                            selectedGenre5 = genre5
-                                            
-                                            // Refresh data - using library-specific methods
-                                            withContext(Dispatchers.IO) {
-                                                coroutineScope {
-                                                    val continueWatchingDeferred = async { apiService?.getContinueWatchingMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
-                                                    val recentlyReleasedDeferred = async { apiService?.getRecentlyReleasedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
-                                                    val recentlyAddedDeferred = async { apiService?.getRecentlyAddedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
-                                                    val topUnwatchedDeferred = async { apiService?.getTopUnwatchedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
-                                                    val recentlyWatchedDeferred = async { apiService?.getRecentlyWatchedMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
-                                                    val favoritesDeferred = async { apiService?.getFavoriteMoviesFromLibrary(libraryId, settings.rowCardCount) ?: emptyList() }
-                                                    val genre1Deferred = async { apiService?.getMoviesByGenreFromLibrary(libraryId, genre1, settings.rowCardCount) ?: emptyList() }
-                                                    val genre2Deferred = async { apiService?.getMoviesByGenreFromLibrary(libraryId, genre2, settings.rowCardCount) ?: emptyList() }
-                                                    val genre3Deferred = async { apiService?.getMoviesByGenreFromLibrary(libraryId, genre3, settings.rowCardCount) ?: emptyList() }
-                                                    val genre4Deferred = async { apiService?.getMoviesByGenreFromLibrary(libraryId, genre4, settings.rowCardCount) ?: emptyList() }
-                                                    val genre5Deferred = async { apiService?.getMoviesByGenreFromLibrary(libraryId, genre5, settings.rowCardCount) ?: emptyList() }
-                                                    val libraryDeferred = async { apiService?.getAllLibraryItems(libraryId) ?: emptyList() }
-                                                    
-                                                    continueWatchingMovies = continueWatchingDeferred.await()
-                                                    recentlyReleasedMovies = recentlyReleasedDeferred.await()
-                                                    recentlyAddedMovies = recentlyAddedDeferred.await()
-                                                    topUnwatchedMovies = topUnwatchedDeferred.await()
-                                                    recentlyWatchedMovies = recentlyWatchedDeferred.await()
-                                                    favoriteMovies = favoritesDeferred.await()
-                                                    genreMovies1 = genre1Deferred.await()
-                                                    genreMovies2 = genre2Deferred.await()
-                                                    genreMovies3 = genre3Deferred.await()
-                                                    genreMovies4 = genre4Deferred.await()
-                                                    genreMovies5 = genre5Deferred.await()
-                                                    libraryItems = libraryDeferred.await()
-                                                }
-                                            }
-                                            
-                                            Log.d("MoviesLibraryScreen", "Manual refresh completed")
-                                        } catch (e: Exception) {
-                                            Log.e("MoviesLibraryScreen", "Manual refresh error", e)
-                                        } finally {
-                                            isRefreshing = false
-                                        }
-                                    }
-                                }
-                            }
-                        },
+                        onClick = refreshFromDrawer,
                         enabled = !isRefreshing || isLibraryTab,
                         colors = IconButtonDefaults.colors(
                             containerColor = MaterialTheme.colorScheme.surface,
@@ -823,6 +862,21 @@ fun MoviesLibraryScreen(
             }
         }
         
+        if (drawerEnabled) {
+            LibraryDrawerTabs(libraryName, selectedTab, { selectedTab = it }, if (selectedTab == "library") browseToolsFocus else focusRequester, Modifier.padding(start = 54.dp, top = 22.dp))
+            if (selectedTab == "library") {
+                LibraryBrowseTools(
+                    genres = availableGenres + libraryItems.flatMap { it.Genres.orEmpty() },
+                    selectedGenre = selectedGenreFilter, onGenreSelected = { selectedGenreFilter = it },
+                    sortType = sortType, onSortSelected = { sortType = it }, entryFocus = browseToolsFocus, contentFocus = focusRequester,
+                    modifier = Modifier.padding(start = 54.dp, top = 66.dp)
+                )
+            }
+            Box(Modifier.align(Alignment.TopEnd).padding(top = 22.dp)) {
+                DigitalClock(use24HourFormat = use24HourTime)
+            }
+        }
+
         // Content based on selected tab
         if (selectedTab == "recommendations") {
             // Item details section (same as home screen)
@@ -987,7 +1041,7 @@ fun MoviesLibraryScreen(
                                     modifier = Modifier.padding(bottom = 12.dp, top = 12.dp)
                                 )
                                 
-                                LazyRow(
+                                RecommendationLazyRow(
                                     state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -998,9 +1052,10 @@ fun MoviesLibraryScreen(
                                         Modifier
                                     }
                                 ) {
-                                    items(continueWatchingMovies) { item ->
+                                    items(continueWatchingMovies, key = { it.Id }) { item ->
                                         // Use vertical poster card for movies
-                                        JellyfinHorizontalCard(
+                                        RecommendationFocusCard(item.Id) {
+JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
                                             onClick = {
@@ -1021,6 +1076,7 @@ fun MoviesLibraryScreen(
                                             useGoogleTvCards = useGoogleTvCards.value,
                                             lowPowerMode = lowPowerMode.value
                                         )
+                                                }
                                     }
                                 }
                             }
@@ -1037,7 +1093,7 @@ fun MoviesLibraryScreen(
                                     modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
                                 )
                                 
-                                LazyRow(
+                                RecommendationLazyRow(
                                     state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -1048,8 +1104,10 @@ fun MoviesLibraryScreen(
                                         Modifier
                                     }
                                 ) {
-                                    items(recentlyReleasedMovies) { item ->
-                                        JellyfinHorizontalCard(
+                                    items(recentlyReleasedMovies, key = { it.Id }) { item ->
+                                        Box(shelfUpdateModifier(!disableUIAnimations.value && !lowPowerMode.value)) {
+                                            RecommendationFocusCard(item.Id) {
+JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
                                             onClick = { onItemClick(item, 0L) },
@@ -1067,6 +1125,8 @@ fun MoviesLibraryScreen(
                                             useGoogleTvCards = useGoogleTvCards.value,
                                             lowPowerMode = lowPowerMode.value
                                         )
+                                                }
+                                        }
                                     }
                                 }
                             }
@@ -1083,7 +1143,7 @@ fun MoviesLibraryScreen(
                                     modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
                                 )
                                 
-                                LazyRow(
+                                RecommendationLazyRow(
                                     state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -1094,8 +1154,10 @@ fun MoviesLibraryScreen(
                                         Modifier
                                     }
                                 ) {
-                                    items(recentlyAddedMovies) { item ->
-                                        JellyfinHorizontalCard(
+                                    items(recentlyAddedMovies, key = { it.Id }) { item ->
+                                        Box(shelfUpdateModifier(!disableUIAnimations.value && !lowPowerMode.value)) {
+                                            RecommendationFocusCard(item.Id) {
+JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
                                             onClick = { onItemClick(item, 0L) },
@@ -1113,6 +1175,8 @@ fun MoviesLibraryScreen(
                                             useGoogleTvCards = useGoogleTvCards.value,
                                             lowPowerMode = lowPowerMode.value
                                         )
+                                                }
+                                        }
                                     }
                                 }
                             }
@@ -1129,7 +1193,7 @@ fun MoviesLibraryScreen(
                                     modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
                                 )
                                 
-                                LazyRow(
+                                RecommendationLazyRow(
                                     state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -1140,8 +1204,9 @@ fun MoviesLibraryScreen(
                                         Modifier
                                     }
                                 ) {
-                                    items(topUnwatchedMovies) { item ->
-                                        JellyfinHorizontalCard(
+                                    items(topUnwatchedMovies, key = { it.Id }) { item ->
+                                        RecommendationFocusCard(item.Id) {
+JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
                                             onClick = { onItemClick(item, 0L) },
@@ -1159,6 +1224,7 @@ fun MoviesLibraryScreen(
                                             useGoogleTvCards = useGoogleTvCards.value,
                                             lowPowerMode = lowPowerMode.value
                                         )
+                                                }
                                     }
                                 }
                             }
@@ -1175,7 +1241,7 @@ fun MoviesLibraryScreen(
                                     modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
                                 )
                                 
-                                LazyRow(
+                                RecommendationLazyRow(
                                     state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -1186,8 +1252,9 @@ fun MoviesLibraryScreen(
                                         Modifier
                                     }
                                 ) {
-                                    items(recentlyWatchedMovies) { item ->
-                                        JellyfinHorizontalCard(
+                                    items(recentlyWatchedMovies, key = { it.Id }) { item ->
+                                        RecommendationFocusCard(item.Id) {
+JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
                                             onClick = { onItemClick(item, 0L) },
@@ -1205,6 +1272,7 @@ fun MoviesLibraryScreen(
                                             useGoogleTvCards = useGoogleTvCards.value,
                                             lowPowerMode = lowPowerMode.value
                                         )
+                                                }
                                     }
                                 }
                             }
@@ -1221,7 +1289,7 @@ fun MoviesLibraryScreen(
                                     modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
                                 )
                                 
-                                LazyRow(
+                                RecommendationLazyRow(
                                     state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -1232,8 +1300,9 @@ fun MoviesLibraryScreen(
                                         Modifier
                                     }
                                 ) {
-                                    items(favoriteMovies) { item ->
-                                        JellyfinHorizontalCard(
+                                    items(favoriteMovies, key = { it.Id }) { item ->
+                                        RecommendationFocusCard(item.Id) {
+JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
                                             onClick = { onItemClick(item, 0L) },
@@ -1251,6 +1320,7 @@ fun MoviesLibraryScreen(
                                             useGoogleTvCards = useGoogleTvCards.value,
                                             lowPowerMode = lowPowerMode.value
                                         )
+                                                }
                                     }
                                 }
                             }
@@ -1267,7 +1337,7 @@ fun MoviesLibraryScreen(
                                     modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
                                 )
                                 
-                                LazyRow(
+                                RecommendationLazyRow(
                                     state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -1278,8 +1348,9 @@ fun MoviesLibraryScreen(
                                         Modifier
                                     }
                                 ) {
-                                    items(genreMovies1) { item ->
-                                        JellyfinHorizontalCard(
+                                    items(genreMovies1, key = { it.Id }) { item ->
+                                        RecommendationFocusCard(item.Id) {
+JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
                                             onClick = { onItemClick(item, 0L) },
@@ -1297,6 +1368,7 @@ fun MoviesLibraryScreen(
                                             useGoogleTvCards = useGoogleTvCards.value,
                                             lowPowerMode = lowPowerMode.value
                                         )
+                                                }
                                     }
                                 }
                             }
@@ -1313,7 +1385,7 @@ fun MoviesLibraryScreen(
                                     modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
                                 )
                                 
-                                LazyRow(
+                                RecommendationLazyRow(
                                     state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -1324,8 +1396,9 @@ fun MoviesLibraryScreen(
                                         Modifier
                                     }
                                 ) {
-                                    items(genreMovies2) { item ->
-                                        JellyfinHorizontalCard(
+                                    items(genreMovies2, key = { it.Id }) { item ->
+                                        RecommendationFocusCard(item.Id) {
+JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
                                             onClick = { onItemClick(item, 0L) },
@@ -1343,6 +1416,7 @@ fun MoviesLibraryScreen(
                                             useGoogleTvCards = useGoogleTvCards.value,
                                             lowPowerMode = lowPowerMode.value
                                         )
+                                                }
                                     }
                                 }
                             }
@@ -1359,7 +1433,7 @@ fun MoviesLibraryScreen(
                                     modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
                                 )
                                 
-                                LazyRow(
+                                RecommendationLazyRow(
                                     state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -1370,8 +1444,9 @@ fun MoviesLibraryScreen(
                                         Modifier
                                     }
                                 ) {
-                                    items(genreMovies3) { item ->
-                                        JellyfinHorizontalCard(
+                                    items(genreMovies3, key = { it.Id }) { item ->
+                                        RecommendationFocusCard(item.Id) {
+JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
                                             onClick = { onItemClick(item, 0L) },
@@ -1389,6 +1464,7 @@ fun MoviesLibraryScreen(
                                             useGoogleTvCards = useGoogleTvCards.value,
                                             lowPowerMode = lowPowerMode.value
                                         )
+                                                }
                                     }
                                 }
                             }
@@ -1405,7 +1481,7 @@ fun MoviesLibraryScreen(
                                     modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
                                 )
                                 
-                                LazyRow(
+                                RecommendationLazyRow(
                                     state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -1416,8 +1492,9 @@ fun MoviesLibraryScreen(
                                         Modifier
                                     }
                                 ) {
-                                    items(genreMovies4) { item ->
-                                        JellyfinHorizontalCard(
+                                    items(genreMovies4, key = { it.Id }) { item ->
+                                        RecommendationFocusCard(item.Id) {
+JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
                                             onClick = { onItemClick(item, 0L) },
@@ -1435,6 +1512,7 @@ fun MoviesLibraryScreen(
                                             useGoogleTvCards = useGoogleTvCards.value,
                                             lowPowerMode = lowPowerMode.value
                                         )
+                                                }
                                     }
                                 }
                             }
@@ -1451,7 +1529,7 @@ fun MoviesLibraryScreen(
                                     modifier = Modifier.padding(bottom = 12.dp, top = 30.36.dp)
                                 )
                                 
-                                LazyRow(
+                                RecommendationLazyRow(
                                     state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -1462,8 +1540,9 @@ fun MoviesLibraryScreen(
                                         Modifier
                                     }
                                 ) {
-                                    items(genreMovies5) { item ->
-                                        JellyfinHorizontalCard(
+                                    items(genreMovies5, key = { it.Id }) { item ->
+                                        RecommendationFocusCard(item.Id) {
+JellyfinHorizontalCard(
                                             item = item,
                                             apiService = apiService,
                                             onClick = { onItemClick(item, 0L) },
@@ -1481,6 +1560,7 @@ fun MoviesLibraryScreen(
                                             useGoogleTvCards = useGoogleTvCards.value,
                                             lowPowerMode = lowPowerMode.value
                                         )
+                                                }
                                     }
                                 }
                             }
@@ -1526,7 +1606,7 @@ fun MoviesLibraryScreen(
                 androidx.tv.material3.Surface(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(top = 86.dp)
+                        .padding(top = if (drawerEnabled) 120.dp else 86.dp)
                         .then(
                             if (debugOutlinesEnabled) {
                                 Modifier.border(3.dp, Color.Green)
@@ -1543,7 +1623,7 @@ fun MoviesLibraryScreen(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         // A-Z Index Bar on the left (only when sorted alphabetically)
-                        if (showAlphabetIndex) {
+                        if (showAlphabetIndex && !drawerEnabled) {
                             Box(
                                 modifier = Modifier
                                     .width(48.dp)
@@ -1569,8 +1649,8 @@ fun MoviesLibraryScreen(
                             state = lazyListState,
                             contentPadding = PaddingValues(bottom = 20.dp * 1.15f, top = 24.dp),
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = if (showAlphabetIndex) 8.dp else 54.dp, end = 38.dp)
+                                .weight(1f)
+                                .padding(start = if (drawerEnabled || !showAlphabetIndex) 54.dp else 8.dp, end = if (drawerEnabled && showAlphabetIndex) 8.dp else 38.dp)
                                 .focusRequester(focusRequester)
                         ) {
                         items(
@@ -1640,6 +1720,26 @@ fun MoviesLibraryScreen(
                             }
                         }
                     }
+if (showAlphabetIndex && drawerEnabled) {
+                            Box(
+                                modifier = Modifier
+                                    .width(48.dp)
+                                    .fillMaxHeight()
+                                    .padding(end = 8.dp, top = 24.dp, bottom = 24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                MovieAlphabetIndexBar(
+                                    availableLetters = availableLetters,
+                                    selectedLetter = selectedLetter,
+                                    onLetterFocused = { letter ->
+                                        selectedLetter = letter
+                                    },
+                                    onLetterSelected = { letter ->
+                                        selectedLetter = letter
+                                    }
+                                )
+                            }
+                        }
                     }
                     
                     // Letter overlay (shown briefly when navigating A-Z)
@@ -2095,7 +2195,8 @@ fun MoviesLibraryScreen(
                 }
             }
         }
-    } // TvBringIntoViewProvider
+            }
+} // TvBringIntoViewProvider
         
         // Sort dialog
         if (showSortDialog) {
@@ -2106,7 +2207,7 @@ fun MoviesLibraryScreen(
                     showSortDialog = false
                 },
                 onDismiss = { showSortDialog = false },
-                availableGenres = availableGenres,
+                availableGenres = if (settings.modalNavigationDrawerEnabled) emptyList() else availableGenres,
                 selectedGenre = selectedGenreFilter,
                 onGenreSelected = { genre ->
                     selectedGenreFilter = genre
@@ -2136,7 +2237,8 @@ fun MoviesLibraryScreen(
                 }
             }
         }
-    }
+        }
+}
 }
 
 /**

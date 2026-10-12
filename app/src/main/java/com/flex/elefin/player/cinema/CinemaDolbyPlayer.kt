@@ -23,7 +23,7 @@ internal fun requiresNativeDolbyVision(stream: MediaStream?): Boolean = stream !
 /** Platform Dolby Vision decoding keeps the RPU metadata and native video surface intact. */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal class CinemaDolbyPlayer(context: Context, url: String, headers: String?, startMs: Long,
-    onReady: () -> Unit, onTracks: () -> Unit, onError: (String) -> Unit) {
+    onReady: () -> Unit, onTracks: () -> Unit, onEnded: () -> Unit, onError: (String) -> Unit) {
     private val http = DefaultHttpDataSource.Factory().setDefaultRequestProperties(
         headers.orEmpty().lineSequence().mapNotNull { line ->
             val colon = line.indexOf(':')
@@ -70,7 +70,7 @@ internal class CinemaDolbyPlayer(context: Context, url: String, headers: String?
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_READY && !ready) { ready = true; onReady() }
-                if (state == Player.STATE_ENDED) onError("Playback finished")
+                if (state == Player.STATE_ENDED) onEnded()
             }
             override fun onTracksChanged(tracks: Tracks) {
                 if (selectSidecar) {

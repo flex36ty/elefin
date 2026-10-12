@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.key
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -82,6 +83,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -93,8 +95,13 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -120,11 +127,11 @@ enum class SettingsCategory(val title: String, val icon: ImageVector) {
     UPDATES("Updates", Icons.Default.Update),
     JELLYSEERR("Jellyseerr (Discover Content)", Icons.Default.Videocam),
     TRAILERS("Trailers", Icons.Default.Movie),
-    ACCOUNT("Account", Icons.Default.Person),
+    ACCOUNT("Accounts", Icons.Default.Person),
     COFFEE("Buy Me a Coffee", Icons.Filled.Favorite)
 }
 
-@OptIn(coil.annotation.ExperimentalCoilApi::class, ExperimentalLayoutApi::class)
+@OptIn(coil.annotation.ExperimentalCoilApi::class, ExperimentalLayoutApi::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
@@ -136,6 +143,9 @@ fun SettingsScreen(
     
     // Selected category
     var selectedCategory by remember { mutableStateOf(initialCategory) }
+    val categoryFocusTargets = remember { SettingsCategory.entries.associateWith { FocusRequester() } }
+    val detailFocus = remember(selectedCategory) { FocusRequester() }
+    val appearanceFirstControl = remember { FocusRequester() }
     
     // All settings state
     var playbackPlayer by remember { mutableStateOf(settings.playbackPlayer) }
@@ -187,7 +197,6 @@ fun SettingsScreen(
     var remoteThemingEnabled by remember { mutableStateOf(settings.remoteThemingEnabled) }
     var darkModeEnabled by remember { mutableStateOf(settings.darkModeEnabled) }
     var autoRefreshEnabled by remember { mutableStateOf(settings.autoRefreshEnabled) }
-    var autoRefreshIntervalMinutes by remember { mutableStateOf(settings.autoRefreshIntervalMinutes) }
     var hideShowsWithZeroEpisodesEnabled by remember { mutableStateOf(settings.hideShowsWithZeroEpisodes) }
     var minimalBuffer4KEnabled by remember { mutableStateOf(settings.minimalBuffer4K) }
     var transcodeAacToAc3Enabled by remember { mutableStateOf(settings.transcodeAacToAc3) }
@@ -1617,8 +1626,32 @@ fun SettingsScreen(
 
                         
                         SettingsCategory.APPEARANCE -> {
+                            val appearanceControlModifier = Modifier.onPreviewKeyEvent { event ->
+                                if (isTv && event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) {
+                                    if (event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                                        detailFocus.saveFocusedChild()
+                                        categoryFocusTargets.getValue(SettingsCategory.APPEARANCE).requestFocus()
+                                    }
+                                    true
+                                } else false
+                            }
+                            if (isTv) {
+                                var drawerEnabled by remember { mutableStateOf(settings.modalNavigationDrawerEnabled) }
+                                SettingToggle(
+                                    controlModifier = appearanceControlModifier.focusRequester(appearanceFirstControl),
+                                    title = "Modal Navigation Drawer",
+                                    description = "Replace the Home and library top bars with an expandable side rail",
+                                    isEnabled = drawerEnabled,
+                                    onToggle = {
+                                        drawerEnabled = !drawerEnabled
+                                        settings.modalNavigationDrawerEnabled = drawerEnabled
+                                    }
+                                )
+                            }
+
                             // Dark Mode
                             SettingToggle(
+                                    controlModifier = appearanceControlModifier,
                                 title = "Dark Mode",
                                 description = "Disable background image and use Material dark background",
                                 isEnabled = darkModeEnabled,
@@ -1630,6 +1663,7 @@ fun SettingsScreen(
                             
                             // Use Logo for Title
                             SettingToggle(
+                                    controlModifier = appearanceControlModifier,
                                 title = "Use Logo for Title",
                                 description = "Display logo image instead of title text on media screens",
                                 isEnabled = useLogoForTitleEnabled,
@@ -1641,6 +1675,7 @@ fun SettingsScreen(
                             
                             // Animated Play Button
                             SettingToggle(
+                                    controlModifier = appearanceControlModifier,
                                 title = "Animated Play Button",
                                 description = "Use animated play button with Lottie glow effect",
                                 isEnabled = animatedPlayButtonEnabled,
@@ -1652,6 +1687,7 @@ fun SettingsScreen(
                             
                             // 24-Hour Time Format
                             SettingToggle(
+                                    controlModifier = appearanceControlModifier,
                                 title = "24-Hour Time Format",
                                 description = "Display time in 24-hour format (HH:mm)",
                                 isEnabled = use24HourTimeEnabled,
@@ -1663,6 +1699,7 @@ fun SettingsScreen(
 
                             // 4K Quality Backgrounds
                             SettingToggle(
+                                    controlModifier = appearanceControlModifier,
                                 title = "4K Quality Backgrounds",
                                 description = "Use 4K resolution (3840x2160) for backdrop images. May impact performance.",
                                 isEnabled = use4KBackgrounds,
@@ -1674,6 +1711,7 @@ fun SettingsScreen(
 
                             // Navigation Sounds
                             SettingToggle(
+                                    controlModifier = appearanceControlModifier,
                                 title = "Navigation Sounds",
                                 description = "Enable default system sounds when navigating and clicking in the app",
                                 isEnabled = navigationSoundsEnabled,
@@ -1733,6 +1771,7 @@ fun SettingsScreen(
                                         Box(
                                             modifier = Modifier
                                                 .size(44.dp)
+                                                .semantics { contentDescription = "$name accent color" }
                                                 .clip(RoundedCornerShape(50.dp))
                                                 .background(color)
                                                 .border(
@@ -1873,33 +1912,13 @@ fun SettingsScreen(
                             // Auto-Refresh Media
                             SettingToggle(
                                 title = "Auto-Refresh Media",
-                                description = "Automatically check for new media (every ${autoRefreshIntervalMinutes} min)",
+                                description = "Update rows live when Jellyfin detects media; check every minute as a fallback",
                                 isEnabled = autoRefreshEnabled,
                                 onToggle = {
                                     autoRefreshEnabled = !autoRefreshEnabled
                                     settings.autoRefreshEnabled = autoRefreshEnabled
                                 }
                             )
-                            
-                            // Refresh Interval
-                            if (autoRefreshEnabled) {
-                                SettingCycle(
-                                    title = "Refresh Interval",
-                                    description = "How often to check for new media",
-                                    currentValue = "${autoRefreshIntervalMinutes}m",
-                                    onCycle = {
-                                        autoRefreshIntervalMinutes = when (autoRefreshIntervalMinutes) {
-                                            2 -> 3
-                                            3 -> 5
-                                            5 -> 10
-                                            10 -> 15
-                                            15 -> 2
-                                            else -> 5
-                                        }
-                                        settings.autoRefreshIntervalMinutes = autoRefreshIntervalMinutes
-                                    }
-                                )
-                            }
                             
                             // Hide Shows with Zero Episodes
                             SettingToggle(
@@ -2067,119 +2086,8 @@ fun SettingsScreen(
                         }
                         
                         SettingsCategory.ACCOUNT -> {
-                            val accountConfig = remember { JellyfinConfig(context) }
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(16.dp)
-                            ) {
-                                // Server Name
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = "Server Name",
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = accountConfig.serverName.ifEmpty { "Jellyfin Server" },
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                            modifier = Modifier.padding(top = 4.dp)
-                                        )
-                                    }
-                                }
-
-                                // Server Address / IP Address
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = "Server Address (IP)",
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = accountConfig.serverUrl.ifEmpty { "Not connected" },
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                            modifier = Modifier.padding(top = 4.dp)
-                                        )
-                                    }
-                                }
-
-                                // Logged In User
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = "Logged In User",
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = accountConfig.username.ifEmpty { "Not logged in" },
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                            modifier = Modifier.padding(top = 4.dp)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                // Log Out
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "Log Out",
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = MaterialTheme.colorScheme.error
-                                        )
-                                        Text(
-                                            text = "Sign out and return to login screen",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                            modifier = Modifier.padding(top = 4.dp)
-                                        )
-                                    }
-                                    
-                                    if (isTv) {
-                                        Button(
-                                            onClick = { showLogoutConfirmation = true },
-                                            colors = ButtonDefaults.colors(
-                                                containerColor = MaterialTheme.colorScheme.error
-                                            )
-                                        ) {
-                                            Text("Log Out")
-                                        }
-                                    } else {
-                                        androidx.compose.material3.Button(
-                                            onClick = { showLogoutConfirmation = true },
-                                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                                                containerColor = androidx.compose.material3.MaterialTheme.colorScheme.error
-                                            )
-                                        ) {
-                                            androidx.compose.material3.Text("Log Out", color = Color.White)
-                                        }
-                                    }
-                                }
-                            }
+                            ServerAccountsSection(onSignOut = { showLogoutConfirmation = true })
                         }
-
 
                         SettingsCategory.COFFEE -> {
                             Column(
@@ -2349,6 +2257,8 @@ fun SettingsScreen(
                             SettingsCategory.entries.forEach { category ->
                                 CategoryItem(
                                     category = category,
+                                    modifier = Modifier.focusRequester(categoryFocusTargets.getValue(category))
+                                        .focusProperties { right = detailFocus },
                                     isSelected = selectedCategory == category,
                                     onClick = { selectedCategory = category },
                                     onFocused = { selectedCategory = category }
@@ -2364,13 +2274,28 @@ fun SettingsScreen(
                                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
                         )
                         
-                        // Right panel: Settings for selected category
+                        // A new category starts at the top; lateral movement within it restores its control.
+                        key(selectedCategory) {
                         Column(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
                                 .padding(start = 32.dp)
-                                .verticalScroll(rememberScrollState()),
+                                .verticalScroll(rememberScrollState())
+                                .focusRequester(detailFocus)
+                                .focusProperties {
+                                    enter = {
+                                        if (detailFocus.restoreFocusedChild()) FocusRequester.Cancel
+                                        else if (selectedCategory == SettingsCategory.APPEARANCE) appearanceFirstControl
+                                        else FocusRequester.Default
+                                    }
+                                    exit = { direction ->
+                                        detailFocus.saveFocusedChild()
+                                        if (direction == FocusDirection.Left) categoryFocusTargets.getValue(selectedCategory)
+                                        else FocusRequester.Default
+                                    }
+                                }
+                                .focusGroup(),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             // Category title
@@ -2383,6 +2308,7 @@ fun SettingsScreen(
                             )
                             
                             SettingsOptions(categoryToRender)
+                        }
                         }
                     }
                 } else {
@@ -2456,6 +2382,7 @@ fun SettingsScreen(
                                         onClick = {
                                             showLogoutConfirmation = false
                                             val config = JellyfinConfig(context)
+                                            com.flex.elefin.jellyfin.ServerAccounts(context).forgetActive()
                                             config.clearAuth()
                                             val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
                                             intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
@@ -2484,6 +2411,7 @@ fun SettingsScreen(
                                         onClick = {
                                             showLogoutConfirmation = false
                                             val config = JellyfinConfig(context)
+                                            com.flex.elefin.jellyfin.ServerAccounts(context).forgetActive()
                                             config.clearAuth()
                                             val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
                                             intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
@@ -2577,6 +2505,7 @@ fun SettingsScreen(
 @Composable
 private fun CategoryItem(
     category: SettingsCategory,
+    modifier: Modifier = Modifier,
     isSelected: Boolean,
     onClick: () -> Unit,
     onFocused: () -> Unit
@@ -2591,7 +2520,7 @@ private fun CategoryItem(
     
     Button(
         onClick = onClick,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .onFocusChanged { 
                 isFocused = it.isFocused 
@@ -2636,7 +2565,8 @@ private fun SettingToggle(
     isEnabled: Boolean,
     onToggle: () -> Unit,
     enabledText: String = "ON",
-    disabledText: String = "OFF"
+    disabledText: String = "OFF",
+    controlModifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { com.flex.elefin.ui.DeviceUtils.isTvDevice(context) }
@@ -2666,8 +2596,10 @@ private fun SettingToggle(
         if (isTv) {
             Button(
                 onClick = onToggle,
+                modifier = controlModifier,
                 colors = ButtonDefaults.colors(
-                    containerColor = if (isEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                    containerColor = if (isEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (isEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             ) {
                 Text(if (isEnabled) enabledText else disabledText)
@@ -2785,7 +2717,10 @@ private fun SettingCycle(
         if (isTv) {
             Button(
                 onClick = onCycle,
-                colors = ButtonDefaults.colors(containerColor = MaterialTheme.colorScheme.primary)
+                colors = ButtonDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
             ) {
                 Text(currentValue)
             }
@@ -2838,7 +2773,10 @@ private fun SettingButton(
             Button(
                 onClick = onClick,
                 enabled = enabled,
-                colors = ButtonDefaults.colors(containerColor = MaterialTheme.colorScheme.primary)
+                colors = ButtonDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
             ) {
                 Text(buttonText)
             }

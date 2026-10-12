@@ -65,6 +65,7 @@ import com.flex.elefin.jellyfin.JellyfinConfig
 import com.flex.elefin.jellyfin.QuickConnectError
 import com.flex.elefin.jellyfin.QuickConnectService
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -81,10 +82,12 @@ fun JellyfinLoginScreen(
     onLoginSuccess: () -> Unit,
     onCancel: (() -> Unit)? = null,
     forcedUsername: String? = null,
-    skipQuickConnect: Boolean = false
+    skipQuickConnect: Boolean = false,
+    sessionConfig: JellyfinConfig? = null
 ) {
     val context = LocalContext.current
-    val config = remember { JellyfinConfig(context) }
+    val config = sessionConfig ?: remember { JellyfinConfig(context) }
+    val loginScope = rememberCoroutineScope()
 
     var loginMethod by remember { mutableStateOf<LoginMethod>(
         if (skipQuickConnect) LoginMethod.CREDENTIALS else LoginMethod.QUICKCONNECT
@@ -155,6 +158,7 @@ fun JellyfinLoginScreen(
                             errorMessage = null
                             isAuthenticating = true
                             performCredentialsLogin(
+                                scope = loginScope,
                                 serverUrl = serverUrl,
                                 username = username,
                                 password = password,
@@ -173,6 +177,7 @@ fun JellyfinLoginScreen(
                     )
                     LoginMethod.QUICKCONNECT -> {
                         QuickConnectLoginContent(
+                            config = config,
                             serverUrl = serverUrl,
                             errorMessage = errorMessage,
                             isAuthenticating = isAuthenticating,
@@ -504,6 +509,7 @@ private fun CredentialsLoginContent(
 
 @Composable
 private fun QuickConnectLoginContent(
+    config: JellyfinConfig,
     serverUrl: String,
     errorMessage: String?,
     isAuthenticating: Boolean,
@@ -521,7 +527,6 @@ private fun QuickConnectLoginContent(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val authScope = rememberCoroutineScope() // Separate scope for authentication to avoid cancellation
-    val config = remember { JellyfinConfig(context) }
     var quickConnectSecret by remember { mutableStateOf<String?>(null) }
 
     // Initiate QuickConnect when composable is first shown
@@ -616,9 +621,10 @@ private fun QuickConnectLoginContent(
                             try {
                                 // Call authenticateWithQuickConnect to get the access token
                                 val authResult = quickConnectService.authenticateWithQuickConnect(quickConnectSecret!!)
+                                kotlinx.coroutines.currentCoroutineContext().ensureActive()
                                 
                                 if (authResult != null) {
-                                    android.util.Log.d("QuickConnectLogin", "✅ QuickConnect authentication successful! AccessToken: ${authResult.AccessToken.take(20)}..., UserId: ${authResult.User.Id}, UserName: ${authResult.User.Name}")
+                                    android.util.Log.d("QuickConnectLogin", "✅ QuickConnect authentication successful! UserId: ${authResult.User.Id}, UserName: ${authResult.User.Name}")
                                     
                                     config.serverUrl = normalizedUrl
                                     config.accessToken = authResult.AccessToken
@@ -830,6 +836,7 @@ private fun normalizeServerUrl(url: String): String {
 }
 
 private fun performCredentialsLogin(
+    scope: kotlinx.coroutines.CoroutineScope,
     serverUrl: String,
     username: String,
     password: String,
@@ -838,7 +845,6 @@ private fun performCredentialsLogin(
     onSuccess: () -> Unit,
     onError: (String) -> Unit
 ) {
-    val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main)
     scope.launch {
         try {
             if (serverUrl.isBlank() || username.isBlank() || password.isBlank()) {
@@ -849,6 +855,7 @@ private fun performCredentialsLogin(
             val trimmedUrl = serverUrl.trim().removeSuffix("/")
             val authService = JellyfinAuthService(trimmedUrl, context)
             val authResponse = authService.authenticate(username.trim(), password.trim())
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
 
             if (authResponse != null) {
                 config.serverUrl = trimmedUrl

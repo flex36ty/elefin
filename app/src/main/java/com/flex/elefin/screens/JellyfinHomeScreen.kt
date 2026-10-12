@@ -1,5 +1,14 @@
 package com.flex.elefin.screens
 
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Collections
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.VideoLibrary
+
+import com.flex.elefin.ui.shelfUpdateModifier
+
 import com.flex.elefin.components.RatingDisplay
 
 import android.app.Activity
@@ -287,6 +296,7 @@ fun JellyfinHomeScreen(
     
     val continueWatchingItemsState = repository?.continueWatchingItems?.collectAsState(initial = emptyList())
     val continueWatchingItems = continueWatchingItemsState?.value ?: emptyList()
+    var initialDrawerCardFocused by remember { mutableStateOf(false) }
     
     val nextUpItemsState = repository?.nextUpItems?.collectAsState(initial = emptyList())
     val nextUpItems = nextUpItemsState?.value ?: emptyList()
@@ -341,6 +351,14 @@ fun JellyfinHomeScreen(
     
     var selectedLibraryId by remember { mutableStateOf<String?>(null) }
     var selectedCollectionId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(initialTabAction) {
+        if (initialTabAction?.startsWith("library:") == true) {
+            selectedLibraryId = initialTabAction.removePrefix("library:")
+            selectedCollectionId = null
+            onTabActionHandled()
+        }
+    }
+
     var showExitConfirmation by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var darkModeWhenSettingsOpened by remember { mutableStateOf(false) }
@@ -425,45 +443,11 @@ fun JellyfinHomeScreen(
         }
     }
     
-    // Auto-refresh: Periodically check for new media and refresh rows if new content is detected
-    var autoRefreshEnabled by remember { mutableStateOf(settings.autoRefreshEnabled) }
-    var autoRefreshIntervalMinutes by remember { mutableStateOf(settings.autoRefreshIntervalMinutes) }
-    
-    // Image refresh key - incremented when new content is detected to force image reload
-    // This ensures Coil re-fetches images that may have failed to load initially
     var imageRefreshKey by remember { mutableStateOf(0L) }
-    
-    LaunchedEffect(autoRefreshEnabled, autoRefreshIntervalMinutes, repository) {
-        if (autoRefreshEnabled && repository != null) {
-            while (true) {
-                // Wait for the specified interval (convert minutes to milliseconds)
-                delay(autoRefreshIntervalMinutes * 60 * 1000L)
-                
-                // Check if auto-refresh is still enabled (user might have disabled it)
-                autoRefreshEnabled = settings.autoRefreshEnabled
-                autoRefreshIntervalMinutes = settings.autoRefreshIntervalMinutes
-                
-                if (!autoRefreshEnabled) {
-                    break // Exit loop if disabled
-                }
-                
-                // Check for new media and refresh if found (only checks for media already detected by Jellyfin backend)
-                try {
-                    val refreshed = repository.checkForNewMediaAndRefresh()
-                    if (refreshed) {
-                        android.util.Log.d("JellyfinHomeScreen", "Auto-refresh: New media detected, rows refreshed")
-                        // Increment image refresh key to force Coil to reload images
-                        // This fixes issue where new content appears but posters don't load
-                        imageRefreshKey = System.currentTimeMillis()
-                        android.util.Log.d("JellyfinHomeScreen", "Auto-refresh: Image cache invalidated, forcing reload")
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.w("JellyfinHomeScreen", "Auto-refresh: Error checking for new media", e)
-                }
-            }
-        }
+    LiveLibraryUpdates(repository?.apiService) {
+        repository?.refreshLibraryRows()
     }
-    
+
     // Fetch library items when a library is selected (only on Enter/OK press via onClick, not on focus)
     LaunchedEffect(selectedLibraryId, repository) {
         selectedLibraryId?.let { libraryId ->
@@ -516,7 +500,89 @@ fun JellyfinHomeScreen(
     }
     
     
+    val drawerEnabled = rememberTvDrawerEnabled(settings)
+    val openDrawerSettings: () -> Unit = {
+                        darkModeWhenSettingsOpened = settings.darkModeEnabled
+                        debugOutlinesWhenSettingsOpened = settings.showDebugOutlines
+                        disableUIAnimationsWhenSettingsOpened = settings.disableUIAnimations
+                        lowPowerModeWhenSettingsOpened = settings.lowPowerMode
+                        useSimpleCardsWhenSettingsOpened = settings.useSimpleCards
+                        useGoogleTvCardsWhenSettingsOpened = settings.useGoogleTvCards
+                        use24HourTimeWhenSettingsOpened = settings.use24HourTime
+                        rowCardCountWhenSettingsOpened = settings.rowCardCount
+                        showSettings = true
+                    }
+    val refreshFromDrawer: () -> Unit = {
+                        if (selectedLibraryId != null) {
+                            // Show sort dialog when library is selected
+                            showSortDialog = true
+                        } else {
+                            // Refresh when on home screen
+                            if (!isRefreshing && repository != null) {
+                                isRefreshing = true
+                                scope.launch {
+                                    try {
+                                        // Clear image cache for home screen cards so new images can be downloaded
+                                        withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            val imageLoader = context.imageLoader
+                                            imageLoader.diskCache?.clear()
+                                            imageLoader.memoryCache?.clear()
+                                            Log.d("JellyfinHomeScreen", "Image cache cleared for home screen refresh")
+                                        }
+
+                                        // Trigger server-side library scan and refresh all media rows
+                                        repository.triggerLibraryScanAndRefresh()
+
+                                        // Also refresh libraries in case new ones were added
+                                        repository.fetchLibraries()
+
+                                        Log.d("JellyfinHomeScreen", "Manual refresh completed")
+                                    } catch (e: Exception) {
+                                        Log.e("JellyfinHomeScreen", "Manual refresh error", e)
+                                    } finally {
+                                        isRefreshing = false
+                                    }
+                                }
+                            }
+                        }
+                    }
+    val drawerEntries = buildList {
+        add(TvDrawerEntry("search", "Search", Icons.Default.Search) { showSearch = true })
+        add(TvDrawerEntry("home", "Home", Icons.Default.Home, selectedLibraryId == null && selectedCollectionId == null) {
+            selectedLibraryId = null
+            selectedCollectionId = null
+        })
+        libraries.filter { !it.Name.equals("Collections", true) && (settings.showMusicLibraries || it.CollectionType != "music") }.forEach { library ->
+            val icon = when (library.CollectionType) {
+                "movies" -> Icons.Default.Movie
+                "tvshows" -> Icons.Default.Tv
+                "music" -> Icons.Default.LibraryMusic
+                else -> Icons.Default.VideoLibrary
+            }
+            add(TvDrawerEntry(library.Id, library.Name, icon, selectedLibraryId == library.Id) {
+                when (library.CollectionType) {
+                    "movies" -> onMoviesLibraryClick(library.Id, library.Name)
+                    "tvshows" -> onTvShowsLibraryClick(library.Id, library.Name)
+                    "music" -> onMusicClick()
+                    else -> { selectedLibraryId = library.Id; selectedCollectionId = null }
+                }
+            })
+        }
+        if (collections.isNotEmpty()) add(TvDrawerEntry("collections", "Collections", Icons.Default.Collections, selectedCollectionId == "__COLLECTIONS__") {
+            selectedLibraryId = null
+            selectedCollectionId = "__COLLECTIONS__"
+        })
+        add(TvDrawerEntry("refresh", if (selectedLibraryId != null) "Sort" else "Refresh", if (selectedLibraryId != null) Icons.Default.SwapVert else Icons.Default.Refresh,
+            enabled = !isRefreshing || selectedLibraryId != null, onClick = refreshFromDrawer))
+    }
+
     TvBringIntoViewProvider {
+        TvNavigationDrawer(
+            enabled = drawerEnabled,
+            entries = drawerEntries,
+            settingsEntry = TvDrawerEntry("settings", "Settings", Icons.Default.Settings, onClick = openDrawerSettings)
+        ) {
+
         Box(Modifier.fillMaxSize()) {
             TvHomeBackground(
                 itemProvider = { highlightedItem },
@@ -529,9 +595,11 @@ fun JellyfinHomeScreen(
                 selectedCollectionId = selectedCollectionId,
                 disableAnimations = disableUIAnimations.value
             )
+        Box(Modifier.fillMaxSize().padding(start = if (drawerEnabled) 16.dp else 0.dp)) {
+
         
         // Top row with home button and library buttons - positioned absolutely on top of carousel
-        Box(
+        if (!drawerEnabled) Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
@@ -556,17 +624,7 @@ fun JellyfinHomeScreen(
                 ) {
                 // Settings button - first on the left (same size as library buttons)
                 IconButton(
-                    onClick = {
-                        darkModeWhenSettingsOpened = settings.darkModeEnabled
-                        debugOutlinesWhenSettingsOpened = settings.showDebugOutlines
-                        disableUIAnimationsWhenSettingsOpened = settings.disableUIAnimations
-                        lowPowerModeWhenSettingsOpened = settings.lowPowerMode
-                        useSimpleCardsWhenSettingsOpened = settings.useSimpleCards
-                        useGoogleTvCardsWhenSettingsOpened = settings.useGoogleTvCards
-                        use24HourTimeWhenSettingsOpened = settings.use24HourTime
-                        rowCardCountWhenSettingsOpened = settings.rowCardCount
-                        showSettings = true
-                    },
+                    onClick = openDrawerSettings,
                     colors = IconButtonDefaults.colors(
                         containerColor = MaterialTheme.colorScheme.surface,
                         contentColor = MaterialTheme.colorScheme.onSurface
@@ -618,40 +676,7 @@ fun JellyfinHomeScreen(
                 val isLibrarySelected = selectedLibraryId != null
                 
                 IconButton(
-                    onClick = {
-                        if (isLibrarySelected) {
-                            // Show sort dialog when library is selected
-                            showSortDialog = true
-                        } else {
-                            // Refresh when on home screen
-                            if (!isRefreshing && repository != null) {
-                                isRefreshing = true
-                                scope.launch {
-                                    try {
-                                        // Clear image cache for home screen cards so new images can be downloaded
-                                        withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                            val imageLoader = context.imageLoader
-                                            imageLoader.diskCache?.clear()
-                                            imageLoader.memoryCache?.clear()
-                                            Log.d("JellyfinHomeScreen", "Image cache cleared for home screen refresh")
-                                        }
-                                        
-                                        // Trigger server-side library scan and refresh all media rows
-                                        repository.triggerLibraryScanAndRefresh()
-                                        
-                                        // Also refresh libraries in case new ones were added
-                                        repository.fetchLibraries()
-                                        
-                                        Log.d("JellyfinHomeScreen", "Manual refresh completed")
-                                    } catch (e: Exception) {
-                                        Log.e("JellyfinHomeScreen", "Manual refresh error", e)
-                                    } finally {
-                                        isRefreshing = false
-                                    }
-                                }
-                            }
-                        }
-                    },
+                    onClick = refreshFromDrawer,
                     enabled = !isRefreshing || isLibrarySelected,
                     colors = IconButtonDefaults.colors(
                         containerColor = MaterialTheme.colorScheme.surface,
@@ -898,6 +923,12 @@ fun JellyfinHomeScreen(
         }
     }
         
+        if (drawerEnabled) {
+            Box(Modifier.align(Alignment.TopEnd).padding(top = 22.dp)) {
+                DigitalClock(use24HourFormat = use24HourTime)
+            }
+        }
+
         // Item details section - below settings button (only show when not viewing a library)
         // Show highlighted item panel for home screen and collections
         // Use debouncedHighlightedItem for smooth metadata updates without layouts/image requests on intermediate cards
@@ -1555,6 +1586,15 @@ fun JellyfinHomeScreen(
                                             }
                                         }
                                         val cardEntryFocus = remember { FocusRequester() }
+                                        val initialDrawerCard = drawerEnabled && !initialDrawerCardFocused &&
+                                            shelf.id == homeShelves.firstOrNull()?.id && item.Id == shelf.items.firstOrNull()?.Id
+                                        LaunchedEffect(initialDrawerCard) {
+                                            if (initialDrawerCard) {
+                                                androidx.compose.runtime.withFrameNanos { }
+                                                cardEntryFocus.requestFocus()
+                                                initialDrawerCardFocused = true
+                                            }
+                                        }
                                         val shouldEnterShelf = entryCard == item.Id
                                         LaunchedEffect(shouldEnterShelf) {
                                             if (shouldEnterShelf) {
@@ -1564,7 +1604,7 @@ fun JellyfinHomeScreen(
                                             }
                                         }
                                         // Focus is requested by a composed card, never an off-screen requester.
-                                        Box(Modifier.focusRequester(cardEntryFocus)) {
+                                        Box(shelfUpdateModifier(!disableUIAnimations.value && !lowPowerMode.value).focusRequester(cardEntryFocus)) {
                                         if (shelf.progress) {
                                             JellyfinHorizontalCardWithProgress(
                                                 item = item, apiService = apiService,
@@ -1597,8 +1637,10 @@ fun JellyfinHomeScreen(
                     }
                 }
             }
+                }
+}
         }
-    } // TvBringIntoViewProvider
+} // TvBringIntoViewProvider
     
     // Exit confirmation dialog
     if (showExitConfirmation) {
@@ -2157,15 +2199,9 @@ fun JellyfinCard(
     reducePosterResolution: Boolean = false,
     disableAnimations: Boolean = false
 ) {
-    // Use reduced resolution (300x450) or standard resolution (400x600) based on setting
-    // When animations disabled, force reduced resolution for better performance
-    val effectiveReduceResolution = reducePosterResolution || disableAnimations
-    val imageUrl = if (effectiveReduceResolution) {
-        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 300, maxHeight = 450, quality = 80) ?: ""
-    } else {
-        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 400, maxHeight = 600, quality = 85) ?: ""
-    }
-    
+    val imageUrl = apiService?.getImageUrl(item.Id, "Primary", null,
+        maxWidth = 1080, maxHeight = 1620, quality = 90) ?: ""
+
     StandardCardContainer(
         modifier = Modifier
             .width(268.dp)
@@ -2217,13 +2253,9 @@ fun JellyfinCardWithProgress(
     reducePosterResolution: Boolean = false,
     disableAnimations: Boolean = false
 ) {
-    // Use reduced resolution (300x450) or standard resolution (400x600) based on setting
-    val imageUrl = if (reducePosterResolution) {
-        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 300, maxHeight = 450, quality = 80) ?: ""
-    } else {
-        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 400, maxHeight = 600, quality = 85) ?: ""
-    }
-    
+    val imageUrl = apiService?.getImageUrl(item.Id, "Primary", null,
+        maxWidth = 1080, maxHeight = 1620, quality = 90) ?: ""
+
     // Calculate progress percentage
     val progress = item.UserData?.PlayedPercentage?.toFloat()?.div(100f) ?: 0f
     
@@ -2306,19 +2338,14 @@ fun JellyfinHorizontalCard(
     externalImageUrl: String? = null // New parameter for external images (e.g., Jellyseerr)
 ) {
     // For episodes, use series poster (Primary) if requested; otherwise use poster (Primary) for movies/shows
-    // When animations disabled, simple cards, or Google TV cards enabled, force reduced resolution for better performance
-    // Low power mode uses even smaller images (300x450) for budget devices
-    val effectiveReduceResolution = reducePosterResolution || disableAnimations || useSimpleCards || useGoogleTvCards
-    val imageUrl = remember(apiService, item.Id, item.Type, item.SeriesId, useSeriesPosterForEpisodes, effectiveReduceResolution, lowPowerMode, imageRefreshKey, externalImageUrl) {
-        if (!externalImageUrl.isNullOrBlank()) {
-            return@remember externalImageUrl
-        }
-        
-        // Low power mode: 300x450, Reduced: 300x450, Standard: 400x600
-        val maxWidth = if (lowPowerMode) 300 else if (effectiveReduceResolution) 300 else 400
-        val maxHeight = if (lowPowerMode) 450 else if (effectiveReduceResolution) 450 else 600
-        val quality = if (lowPowerMode) 80 else 85
-        
+    // Request high-resolution sources; AsyncImage decodes to the actual card dimensions.
+    // Animation/card-style preferences should not reduce the source artwork quality.
+    val imageUrl = remember(apiService, item.Id, item.Type, item.SeriesId, useSeriesPosterForEpisodes, imageRefreshKey, externalImageUrl) {
+        if (!externalImageUrl.isNullOrBlank()) return@remember externalImageUrl
+        val maxWidth = 1080
+        val maxHeight = 1620
+        val quality = 90
+
         if (item.Type == "Episode" && useSeriesPosterForEpisodes && item.SeriesId != null) {
             // Use series poster (Primary) for episodes
             apiService?.getImageUrl(item.SeriesId, "Primary", null, maxWidth = maxWidth, maxHeight = maxHeight, quality = quality) ?: ""
@@ -2357,7 +2384,6 @@ fun JellyfinHorizontalCard(
                         ImageRequest.Builder(context)
                             .data(imageUrl)
                             .headers(apiService.getImageRequestHeaders())
-                            .size(300)
                             .crossfade(false) // Disable crossfade for Google TV cards (performance)
                             .memoryCachePolicy(CachePolicy.ENABLED) // Always cache for Google TV cards
                             .diskCachePolicy(CachePolicy.ENABLED)
@@ -2440,7 +2466,6 @@ fun JellyfinHorizontalCard(
                         ImageRequest.Builder(context)
                             .data(imageUrl)
                             .headers(apiService.getImageRequestHeaders())
-                            .size(300)
                             .crossfade(false) // Disable crossfade for simple cards (performance)
                             .memoryCachePolicy(if (enableCaching) CachePolicy.ENABLED else CachePolicy.DISABLED)
                             .diskCachePolicy(if (enableCaching) CachePolicy.ENABLED else CachePolicy.DISABLED)
@@ -2532,7 +2557,6 @@ fun JellyfinHorizontalCard(
                             ImageRequest.Builder(context)
                                 .data(imageUrl)
                                 .headers(apiService.getImageRequestHeaders())
-                                .size(300) // Hint to Coil about target size for optimization
                                 .crossfade(false) // Reuse cached artwork without an additional image fade
                                 .memoryCachePolicy(if (enableCaching) CachePolicy.ENABLED else CachePolicy.DISABLED)
                                 .diskCachePolicy(if (enableCaching) CachePolicy.ENABLED else CachePolicy.DISABLED)
@@ -2709,12 +2733,10 @@ fun JellyfinHorizontalCardWithProgress(
     lowPowerMode: Boolean = false,
     imageRefreshKey: Long = 0L
 ) {
-    // Use reduced resolution for simple/Google TV cards for better performance
-    // Low power mode uses even smaller images (320x180) for budget devices
-    val useReducedResolution = useSimpleCards || useGoogleTvCards
-    val maxImageWidth = if (lowPowerMode) 320 else if (useReducedResolution) 480 else 640
-    val maxImageHeight = if (lowPowerMode) 180 else if (useReducedResolution) 270 else 360
-    val imageQuality = if (lowPowerMode) 80 else 90
+    // Full-HD landscape sources, decoded at the displayed card size by AsyncImage.
+    val maxImageWidth = 1920
+    val maxImageHeight = 1080
+    val imageQuality = 90
     
     // A generated URL is not proof that artwork exists. Try each candidate
     // once, advancing on a failed image load rather than leaving a blank card.
@@ -2939,7 +2961,7 @@ fun JellyfinHorizontalCardWithProgress(
                             )
                         } else {
                             // Fallback to primary image if no thumbnail/backdrop
-                            val primaryUrl = apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 400, maxHeight = 600, quality = 85) ?: ""
+                            val primaryUrl = apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 1080, maxHeight = 1620, quality = 90) ?: ""
                             if (primaryUrl.isNotEmpty() && apiService != null) {
                                 // Request headers are built only when the remembered request changes.
                                 val primaryImageRequest = remember(item.Id, primaryUrl, apiService, imageRefreshKey) {

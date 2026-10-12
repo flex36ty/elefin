@@ -63,10 +63,11 @@ import com.flex.elefin.jellyfin.ServerDiscovery
 @Composable
 fun ServerEntryScreen(
     onServerConnected: (String) -> Unit,
-    prefillAddress: String? = null
+    prefillAddress: String? = null,
+    sessionConfig: JellyfinConfig? = null
 ) {
     val context = LocalContext.current
-    val config = remember { JellyfinConfig(context) }
+    val config = sessionConfig ?: remember { JellyfinConfig(context) }
     
     var serverAddress by remember { mutableStateOf(prefillAddress ?: config.serverUrl.ifEmpty { "" }) }
     var isConnecting by remember { mutableStateOf(false) }

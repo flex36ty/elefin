@@ -1,6 +1,6 @@
 # Elefin
 
-Current version: **1.1.30**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current version: **1.1.32**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 An Android TV client for Jellyfin built with Jetpack Compose. This is not a fork of the Jellyfin Android TV. Big credits to them for everything nonetheless.
 
@@ -11,8 +11,12 @@ Elefin is a modern Android TV Jellyfin client built from the ground up using Jet
 ## Features
 
 - Plex inspired home screen navigation
+- Multiple saved Jellyfin server logins, with switching under Settings → Accounts or the TV navigation drawer
+- TV side navigation is enabled by default, with server branding, animated focus, and separate library Recommendations/Browse Library tabs; switch to the top navigation in Settings → Appearance
 - In-app movie and show trailers from Jellyfin, with Elefin MPV controls and an embedded YouTube fallback
-- Auto play next episode
+- Cinema next-episode autoplay with a cancellable countdown and automatic return to the movie/series info screen
+- Skip intro and credits with OK when Jellyfin segments or clearly named chapters provide reliable boundaries
+- Movie/show logos in Cinema controls, with title fallback
 - Search and download subtitles through configured Jellyfin subtitle providers, including OpenSubtitles
 - Jellyseer integration to request movies and tv shows directly from the app itself
 - Elefin Cinema (MPV) is the default when no player choice is saved; ExoPlayer and the original MPV player remain selectable
@@ -40,6 +44,12 @@ Elefin is a modern Android TV Jellyfin client built from the ground up using Jet
 - AV1 software decoder support, 8-bit only
 - TV series cards showing unwatched episode count
 - **and a lot more (see changelog for detailed features list)
+
+### Cinema playback
+
+Cinema uses Jellyfin intro/credits segments when available. Named intro chapters must have a following chapter to establish the skip endpoint; ending-credits chapters can skip to the next chapter to preserve a post-credits scene. These features use server metadata, not video-content analysis.
+
+Press **OK** when the skip prompt is visible. Next-episode autoplay follows the existing settings, and **Back** cancels its countdown. Without a credits marker, the countdown uses the configured final seconds. Movies and episodes with nothing next return to their info screen when playback ends.
 
 ## Screenshots
 
@@ -188,3 +198,13 @@ adb -s <device> shell cmd package compile -m speed -f com.flex.elefin
 Restart Elefin after compilation. This variant does not replace release signing for distribution and cannot update an installation signed with a different key. Ahead-of-time compilation above is a device testing step, not a bundled scrolling baseline profile.
 
 Home prepares adjacent off-screen shelves and pauses backdrop dissolves while scrolling. Trickplay previews require server-generated images; subtitle downloads require a configured Jellyfin provider and server support.
+
+## Multiple servers
+
+Open **Settings → Accounts → Add server** to connect another Jellyfin server using a password or Quick Connect. Existing logins remain saved. Adding a server keeps the current server selected; choose **Switch** beside a saved connection to browse it.
+
+One server is active for browsing and playback at a time. Switching rebuilds the navigation stack so old-server details cannot open against the new server. Audio and subtitle track preferences are separated by server and account. **Remove** forgets an inactive saved connection locally; it does not delete the server or its media.
+
+### Optional TV navigation drawer
+
+Enable **Settings → Appearance → Modal Navigation Drawer** to replace the Home and movie/TV library top bars with a side rail. Focus the rail to expand it, press OK to choose a destination, and press Right or Back to return to the content. This option is off by default and updates immediately.
