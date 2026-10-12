@@ -165,16 +165,11 @@ class MpvTvPlayerActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         Log.d(TAG, "onPause called - Stopping playback")
-        // Force pause via property to ensure it sticks at the core level
-        // Offload to background to avoid blocking main thread during pause
-        val currentMpvView = mpvView
-        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                `is`.xyz.mpv.MPVLib.setPropertyBoolean("pause", true)
-                currentMpvView?.pause()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error pausing MPV in onPause", e)
-            }
+        // Pause this owner before teardown; no delayed command can reach a replacement engine.
+        try {
+            mpvView?.pause()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error pausing MPV in onPause", e)
         }
     }
 
@@ -236,6 +231,8 @@ private fun MpvPlayerScreen(
     
     // Settings state
     var showSettingsMenu by remember { mutableStateOf(false) }
+    var showServerSubtitleSearch by remember { mutableStateOf(false) }
+    val serverSubtitleTracks = remember(itemId) { androidx.compose.runtime.mutableStateMapOf<Int, com.flex.elefin.jellyfin.MediaStream>() }
     var settingsInitialLevel by remember { mutableStateOf("main") }
 
     // Track data directly from MPV
@@ -806,7 +803,7 @@ private fun MpvPlayerScreen(
                         val mpvTrack = tracks["sub"]?.find { it.mpvId == currentSubtitleId }
                         if (mpvTrack != null) {
                             // Match to Jellyfin stream
-                            val jStream = mediaStreams.filter { it.Type == "Subtitle" }.find { stream ->
+                            val jStream = serverSubtitleTracks[currentSubtitleId] ?: mediaStreams.filter { it.Type == "Subtitle" }.find { stream ->
                                 // Match by Name/Title if available, or Language
                                 val titleMatch = stream.Title != null && mpvTrack.name.contains(stream.Title, ignoreCase = true)
                                 val displayTitleMatch = stream.DisplayTitle != null && mpvTrack.name.contains(stream.DisplayTitle, ignoreCase = true)
@@ -1404,6 +1401,25 @@ private fun MpvPlayerScreen(
         }
     }
         
+        if (showServerSubtitleSearch && apiService != null) {
+            com.flex.elefin.subtitles.ServerSubtitleSearchDialog(itemId, apiService,
+                onDownloaded = { selection ->
+                    val file = selection.localPath ?: SubtitleDownloader.downloadSubtitle(context, apiService, itemId, selection.sourceId, selection.stream)
+                        ?: error("Subtitle saved on the server, but could not be loaded into the player.")
+                    val addedTrackId = withContext(Dispatchers.IO) {
+                        MPVLib.command(arrayOf("sub-add", file, "select", selection.stream.DisplayTitle ?: "Downloaded subtitle", selection.stream.Language ?: "und"))
+                        MPVLib.setPropertyBoolean("sub-visibility", true)
+                        MPVLib.getPropertyInt("sid")
+                    }
+                    if (addedTrackId != null && addedTrackId > 0) {
+                        serverSubtitleTracks[addedTrackId] = selection.stream
+                        currentSubtitleId = addedTrackId
+                    }
+                    currentJellyfinSubtitleIndex = selection.stream.Index ?: -1
+                    showSettingsMenu = false
+                    showControls()
+                }, onDismiss = { showServerSubtitleSearch = false })
+        }
         // Settings Menu
         if (showSettingsMenu) {
             MpvSettingsMenu(
@@ -1438,6 +1454,7 @@ private fun MpvPlayerScreen(
                     }
                     playbackSpeed = speed
                 },
+                onFindSubtitles = if (apiService != null && itemId.isNotBlank()) ({ showServerSubtitleSearch = true }) else null,
                 initialMenuLevel = settingsInitialLevel
             )
         }

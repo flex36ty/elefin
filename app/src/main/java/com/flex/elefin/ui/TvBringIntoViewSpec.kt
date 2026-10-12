@@ -23,12 +23,14 @@ class TvBringIntoViewSpec(
     // Nested rows can specify the axis instead of guessing from viewport dimensions.
     private val vertical: Boolean? = null,
     private val edgeInset: Float = 0f,
-    private val focusTolerance: Float = 5f
+    private val focusTolerance: Float = 5f,
+    private val verticalAnchor: Float = 120f,
+    private val horizontalPivotEnabled: () -> Boolean = { true }
 ) : BringIntoViewSpec {
     
     // Target position from top where the focused card should be placed (for vertical scrolling)
     // This leaves room above for the row title to be visible
-    private val verticalTargetPosition = 120f
+    private val verticalTargetPosition = verticalAnchor
     
     // Horizontal pivot position - where the focused card should be positioned
     // This is approximately the 3rd card position (accounting for padding and card width)
@@ -71,6 +73,14 @@ class TvBringIntoViewSpec(
             // HORIZONTAL SCROLLING: Pivot-style - keep focused card at fixed position
             // The card should stay at the pivot position while the row scrolls underneath
             
+            // Entering a shelf vertically should reveal its saved focus without re-centering it.
+            if (!horizontalPivotEnabled()) {
+                return when {
+                    itemStart < 0f -> itemStart
+                    itemEnd > containerSize -> itemEnd - containerSize
+                    else -> 0f
+                }
+            }
             val targetPosition = horizontalPivotPosition
             
             // Calculate how much we need to scroll to bring the card to the pivot position

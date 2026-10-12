@@ -94,9 +94,14 @@
             android:exported="false"
             android:screenOrientation="unspecified"
             android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation" />
+        <activity
+            android:name=".player.cinema.CinemaPlayerActivity"
+            android:exported="false"
+            android:screenOrientation="unspecified"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation" />
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="com.flex.elefin.fileprovider"
+            android:authorities="${applicationId}.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data

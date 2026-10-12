@@ -46,6 +46,7 @@ public final class TrailerMediaDownloader {
                     }
                     try (InputStream input = connection.getInputStream()) {
                         while (remaining > 0) {
+                            if (Thread.currentThread().isInterrupted()) throw new IOException("Download cancelled");
                             int count = input.read(buffer, 0, (int) Math.min(buffer.length, remaining));
                             if (count < 0) throw new IOException("Incomplete trailer media");
                             output.write(buffer, 0, count);

@@ -187,7 +187,7 @@ object UpdateService {
                     // Create FileProvider URI
                     val fileUri = FileProvider.getUriForFile(
                         context,
-                        "com.flex.elefin.fileprovider",
+                        "${context.packageName}.fileprovider",
                         apkFile
                     )
                     

@@ -569,11 +569,10 @@ fun JellyfinMobileDetailsScreen(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable {
-                                        if (trailerKey != null) {
-                                            TrailerLauncher.launchTmdbTrailer(context, trailerKey!!, displayItem.Name)
-                                        } else {
-                                            Toast.makeText(context, "No trailer available", Toast.LENGTH_SHORT).show()
-                                        }
+                                        TrailerLauncher.launchTrailer(
+                                            context, repository.apiService, displayItem.Id,
+                                            displayItem.Name, trailerKey, scope
+                                        )
                                     }
                                     .padding(4.dp)
                                     .weight(1f)
@@ -588,7 +587,7 @@ fun JellyfinMobileDetailsScreen(
                                     Icon(
                                         imageVector = Icons.Default.Movie,
                                         contentDescription = "Trailer",
-                                        tint = if (trailerKey != null) JetcasterPrimary else JetcasterOnBackground.copy(alpha = 0.4f),
+                                        tint = JetcasterPrimary,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
@@ -596,7 +595,7 @@ fun JellyfinMobileDetailsScreen(
                                 Text(
                                     text = "Trailer",
                                     fontSize = 11.sp,
-                                    color = if (trailerKey != null) JetcasterOnSurface else JetcasterOnBackground.copy(alpha = 0.4f),
+                                    color = JetcasterOnSurface,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis

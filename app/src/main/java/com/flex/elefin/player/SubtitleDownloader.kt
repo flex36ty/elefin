@@ -5,11 +5,15 @@ import android.util.Log
 import com.flex.elefin.jellyfin.JellyfinApiService
 import com.flex.elefin.jellyfin.MediaStream
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.coroutineContext
 
 /**
  * Unified Subtitle Downloader for ExoPlayer
@@ -24,9 +28,15 @@ import java.util.concurrent.TimeUnit
  */
 object SubtitleDownloader {
     private const val TAG = "SubtitleDownloader"
+    private const val MAX_SUBTITLE_BYTES = 5_000_000L
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .build()
     
-    // Cache of downloaded subtitles: key = "itemId_streamIndex", value = local file path
-    private val downloadedSubtitles = mutableMapOf<String, String>()
+    private data class CacheKey(val server: String, val itemId: String, val mediaSourceId: String, val streamIndex: Int)
+    private val downloadedSubtitles = ConcurrentHashMap<CacheKey, String>()
     
     /**
      * Download a subtitle to local cache (or return cached path if already downloaded)
@@ -45,9 +55,10 @@ object SubtitleDownloader {
         mediaSourceId: String,
         stream: MediaStream
     ): String? = withContext(Dispatchers.IO) {
+        var incompleteFile: File? = null
         try {
             val streamIndex = stream.Index ?: return@withContext null
-            val cacheKey = "${itemId}_${streamIndex}"
+            val cacheKey = CacheKey(apiService.serverBaseUrl.trimEnd('/'), itemId, mediaSourceId, streamIndex)
             
             // Check if already downloaded
             downloadedSubtitles[cacheKey]?.let { cachedPath ->
@@ -73,16 +84,10 @@ object SubtitleDownloader {
             )
             
             Log.d(TAG, "📥 Downloading subtitle: ${stream.DisplayTitle}")
-            Log.d(TAG, "   URL: $subtitleUrl")
             Log.d(TAG, "   Index: $streamIndex, External: $isExternal, Codec: ${stream.Codec}")
             
             // Create HTTP client with longer timeouts
             // Jellyfin may need time to extract/transcode embedded subtitles
-            val client = OkHttpClient.Builder()
-                .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(60, TimeUnit.SECONDS)  // 1 minute for subtitle extraction
-                .writeTimeout(30, TimeUnit.SECONDS)
-                .build()
             
             // Build request
             val request = Request.Builder()
@@ -90,70 +95,90 @@ object SubtitleDownloader {
                 .build()
             
             // Execute download
-            val response = client.newCall(request).execute()
-            
-            if (!response.isSuccessful) {
-                Log.e(TAG, "❌ Failed to download subtitle: HTTP ${response.code}")
-                Log.e(TAG, "   URL: $subtitleUrl")
-                response.body?.close()
-                return@withContext null
-            }
-            
-            val responseBody = response.body
-            if (responseBody == null) {
-                Log.e(TAG, "❌ Subtitle download returned null body")
-                return@withContext null
-            }
-            
-            val contentLength = responseBody.contentLength()
-            Log.d(TAG, "   Content-Length: $contentLength bytes")
-            
-            // Sanity check: subtitle files should be < 5MB
-            if (contentLength > 5_000_000) {
-                Log.e(TAG, "❌ Content-Length too large: $contentLength bytes")
-                Log.e(TAG, "   This might be the video file, not a subtitle!")
-                responseBody.close()
-                return@withContext null
-            }
-            
-            // Determine file extension from codec
-            val extension = when (stream.Codec?.lowercase()) {
-                "srt", "subrip" -> "srt"
-                "vtt", "webvtt" -> "vtt"
-                "ass", "ssa" -> "ass"
-                "ttml" -> "ttml"
-                else -> "srt"
-            }
-            
-            // Create cache directory
-            val cacheDir = File(context.cacheDir, "subtitles")
-            if (!cacheDir.exists()) {
-                cacheDir.mkdirs()
-            }
-            
-            // Create cache file with unique name
-            val fileName = "sub_${itemId}_${streamIndex}.$extension"
-            val subtitleFile = File(cacheDir, fileName)
-            
-            // Stream response to file
-            var bytesDownloaded = 0L
-            responseBody.byteStream().use { input ->
-                java.io.FileOutputStream(subtitleFile).use { output ->
-                    bytesDownloaded = input.copyTo(output)
+            client.newCall(request).execute().use { response ->
+
+                if (!response.isSuccessful) {
+                    Log.e(TAG, "❌ Failed to download subtitle: HTTP ${response.code}")
+                    response.body?.close()
+                    return@withContext null
                 }
+
+                val responseBody = response.body
+                if (responseBody == null) {
+                    Log.e(TAG, "❌ Subtitle download returned null body")
+                    return@withContext null
+                }
+
+                val contentLength = responseBody.contentLength()
+                Log.d(TAG, "   Content-Length: $contentLength bytes")
+
+                // Sanity check: subtitle files should be < 5MB
+                if (contentLength > MAX_SUBTITLE_BYTES) {
+                    Log.e(TAG, "❌ Content-Length too large: $contentLength bytes")
+                    Log.e(TAG, "   This might be the video file, not a subtitle!")
+                    responseBody.close()
+                    return@withContext null
+                }
+
+                // Determine file extension from codec
+                val extension = when (stream.Codec?.lowercase()) {
+                    "srt", "subrip" -> "srt"
+                    "vtt", "webvtt" -> "vtt"
+                    "ass", "ssa", "substationalpha" -> "ass"
+                    "ttml" -> "ttml"
+                    "pgs", "hdmv_pgs_subtitle" -> "sup"
+                else -> when (val pathExtension = stream.Path?.substringAfterLast('.')?.lowercase()) {
+                    "webvtt" -> "vtt"
+                    "srt", "vtt", "ass", "ssa", "ttml", "sup" -> pathExtension
+                    else -> "srt"
+                }
+                }
+
+                // Create cache directory
+                val cacheDir = File(context.cacheDir, "subtitles")
+                if (!cacheDir.exists()) {
+                    cacheDir.mkdirs()
+                }
+
+                // Create cache file with unique name
+                val subtitleFile = File.createTempFile("sub_${itemId}_${streamIndex}_", ".$extension", cacheDir)
+                incompleteFile = subtitleFile
+
+                // Stream response to file
+                var bytesDownloaded = 0L
+                responseBody.byteStream().use { input ->
+                    java.io.FileOutputStream(subtitleFile).use { output ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (true) {
+                            coroutineContext.ensureActive()
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            bytesDownloaded += count
+                            check(bytesDownloaded <= MAX_SUBTITLE_BYTES) { "Subtitle exceeds download limit" }
+                            output.write(buffer, 0, count)
+                        }
+                    }
+                }
+                check(bytesDownloaded > 0) { "Empty subtitle response" }
+                check(contentLength < 0 || bytesDownloaded == contentLength) { "Incomplete subtitle response" }
+
+                val localPath = subtitleFile.absolutePath
+                Log.d(TAG, "✅ Downloaded $bytesDownloaded bytes to: $localPath")
+
+                // Cache the result
+                downloadedSubtitles[cacheKey] = localPath
+                incompleteFile = null
+
+                return@withContext localPath
             }
             
-            val localPath = subtitleFile.absolutePath
-            Log.d(TAG, "✅ Downloaded $bytesDownloaded bytes to: $localPath")
-            
-            // Cache the result
-            downloadedSubtitles[cacheKey] = localPath
-            
-            return@withContext localPath
-            
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error downloading subtitle: ${e.message}", e)
+            Log.e(TAG, "Subtitle download failed (${e.javaClass.simpleName})")
             return@withContext null
+        } finally {
+            incompleteFile?.delete()
         }
     }
     
@@ -199,8 +224,8 @@ object SubtitleDownloader {
     /**
      * Get cached subtitle path if available
      */
-    fun getCachedSubtitle(itemId: String, streamIndex: Int): String? {
-        val cacheKey = "${itemId}_${streamIndex}"
+    fun getCachedSubtitle(serverUrl: String, itemId: String, mediaSourceId: String, streamIndex: Int): String? {
+        val cacheKey = CacheKey(serverUrl.trimEnd('/'), itemId, mediaSourceId, streamIndex)
         return downloadedSubtitles[cacheKey]?.let { path ->
             if (File(path).exists()) path else {
                 downloadedSubtitles.remove(cacheKey)

@@ -23,6 +23,9 @@ class JellyfinRepository(
     private val _recentlyAddedMoviesByLibrary = MutableStateFlow<Map<String, List<JellyfinItem>>>(emptyMap())
     val recentlyAddedMoviesByLibrary: StateFlow<Map<String, List<JellyfinItem>>> = _recentlyAddedMoviesByLibrary.asStateFlow()
 
+    private val _recentlyReleasedMoviesByLibrary = MutableStateFlow<Map<String, List<JellyfinItem>>>(emptyMap())
+    val recentlyReleasedMoviesByLibrary = _recentlyReleasedMoviesByLibrary.asStateFlow()
+
     private val _recentlyReleasedMovies = MutableStateFlow<List<JellyfinItem>>(emptyList())
     val recentlyReleasedMovies: StateFlow<List<JellyfinItem>> = _recentlyReleasedMovies.asStateFlow()
 
@@ -173,6 +176,7 @@ class JellyfinRepository(
                 _libraries.value
             }
             
+            val releasedByLibrary = mutableMapOf<String, List<JellyfinItem>>()
             val allItems = mutableListOf<JellyfinItem>()
             val seenIds = mutableSetOf<String>()
             
@@ -188,6 +192,7 @@ class JellyfinRepository(
                 try {
                     // Fetch recently released items from this specific library
                     val libraryItems = apiService.getRecentlyReleasedMoviesFromLibrary(library.Id, limit = settings.rowCardCount)
+                    releasedByLibrary[library.Id] = libraryItems.sortedByDescending { it.PremiereDate ?: "" }.take(settings.rowCardCount)
                     libraryItems.forEach { item ->
                         if (seenIds.add(item.Id)) {
                             allItems.add(item)
@@ -204,6 +209,7 @@ class JellyfinRepository(
                 it.PremiereDate ?: ""
             }.take(settings.rowCardCount)
             
+            _recentlyReleasedMoviesByLibrary.value = releasedByLibrary
             _recentlyReleasedMovies.value = sortedItems
         } catch (e: Exception) {
             e.printStackTrace()
@@ -429,8 +435,11 @@ class JellyfinRepository(
      * Returns true if refresh was performed.
      */
     suspend fun checkForNewMediaAndRefresh(): Boolean {
+        val previousLibraries = _libraries.value
+        fetchLibraries()
+        val librariesChanged = previousLibraries != _libraries.value
         val hasNewMedia = checkForNewMedia()
-        if (hasNewMedia) {
+        if (hasNewMedia || librariesChanged) {
             // Refresh all rows
             fetchContinueWatching()
             fetchNextUp()
@@ -450,6 +459,8 @@ class JellyfinRepository(
      * Returns true if refresh was performed.
      */
     suspend fun triggerLibraryScanAndRefresh(): Boolean {
+        // Discover new libraries before rebuilding their home rows.
+        fetchLibraries()
         // Trigger a library scan on the server to detect new media
         try {
             apiService.refreshLibrary()

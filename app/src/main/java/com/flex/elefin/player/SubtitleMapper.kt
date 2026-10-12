@@ -3,6 +3,7 @@ package com.flex.elefin.player
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import com.flex.elefin.jellyfin.JellyfinApiService
@@ -12,7 +13,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Maps Jellyfin subtitle streams to ExoPlayer subtitle track IDs
- * using a COMPOSITE KEY approach (production-safe, used by Plex/Emby/Jellyfin TV).
+ * using track position and stable content attributes.
  *
  * WHY THIS IS NEEDED:
  * ExoPlayer does NOT preserve Jellyfin subtitle indexes OR custom IDs.
@@ -21,18 +22,13 @@ import kotlinx.coroutines.withContext
  * - Format.id (becomes "1", "2", "3", etc.)
  * - Even Format.metadata (may not survive Format rebuilds)
  *
- * SOLUTION (Production-Tested):
+ * Mapping strategy:
  * Map subtitles using STABLE ATTRIBUTES that ExoPlayer preserves:
  * - Track position (groupIndex, trackIndex)
  * - Content attributes (mimeType, language, isForced, isExternal)
  *
  * These create a COMPOSITE KEY that remains stable across ExoPlayer's internal rebuilds.
  *
- * This is the EXACT approach used by:
- * - Plex Android TV
- * - Emby Android TV
- * - Official Jellyfin Android TV
- * - VLC Android
  */
 object SubtitleMapper {
     private const val TAG = "SubtitleMapper"
@@ -96,7 +92,6 @@ object SubtitleMapper {
             codec = stream.Codec,
             path = stream.Path
         )
-        Log.d(TAG, "   Using HTTP URL: $httpUrl")
         
         val subtitleUri = Uri.parse(httpUrl)
         
@@ -113,8 +108,10 @@ object SubtitleMapper {
             codecLower == "pgs" || codecLower == "hdmv_pgs_subtitle" -> MimeTypes.APPLICATION_PGS
             // Fallback to file extension for external subtitles with NULL codec
             pathExtension == "srt" -> MimeTypes.APPLICATION_SUBRIP
-            pathExtension == "vtt" -> MimeTypes.TEXT_VTT
+            pathExtension == "vtt" || pathExtension == "webvtt" -> MimeTypes.TEXT_VTT
             pathExtension == "ass" || pathExtension == "ssa" -> MimeTypes.TEXT_SSA
+            pathExtension == "ttml" -> MimeTypes.APPLICATION_TTML
+            pathExtension == "sup" -> MimeTypes.APPLICATION_PGS
             // Default to SRT (most common for external subtitles)
             else -> {
                 Log.w(TAG, "⚠️ Unknown subtitle codec='${stream.Codec}', path='${stream.Path}' - defaulting to APPLICATION_SUBRIP")
@@ -140,6 +137,11 @@ object SubtitleMapper {
             .setMimeType(mimeType)
             .setLanguage(stream.Language ?: "und")
             .setLabel(buildLabel(stream))
+            .setSelectionFlags(
+                (if (stream.IsDefault == true) C.SELECTION_FLAG_DEFAULT else 0) or
+                    (if (stream.IsForced == true) C.SELECTION_FLAG_FORCED else 0)
+            )
+            .setRoleFlags(if (stream.IsHearingImpaired == true) C.ROLE_FLAG_CAPTION else 0)
             .build()
     }
 
@@ -150,7 +152,7 @@ object SubtitleMapper {
      * - Track position (groupIndex, trackIndex)
      * - Content attributes (mimeType, language, isForced, isExternal)
      * 
-     * This is the production-safe approach used by Plex, Emby, Jellyfin TV, and VLC.
+     * The mapping belongs to the current playback session and is reset between items.
      * 
      * @param format The ExoPlayer Format from a selected subtitle track
      * @param groupIndex The index of the track group in Tracks.groups
@@ -348,6 +350,7 @@ object SubtitleMapper {
             "vtt", "webvtt" -> MimeTypes.TEXT_VTT
             "ass", "ssa" -> MimeTypes.TEXT_SSA
             "ttml" -> MimeTypes.APPLICATION_TTML
+            "sup" -> MimeTypes.APPLICATION_PGS
             "sub" -> MimeTypes.APPLICATION_SUBRIP // Assume SRT-like format
             else -> {
                 Log.w(TAG, "⚠️ Unknown subtitle extension '$extension' - defaulting to SRT")

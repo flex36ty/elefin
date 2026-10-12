@@ -682,7 +682,7 @@ fun BottomContainer(
                                     // Calculate defaults
                                     val streams = item.MediaSources?.firstOrNull()?.MediaStreams
                                     val defaultSub = null
-                                    val defaultAudio = streams?.firstOrNull { it.Type == "Audio" && it.IsDefault == true }?.Index
+                                    val defaultAudio = streams?.let { com.flex.elefin.player.preferredAudioIndex(it) }
 
                                     // Launch video player at chapter start position
                                     val intent = JellyfinVideoPlayerActivity.createIntent(
@@ -821,7 +821,13 @@ fun CastMemberCard(
                 }
             },
             modifier = Modifier.size(cardSize),
-            shape = CardDefaults.shape(shape = CircleShape),
+            shape = CardDefaults.shape(shape = CircleShape, focusedShape = CircleShape, pressedShape = CircleShape),
+            border = CardDefaults.border(
+                focusedBorder = androidx.tv.material3.Border(
+                    border = androidx.compose.foundation.BorderStroke(2.dp, Color.White),
+                    shape = CircleShape
+                )
+            ),
             colors = CardDefaults.colors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
                 focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -1004,22 +1010,9 @@ fun SubtitleSelectionDialog(
     var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     var isLoadingSubtitles by remember { mutableStateOf(true) }
     
-    // OpenSubtitles download state
-    var showLanguageDialog by remember { mutableStateOf(false) }
-    var showApiKeyRequiredDialog by remember { mutableStateOf(false) }
-    var showSearchResults by remember { mutableStateOf(false) }
-    var isSearching by remember { mutableStateOf(false) }
-    var isDownloading by remember { mutableStateOf(false) }
-    var downloadingSubtitleName by remember { mutableStateOf("") }
-    var searchResults by remember { mutableStateOf<List<com.flex.elefin.subtitles.SubtitleResult>>(emptyList()) }
+    var showServerSubtitleSearch by remember { mutableStateOf(false) }
     var downloadedSubtitles by remember { mutableStateOf<List<com.flex.elefin.subtitles.DownloadedSubtitle>>(emptyList()) }
-    
-    // Get OpenSubtitles settings
-    val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
-    val openSubtitlesApiKey = remember { settings.openSubtitlesApiKey }
-    val openSubtitlesUsername = remember { settings.openSubtitlesUsername }
-    val openSubtitlesPassword = remember { settings.openSubtitlesPassword }
-    
+
     // Load downloaded subtitles
     LaunchedEffect(item.Id) {
         downloadedSubtitles = com.flex.elefin.subtitles.OpenSubtitlesApi.getDownloadedSubtitles(context, item.Id)
@@ -1137,6 +1130,7 @@ fun SubtitleSelectionDialog(
                                 ListItem(
                                     selected = false,
                                     onClick = {
+                                        apiService?.let { com.flex.elefin.subtitles.clearLocalProviderSubtitle(context, it, item.Id) }
                                         onSubtitleSelected(null)
                                         onDismiss()
                                     },
@@ -1174,6 +1168,7 @@ fun SubtitleSelectionDialog(
                                     selected = false,
                                     onClick = {
                                         stream.Index?.let { index ->
+                                            apiService?.let { com.flex.elefin.subtitles.clearLocalProviderSubtitle(context, it, item.Id) }
                                             onSubtitleSelected(index)
                                             onDismiss()
                                         }
@@ -1235,6 +1230,8 @@ fun SubtitleSelectionDialog(
                                     ListItem(
                                         selected = false,
                                         onClick = {
+                                            apiService?.let { com.flex.elefin.subtitles.selectLocalProviderSubtitle(context, it, item.Id, downloadedSub.filePath) }
+                                            onSubtitleSelected(null)
                                             onDownloadedSubtitleSelected?.invoke(downloadedSub.filePath)
                                             onDismiss()
                                         },
@@ -1274,18 +1271,8 @@ fun SubtitleSelectionDialog(
                             item {
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Button(
-                                    onClick = { 
-                                        // Check if API key and credentials are configured
-                                        if (openSubtitlesApiKey.isNotBlank() && 
-                                            openSubtitlesUsername.isNotBlank() && 
-                                            openSubtitlesPassword.isNotBlank()) {
-                                            com.flex.elefin.subtitles.OpenSubtitlesApi.setApiKey(openSubtitlesApiKey)
-                                            com.flex.elefin.subtitles.OpenSubtitlesApi.setCredentials(openSubtitlesUsername, openSubtitlesPassword)
-                                            showLanguageDialog = true
-                                        } else {
-                                            showApiKeyRequiredDialog = true
-                                        }
-                                    },
+                                    onClick = { showServerSubtitleSearch = true },
+                                    enabled = apiService != null,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 8.dp)
@@ -1311,98 +1298,19 @@ fun SubtitleSelectionDialog(
         }
     }
     
-    // Language selection dialog
-    if (showLanguageDialog) {
-        com.flex.elefin.subtitles.SubtitleLanguageDialog(
-            onSelect = { language ->
-                showLanguageDialog = false
-                isSearching = true
-                showSearchResults = true
-                
-                // Search OpenSubtitles
-                scope.launch {
-                    try {
-                        val imdbId = item.ProviderIds?.get("Imdb")
-                        val tmdbId = item.ProviderIds?.get("Tmdb")
-                        
-                        searchResults = com.flex.elefin.subtitles.OpenSubtitlesApi.searchSubtitles(
-                            imdbId = imdbId,
-                            tmdbId = tmdbId,
-                            query = if (imdbId == null && tmdbId == null) item.Name else null,
-                            language = language
-                        )
-                    } catch (e: Exception) {
-                        Log.e("SubtitleDialog", "Error searching subtitles", e)
-                        searchResults = emptyList()
-                    } finally {
-                        isSearching = false
-                    }
-                }
+    if (showServerSubtitleSearch && apiService != null) {
+        com.flex.elefin.subtitles.ServerSubtitleSearchDialog(
+            itemId = item.Id,
+            api = apiService,
+            onDownloaded = { selection ->
+                itemDetails = selection.item
+                if (selection.localPath == null) com.flex.elefin.player.SubtitleDownloader.downloadSubtitle(
+                    context, apiService, item.Id, selection.sourceId, selection.stream
+                )
+                onSubtitleSelected(selection.stream.Index)
+                onDismiss()
             },
-            onDismiss = { showLanguageDialog = false }
-        )
-    }
-    
-    // API key required dialog
-    if (showApiKeyRequiredDialog) {
-        com.flex.elefin.subtitles.ApiKeyRequiredDialog(
-            onGoToSettings = {
-                showApiKeyRequiredDialog = false
-                onDismiss() // Close the subtitle dialog and go back
-                // User needs to go to Settings manually
-            },
-            onDismiss = { showApiKeyRequiredDialog = false }
-        )
-    }
-    
-    // Search results dialog
-    if (showSearchResults) {
-        com.flex.elefin.subtitles.SubtitleResultsDialog(
-            results = searchResults,
-            isLoading = isSearching,
-            onSelect = { subtitle ->
-                showSearchResults = false
-                isDownloading = true
-                downloadingSubtitleName = subtitle.attributes.release ?: "Subtitle"
-                
-                // Download the subtitle
-                scope.launch {
-                    try {
-                        val filePath = com.flex.elefin.subtitles.OpenSubtitlesApi.downloadAndSaveSubtitle(
-                            context = context,
-                            itemId = item.Id,
-                            subtitle = subtitle
-                        )
-                        
-                        if (filePath != null) {
-                            // Refresh downloaded subtitles list
-                            downloadedSubtitles = com.flex.elefin.subtitles.OpenSubtitlesApi.getDownloadedSubtitles(context, item.Id)
-                            
-                            // Optionally auto-select the downloaded subtitle
-                            onDownloadedSubtitleSelected?.invoke(filePath)
-                            onDismiss()
-                        } else {
-                            // Show error toast
-                            val errorMsg = com.flex.elefin.subtitles.OpenSubtitlesApi.lastError 
-                                ?: "Download failed"
-                            android.widget.Toast.makeText(context, errorMsg, android.widget.Toast.LENGTH_LONG).show()
-                        }
-                    } catch (e: Exception) {
-                        Log.e("SubtitleDialog", "Error downloading subtitle", e)
-                        android.widget.Toast.makeText(context, "Download failed: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-                    } finally {
-                        isDownloading = false
-                    }
-                }
-            },
-            onDismiss = { showSearchResults = false }
-        )
-    }
-    
-    // Downloading dialog
-    if (isDownloading) {
-        com.flex.elefin.subtitles.SubtitleDownloadingDialog(
-            subtitleName = downloadingSubtitleName
+            onDismiss = { showServerSubtitleSearch = false }
         )
     }
 }
@@ -1722,7 +1630,7 @@ fun ActionButtonsRow(
     
     val defaultAudioIndex = remember(displayItem.MediaSources) {
         displayItem.MediaSources?.firstOrNull()?.MediaStreams?.let { streams ->
-             streams.firstOrNull { it.Type == "Audio" && it.IsDefault == true }?.Index
+             com.flex.elefin.player.preferredAudioIndex(streams)
         }
     }
     
@@ -1982,19 +1890,9 @@ fun ActionButtonsRow(
         
         Button(
             onClick = {
-                if (trailerKey != null) {
-                    trailerKey?.let { key ->
-                        TrailerLauncher.launchTmdbTrailer(context, key, displayItem.Name ?: "")
-                    }
-                } else {
-                    // Prompt user to enter TMDB key
-                    android.widget.Toast.makeText(
-                        context,
-                        "Please enter your TMDB API key in settings to enable trailers",
-                        android.widget.Toast.LENGTH_LONG
-                    ).show()
-                    onShowSettings()
-                }
+                TrailerLauncher.launchTrailer(
+                    context, apiService, displayItem.Id, displayItem.Name ?: "", trailerKey, scope
+                )
             },
             modifier = Modifier
                 .expandingActionButton(focused = trailerFocused, expandLeft = true)

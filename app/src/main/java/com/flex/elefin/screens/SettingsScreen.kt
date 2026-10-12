@@ -138,7 +138,7 @@ fun SettingsScreen(
     var selectedCategory by remember { mutableStateOf(initialCategory) }
     
     // All settings state
-    var mpvEnabled by remember { mutableStateOf(settings.isMpvEnabled) }
+    var playbackPlayer by remember { mutableStateOf(settings.playbackPlayer) }
     
     // MPV download state
     var isMpvInstalled by remember { mutableStateOf(false) }
@@ -256,11 +256,6 @@ fun SettingsScreen(
     var mpvShaderProfile by remember { mutableStateOf(settings.mpvShaderProfile) }
 
     // OpenSubtitles state variables
-    var openSubtitlesApiKey by remember { mutableStateOf(settings.openSubtitlesApiKey) }
-    var showApiKeyDialog by remember { mutableStateOf(false) }
-    var openSubtitlesUsername by remember { mutableStateOf(settings.openSubtitlesUsername) }
-    var openSubtitlesPassword by remember { mutableStateOf(settings.openSubtitlesPassword) }
-    var showLoginDialog by remember { mutableStateOf(false) }
     var showClearSubtitlesDialog by remember { mutableStateOf(false) }
     var rowCardCount by remember { mutableStateOf(settings.rowCardCount) }
     var downloadedSubtitlesCount by remember { mutableStateOf(0) }
@@ -276,14 +271,14 @@ fun SettingsScreen(
     fun SettingsOptions(category: SettingsCategory) {
         when (category) {
                         SettingsCategory.PLAYBACK -> {
-                            // MPV Player Toggle
-                            SettingToggle(
-                                title = "Use MPV Player",
-                                description = "Use the integrated MPV player for better codec support (AV1, HEVC, HDR).",
-                                isEnabled = mpvEnabled,
-                                onToggle = {
-                                    mpvEnabled = !mpvEnabled
-                                    settings.isMpvEnabled = mpvEnabled
+                            SettingCycle(
+                                title = "Video Player",
+                                description = "Choose ExoPlayer, MPV, or Elefin Cinema with MPV playback and cinema controls.",
+                                currentValue = playbackPlayer.label,
+                                onCycle = {
+                                    val players = com.flex.elefin.jellyfin.PlaybackPlayer.entries
+                                    playbackPlayer = players[(playbackPlayer.ordinal + 1) % players.size]
+                                    settings.playbackPlayer = playbackPlayer
                                 }
                             )
                             
@@ -637,119 +632,11 @@ fun SettingsScreen(
                             
                             Spacer(modifier = Modifier.height(16.dp))
                             
-                            // OpenSubtitles API Key
-                            SettingButton(
-                                title = "OpenSubtitles API Key",
-                                description = if (openSubtitlesApiKey.isNotBlank()) 
-                                    "API key configured ✓" 
-                                else 
-                                    "Required for subtitle downloads. Get free key at opensubtitles.com",
-                                buttonText = if (openSubtitlesApiKey.isNotBlank()) "Change" else "Set Key",
-                                onClick = { showApiKeyDialog = true }
+                            Text(
+                                text = "Subtitle downloads use your Jellyfin server. Install and configure the OpenSubtitles plugin in the server dashboard, and allow your user to manage subtitles. No provider credentials are needed in Elefin.",
+                                style = MaterialTheme.typography.bodyMedium
                             )
-                            
-                            if (showApiKeyDialog) {
-                                var apiKeyInput by remember { mutableStateOf(openSubtitlesApiKey) }
-                                AlertDialog(
-                                    onDismissRequest = { showApiKeyDialog = false },
-                                    title = { Text("OpenSubtitles API Key") },
-                                    text = {
-                                        Column {
-                                            Text(
-                                                "Get your free API key at:\nhttps://www.opensubtitles.com/en/consumers\n\nFree tier: 100 downloads/day",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                modifier = Modifier.padding(bottom = 16.dp)
-                                            )
-                                            OutlinedTextField(
-                                                value = apiKeyInput,
-                                                onValueChange = { apiKeyInput = it },
-                                                label = { Text("API Key") },
-                                                singleLine = true,
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                        }
-                                    },
-                                    confirmButton = {
-                                        TextButton(
-                                            onClick = {
-                                                openSubtitlesApiKey = apiKeyInput
-                                                settings.openSubtitlesApiKey = apiKeyInput
-                                                showApiKeyDialog = false
-                                            }
-                                        ) {
-                                            Text("Save")
-                                        }
-                                    },
-                                    dismissButton = {
-                                        TextButton(onClick = { showApiKeyDialog = false }) {
-                                            Text("Cancel")
-                                        }
-                                    }
-                                )
-                            }
-                            
-                            SettingButton(
-                                title = "OpenSubtitles Login",
-                                description = if (openSubtitlesUsername.isNotBlank()) 
-                                    "Logged in as: $openSubtitlesUsername ✓" 
-                                else 
-                                    "Required for downloading subtitles",
-                                buttonText = if (openSubtitlesUsername.isNotBlank()) "Change" else "Login",
-                                onClick = { showLoginDialog = true }
-                            )
-                            
-                            if (showLoginDialog) {
-                                var usernameInput by remember { mutableStateOf(openSubtitlesUsername) }
-                                var passwordInput by remember { mutableStateOf(openSubtitlesPassword) }
-                                AlertDialog(
-                                    onDismissRequest = { showLoginDialog = false },
-                                    title = { Text("OpenSubtitles Login") },
-                                    text = {
-                                        Column {
-                                            Text(
-                                                "Enter your OpenSubtitles.com account credentials.\nCreate a free account at opensubtitles.com if needed.",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                modifier = Modifier.padding(bottom = 16.dp)
-                                            )
-                                            OutlinedTextField(
-                                                value = usernameInput,
-                                                onValueChange = { usernameInput = it },
-                                                label = { Text("Username") },
-                                                singleLine = true,
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            OutlinedTextField(
-                                                value = passwordInput,
-                                                onValueChange = { passwordInput = it },
-                                                label = { Text("Password") },
-                                                singleLine = true,
-                                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                        }
-                                    },
-                                    confirmButton = {
-                                        TextButton(
-                                            onClick = {
-                                                openSubtitlesUsername = usernameInput
-                                                openSubtitlesPassword = passwordInput
-                                                settings.openSubtitlesUsername = usernameInput
-                                                settings.openSubtitlesPassword = passwordInput
-                                                showLoginDialog = false
-                                            }
-                                        ) {
-                                            Text("Save")
-                                        }
-                                    },
-                                    dismissButton = {
-                                        TextButton(onClick = { showLoginDialog = false }) {
-                                            Text("Cancel")
-                                        }
-                                    }
-                                )
-                            }
-                            
+
                             // Clear Downloaded Subtitles
                             // Count downloaded subtitles on first composition
                             LaunchedEffect(Unit) {

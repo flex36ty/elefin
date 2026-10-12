@@ -6,6 +6,10 @@ import android.app.Activity
 import android.content.Context
 import android.util.Log
 import com.flex.elefin.ui.TvBringIntoViewProvider
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -304,6 +308,8 @@ fun JellyfinHomeScreen(
     
     val recentlyReleasedMoviesState = repository?.recentlyReleasedMovies?.collectAsState(initial = emptyList())
     val recentlyReleasedMovies = recentlyReleasedMoviesState?.value ?: emptyList()
+    val releasedByLibraryState = repository?.recentlyReleasedMoviesByLibrary?.collectAsState(initial = emptyMap())
+    val releasedByLibrary = releasedByLibraryState?.value ?: emptyMap()
     
     val recentlyAddedShowsByLibraryState = repository?.recentlyAddedShowsByLibrary?.collectAsState(initial = emptyMap())
     val recentlyAddedShowsByLibrary = recentlyAddedShowsByLibraryState?.value ?: emptyMap()
@@ -358,7 +364,7 @@ fun JellyfinHomeScreen(
     
     
     // Handle back button press
-    BackHandler(enabled = true) {
+    val handleHomeBack: () -> Unit = {
         if (selectedLibraryId != null) {
             // If library is selected, deselect it
             selectedLibraryId = null
@@ -370,21 +376,21 @@ fun JellyfinHomeScreen(
             showExitConfirmation = true
         }
     }
+    BackHandler(enabled = true, onBack = handleHomeBack)
     
     LaunchedEffect(repository, config.isConfigured()) {
         // Only fetch data if properly configured
         if (config.isConfigured() && repository != null) {
             // Small delay to allow UI to render first and prevent ANR
             delay(150)
+            repository.fetchLibraries()
             repository.fetchContinueWatching()
             repository.fetchNextUp()
             repository.fetchRecentlyAddedMovies()
             repository.fetchRecentlyReleasedMovies()
-            repository.fetchLibraries()
             repository.fetchCollections()
             repository.fetchRecentlyAddedShows()
             repository.fetchRecentlyAddedEpisodes()
-            repository.fetchLibraries()
         }
     }
     
@@ -402,11 +408,11 @@ fun JellyfinHomeScreen(
                 // Refresh all content when returning to the screen
                 // This fixes issue where only Continue Watching and Next Up show after device resume
                 scope.launch {
+                    repository?.fetchLibraries()
                     repository?.fetchContinueWatching()
                     repository?.fetchNextUp()
                     repository?.fetchRecentlyAddedMovies()
                     repository?.fetchRecentlyReleasedMovies()
-                    repository?.fetchLibraries()
                     repository?.fetchCollections()
                     repository?.fetchRecentlyAddedShows()
                     repository?.fetchRecentlyAddedEpisodes()
@@ -477,7 +483,9 @@ fun JellyfinHomeScreen(
     val focusRequester = remember { FocusRequester() }
     
     // Primary scroll states for different views
-    val homeLazyListState = rememberLazyListState()
+    val homeLazyListState = rememberLazyListState(
+        prefetchStrategy = remember { com.flex.elefin.ui.HomeShelfPrefetchStrategy() }
+    )
     val libraryLazyListState = rememberLazyListState()
     val collectionsLazyListState = rememberLazyListState()
     
@@ -736,7 +744,7 @@ fun JellyfinHomeScreen(
                 val allTabs = remember(libraries, collections, showMusicLibraries) {
                     // Debug: Log all libraries and their CollectionType
                     libraries.forEach { lib ->
-                        android.util.Log.d("JellyfinHomeScreen", "📚 Library loaded: ${lib.Name}, Type: ${lib.Type}, CollectionType: ${lib.CollectionType}, Id: ${lib.Id}")
+                        android.util.Log.d("JellyfinHomeScreen", "ðŸ“š Library loaded: ${lib.Name}, Type: ${lib.Type}, CollectionType: ${lib.CollectionType}, Id: ${lib.Id}")
                     }
                     
                     buildList<Pair<String?, String>> {
@@ -806,21 +814,21 @@ fun JellyfinHomeScreen(
                                 onClick = {
                                     // Handle music library specially - navigate to music screen
                                     if (isMusicLibrary) {
-                                        android.util.Log.d("JellyfinHomeScreen", "🎵 Music library clicked! Navigating to music screen...")
+                                        android.util.Log.d("JellyfinHomeScreen", "ðŸŽµ Music library clicked! Navigating to music screen...")
                                         onMusicClick()
                                         return@Tab
                                     }
                                     
                                     // Handle movies library specially - navigate to movies library screen
                                     if (isMoviesLibrary && library != null) {
-                                        android.util.Log.d("JellyfinHomeScreen", "🎬 Movies library clicked! Navigating to movies library screen...")
+                                        android.util.Log.d("JellyfinHomeScreen", "ðŸŽ¬ Movies library clicked! Navigating to movies library screen...")
                                         onMoviesLibraryClick(library.Id, library.Name)
                                         return@Tab
                                     }
                                     
                                     // Handle TV shows library specially - navigate to TV shows library screen
                                     if (isTvShowsLibrary && library != null) {
-                                        android.util.Log.d("JellyfinHomeScreen", "📺 TV Shows library clicked! Navigating to TV shows library screen...")
+                                        android.util.Log.d("JellyfinHomeScreen", "ðŸ“º TV Shows library clicked! Navigating to TV shows library screen...")
                                         onTvShowsLibraryClick(library.Id, library.Name)
                                         return@Tab
                                     }
@@ -1338,8 +1346,8 @@ fun JellyfinHomeScreen(
             }
             
             if (selectedLibraryId == null && selectedCollectionId != "__COLLECTIONS__") {
-                    val homeShelves = remember(continueWatchingItems, nextUpItems, movieLibraries,
-                        recentlyAddedMoviesByLibrary, recentlyReleasedMovies, tvShowLibraries,
+                    val homeShelves = remember(continueWatchingItems, nextUpItems, movieLibraries, allMovieLibraries,
+                        recentlyAddedMoviesByLibrary, releasedByLibrary, tvShowLibraries,
                         recentlyAddedShowsByLibrary, recentlyAddedEpisodesByLibrary, hideShowsWithZeroEpisodes) {
                         buildList {
                             fun addShelf(id: String, title: String, items: List<JellyfinItem>, progress: Boolean = false, resume: Boolean = false) {
@@ -1347,32 +1355,100 @@ fun JellyfinHomeScreen(
                             }
                             addShelf("continue", "Continue Watching", continueWatchingItems, progress = true)
                             addShelf("next", "Next Up", nextUpItems)
-                            movieLibraries.forEachIndexed { index, library ->
-                                addShelf("movies:${library.Id}", if (index == 0) "Recently Added Movies" else "Recently Added ${library.Name}",
+                            movieLibraries.forEach { library ->
+                                addShelf("movies:${library.Id}", "Recently Added in ${library.Name}",
                                     recentlyAddedMoviesByLibrary[library.Id].orEmpty())
                             }
-                            addShelf("released", "Recently Released Movies", recentlyReleasedMovies)
-                            tvShowLibraries.forEachIndexed { index, library ->
+                            allMovieLibraries.filter { it.CollectionType.equals("movies", ignoreCase = true) }.sortedBy { it.Name }.forEach { library ->
+                                addShelf("released:${library.Id}", "Recently Released in ${library.Name}", releasedByLibrary[library.Id].orEmpty())
+                            }
+                            tvShowLibraries.forEach { library ->
                                 val shows = recentlyAddedShowsByLibrary[library.Id].orEmpty().filter {
                                     !hideShowsWithZeroEpisodes || it.Type != "Series" || (it.RecursiveItemCount ?: it.ChildCount ?: 0) > 0
                                 }
-                                addShelf("shows:${library.Id}", if (index == 0) "Recently Added Shows" else "Recently Added Shows in ${library.Name}", shows)
+                                addShelf("shows:${library.Id}", "Recently Added Shows in ${library.Name}", shows)
                             }
-                            tvShowLibraries.forEachIndexed { index, library ->
-                                addShelf("episodes:${library.Id}", if (index == 0) "Recently Added Episodes" else "Recently Added Episodes in ${library.Name}",
+                            tvShowLibraries.forEach { library ->
+                                addShelf("episodes:${library.Id}", "Recently Added Episodes in ${library.Name}",
                                     recentlyAddedEpisodesByLibrary[library.Id].orEmpty(), resume = true)
                             }
                         }
                     }
-                    // Default rows when no library or collection is selected
+                    // Reserve one complete shelf plus only the next shelf's title.
+                    // Equal shelf slots keep short Continue Watching cards from exposing the next row.
+                    val shelfHeaderHeight = 44.dp
+                    val shelfCardsHeight = 157.5.dp + HomeStyle.shelfVerticalPadding * 2
+                    val shelfViewportHeight = shelfCardsHeight + shelfHeaderHeight * 2
+                    val shelfDensity = androidx.compose.ui.platform.LocalDensity.current
+                    val shelfVerticalSpec = remember(shelfDensity) {
+                        com.flex.elefin.ui.TvBringIntoViewSpec(
+                            vertical = true,
+                            verticalAnchor = with(shelfDensity) {
+                                (shelfHeaderHeight + HomeStyle.shelfVerticalPadding).toPx()
+                            })
+                    }
+                    var horizontalShelfNavigation by remember { mutableStateOf(false) }
+                    // Focus history is consulted only when pendingShelfFocus changes. Making
+                    // every focus write observable invalidates all composed shelves.
+                    val focusedCardByShelf = remember { mutableMapOf<String, String>() }
+                    val shelfHorizontalSpec = remember {
+                        com.flex.elefin.ui.TvBringIntoViewSpec(vertical = false,
+                            horizontalPivotEnabled = { horizontalShelfNavigation })
+                    }
+                    var pendingShelfFocus by remember { mutableStateOf<String?>(null) }
+                    var shelfNavigationJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+                    val shelfTransitionFocus = remember { FocusRequester() }
+                    CompositionLocalProvider(
+                        androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides shelfVerticalSpec
+                    ) {
                     LazyColumn(
                         state = homeLazyListState,
-                        contentPadding = PaddingValues(bottom = 24.dp), // 15% increase in bottom padding
+                        contentPadding = PaddingValues(bottom = shelfHeaderHeight),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(0.6f)
-                            .padding(start = 54.dp, top = 36.dp, end = 38.dp, bottom = 0.dp)
+                            .padding(start = 54.dp, top = 36.dp, end = 38.dp)
+                            .height(shelfViewportHeight)
                             .clipToBounds()
+                            .onPreviewKeyEvent { event ->
+                                val key = event.nativeKeyEvent
+                                if (key.keyCode == android.view.KeyEvent.KEYCODE_BACK) {
+                                    // Back must leave Home, not exit the card's focus group
+                                    // and re-enter it at the leading card.
+                                    if (key.action == android.view.KeyEvent.ACTION_UP && !key.isCanceled) {
+                                        shelfNavigationJob?.cancel()
+                                        pendingShelfFocus = null
+                                        handleHomeBack()
+                                    }
+                                    true
+                                } else {
+                                    if (key.action == android.view.KeyEvent.ACTION_DOWN &&
+                                        shelfNavigationJob?.isActive != true && pendingShelfFocus == null) {
+                                        when (key.keyCode) {
+                                            android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> horizontalShelfNavigation = true
+                                            android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN -> horizontalShelfNavigation = false
+                                        }
+                                    }
+                                    val directional = key.keyCode in listOf(
+                                        android.view.KeyEvent.KEYCODE_DPAD_UP,
+                                        android.view.KeyEvent.KEYCODE_DPAD_DOWN,
+                                        android.view.KeyEvent.KEYCODE_DPAD_LEFT,
+                                        android.view.KeyEvent.KEYCODE_DPAD_RIGHT)
+                                    directional && (shelfNavigationJob?.isActive == true || pendingShelfFocus != null)
+                                }
+                            }
+                            .focusRequester(shelfTransitionFocus)
+                            .onFocusChanged { state ->
+                                if (state.isFocused) {
+                                    scope.launch {
+                                        androidx.compose.runtime.withFrameNanos { }
+                                        // Entering from the navigation bar should land on a card.
+                                        if (shelfNavigationJob?.isActive != true && pendingShelfFocus == null) {
+                                            pendingShelfFocus = homeShelves.getOrNull(homeLazyListState.firstVisibleItemIndex)?.id
+                                        }
+                                    }
+                                }
+                            }
+                            .focusable()
                             .then(
                                 if (debugOutlinesEnabled) {
                                     Modifier.border(3.dp, Color.Yellow)
@@ -1390,23 +1466,85 @@ fun JellyfinHomeScreen(
                                     androidx.compose.foundation.lazy.LazyListPrefetchStrategy(visibleCards)
                                 }
                             )
+                            val entryCard by remember(shelf.id, shelf.items) {
+                                derivedStateOf {
+                                    if (pendingShelfFocus != shelf.id) null else {
+                                        focusedCardByShelf[shelf.id]?.takeIf { id -> shelf.items.any { it.Id == id } }
+                                            ?: (shelfState.layoutInfo.visibleItemsInfo.firstOrNull {
+                                                it.offset >= shelfState.layoutInfo.viewportStartOffset &&
+                                                    it.offset + it.size <= shelfState.layoutInfo.viewportEndOffset
+                                            }?.key as? String)
+                                            ?: shelf.items.getOrNull(shelfState.firstVisibleItemIndex)?.Id
+                                    }
+                                }
+                            }
+                            LaunchedEffect(pendingShelfFocus, shelf.id) {
+                                if (pendingShelfFocus == shelf.id) {
+                                    val index = shelf.items.indexOfFirst { it.Id == focusedCardByShelf[shelf.id] }
+                                    if (index >= 0 && shelfState.layoutInfo.visibleItemsInfo.none { it.index == index }) {
+                                        shelfState.scrollToItem(index)
+                                    }
+                                }
+                            }
                             Column {
                                 Text(
                                     text = shelf.title,
                                     style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, fontWeight = FontWeight.SemiBold),
-                                    modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp)
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier.height(shelfHeaderHeight)
+                                        .padding(start = 16.dp, top = 12.dp, bottom = 8.dp)
                                 )
+                                CompositionLocalProvider(
+                                    androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides shelfHorizontalSpec
+                                ) {
                                 LazyRow(
                                     state = shelfState,
                                     contentPadding = PaddingValues(horizontal = HomeStyle.shelfInset, vertical = HomeStyle.shelfVerticalPadding),
                                     horizontalArrangement = Arrangement.spacedBy(HomeStyle.shelfGap),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
-                                    modifier = Modifier.then(if (shelf.id == homeShelves.firstOrNull()?.id) Modifier.focusRequester(focusRequester) else Modifier)
+                                    modifier = Modifier.height(shelfCardsHeight)
+                                        .drawWithContent {
+                                            // Keep scrolled-off cards out of the leading gutter,
+                                            // while retaining space for the first card's focus outline.
+                                            clipRect(left = (HomeStyle.shelfInset / 2).toPx()) {
+                                                this@drawWithContent.drawContent()
+                                            }
+                                        }
+                                        .then(if (shelf.id == homeShelves.firstOrNull()?.id) Modifier.focusRequester(focusRequester) else Modifier)
+                                        .onPreviewKeyEvent { event ->
+                                            val key = event.nativeKeyEvent
+                                            val direction = when (key.keyCode) {
+                                                android.view.KeyEvent.KEYCODE_DPAD_DOWN -> 1
+                                                android.view.KeyEvent.KEYCODE_DPAD_UP -> -1
+                                                else -> 0
+                                            }
+                                            val current = homeShelves.indexOfFirst { it.id == shelf.id }
+                                            val target = current + direction
+                                            if (direction == 0 || (target < 0 && direction < 0)) {
+                                                false // Let Up on the first shelf return to navigation.
+                                            } else {
+                                                if (key.action == android.view.KeyEvent.ACTION_DOWN &&
+                                                    target in homeShelves.indices && shelfNavigationJob?.isActive != true) {
+                                                    shelfNavigationJob = scope.launch {
+                                                        // The next row's cards are outside the viewport. Place it
+                                                        // before requesting focus, instead of searching invisible cards.
+                                                        horizontalShelfNavigation = false
+                                                        shelfTransitionFocus.requestFocus()
+                                                        if (disableUIAnimations.value) homeLazyListState.scrollToItem(target)
+                                                        else homeLazyListState.animateScrollToItem(target)
+                                                        pendingShelfFocus = homeShelves[target].id
+                                                    }
+                                                }
+                                                true
+                                            }
+                                        }
                                         .then(if (debugOutlinesEnabled) Modifier.border(2.dp, Color.Magenta) else Modifier)
                                 ) {
                                     items(items = shelf.items, key = { it.Id }, contentType = { if (shelf.progress) "progress" else "poster" }) { item ->
                                         val onFocused: (Boolean) -> Unit = { focused ->
                                             if (focused) {
+                                                focusedCardByShelf[shelf.id] = item.Id
                                                 instantHighlightedItem = item
                                                 originalEpisodeItem = item.takeIf { it.Type == "Episode" }
                                                 backgroundChangeJob?.cancel()
@@ -1416,6 +1554,17 @@ fun JellyfinHomeScreen(
                                                 }
                                             }
                                         }
+                                        val cardEntryFocus = remember { FocusRequester() }
+                                        val shouldEnterShelf = entryCard == item.Id
+                                        LaunchedEffect(shouldEnterShelf) {
+                                            if (shouldEnterShelf) {
+                                                androidx.compose.runtime.withFrameNanos { }
+                                                cardEntryFocus.requestFocus()
+                                                pendingShelfFocus = null
+                                            }
+                                        }
+                                        // Focus is requested by a composed card, never an off-screen requester.
+                                        Box(Modifier.focusRequester(cardEntryFocus)) {
                                         if (shelf.progress) {
                                             JellyfinHorizontalCardWithProgress(
                                                 item = item, apiService = apiService,
@@ -1438,10 +1587,13 @@ fun JellyfinHomeScreen(
                                                 lowPowerMode = lowPowerMode.value, imageRefreshKey = imageRefreshKey
                                             )
                                         }
+                                        }
                                     }
+                                }
                                 }
                             }
                         }
+                    }
                     }
                 }
             }
@@ -2564,51 +2716,34 @@ fun JellyfinHorizontalCardWithProgress(
     val maxImageHeight = if (lowPowerMode) 180 else if (useReducedResolution) 270 else 360
     val imageQuality = if (lowPowerMode) 80 else 90
     
-    // Use thumbnail (Thumb) images for both episodes and movies
-    // For episodes, prioritize series/parent thumb image (like official Jellyfin Android TV app)
-    // For movies, use item's own thumb if available
-    val imageUrl = remember(item, apiService, maxImageWidth, maxImageHeight, imageQuality, imageRefreshKey) {
-        when {
-        // For episodes, try series thumb first (official app's preferParentThumb behavior)
-        item.Type == "Episode" && item.SeriesId != null -> {
-            // Try to get series thumb image (most common for episodes)
-            val seriesThumb = apiService?.getImageUrl(item.SeriesId, "Thumb", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
-            if (seriesThumb.isNotEmpty()) {
-                seriesThumb
+    // A generated URL is not proof that artwork exists. Try each candidate
+    // once, advancing on a failed image load rather than leaving a blank card.
+    val imageCandidates = remember(item, apiService, maxImageWidth, maxImageHeight, imageQuality, imageRefreshKey) {
+        buildList {
+            fun candidate(id: String, type: String, tag: String? = null) {
+                apiService?.getImageUrl(id, type, tag, maxWidth = maxImageWidth,
+                    maxHeight = maxImageHeight, quality = imageQuality)?.let { add(it) }
+            }
+            if (item.Type == "Episode" && item.SeriesId != null) {
+                candidate(item.SeriesId, "Thumb")
+                candidate(item.Id, "Thumb", item.ImageTags?.get("Thumb"))
+                candidate(item.Id, "Primary", item.ImageTags?.get("Primary"))
+                candidate(item.SeriesId, "Backdrop")
+                candidate(item.SeriesId, "Primary")
             } else {
-                // Fall back to episode's own thumb
-                val episodeThumb = item.ImageTags?.get("Thumb")?.let { thumbTag ->
-                    apiService?.getImageUrl(item.Id, "Thumb", thumbTag, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
-                } ?: ""
-                if (episodeThumb.isNotEmpty()) {
-                    episodeThumb
-                } else {
-                    // Fall back to episode's primary image (preview photo) before backdrops
-                    val episodePrimary = apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
-                    episodePrimary.ifEmpty {
-                        // Last resort: series backdrop, then episode backdrop
-                        val seriesBackdrop = apiService?.getImageUrl(item.SeriesId, "Backdrop", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
-                        seriesBackdrop.ifEmpty {
-                            apiService?.getImageUrl(item.Id, "Backdrop", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
-                        }
-                    }
-                }
+                candidate(item.Id, "Thumb", item.ImageTags?.get("Thumb"))
+                candidate(item.Id, "Backdrop")
+                candidate(item.Id, "Primary", item.ImageTags?.get("Primary"))
             }
-        }
-        // For movies or other items, use item's own thumb if available
-        item.ImageTags?.containsKey("Thumb") == true -> {
-            item.ImageTags?.get("Thumb")?.let { thumbTag ->
-                apiService?.getImageUrl(item.Id, "Thumb", thumbTag, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
-            } ?: ""
-        }
-        // Fallback for movies: backdrop, then primary
-        else -> {
-            val backdrop = apiService?.getImageUrl(item.Id, "Backdrop", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
-            backdrop.ifEmpty {
-                apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
-            }
-        }
+        }.distinct()
     }
+    var imageCandidateIndex by remember(imageCandidates, imageRefreshKey) { mutableStateOf(0) }
+    val imageUrl = imageCandidates.getOrNull(imageCandidateIndex).orEmpty()
+    val advanceImage: (coil.compose.AsyncImagePainter.State.Error) -> Unit = {
+        if (imageCandidates.getOrNull(imageCandidateIndex) == imageUrl &&
+            imageCandidateIndex < imageCandidates.lastIndex) {
+            imageCandidateIndex++
+        }
     }
 
     // Calculate progress percentage
@@ -2650,6 +2785,7 @@ fun JellyfinHorizontalCardWithProgress(
                     }
                     AsyncImage(
                         model = imageRequest,
+                        onError = advanceImage,
                         contentDescription = item.Name,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
@@ -2715,6 +2851,7 @@ fun JellyfinHorizontalCardWithProgress(
                     }
                     AsyncImage(
                         model = imageRequest,
+                        onError = advanceImage,
                         contentDescription = item.Name,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -2790,6 +2927,7 @@ fun JellyfinHorizontalCardWithProgress(
                             }
                             AsyncImage(
                                 model = imageRequest,
+                        onError = advanceImage,
                                 contentDescription = item.Name,
                                 modifier = Modifier
                                     .fillMaxWidth()

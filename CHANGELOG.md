@@ -2,6 +2,54 @@
 
 All notable changes to Elefin will be documented in this file.
 
+## 1.1.30 — 2026-10-11
+
+### Improved
+
+- Elefin Cinema (MPV) is now the default when no player choice is saved; explicit player selections remain respected.
+- Native trailers use Elefin MPV controls, with matching title, timeline, and playback buttons in the embedded YouTube fallback.
+- Prepare adjacent off-screen Home shelves in both directions during idle time, including direction reversals.
+- Pause backdrop dissolves during vertical scrolling and avoid updating all composed shelves when recording card focus.
+- Bake artwork and scrims on a worker thread to reduce repeated rendering work.
+- Add a non-debug, debug-signed performance build for testing without clearing existing debug-installation settings.
+- Add compact left/right remote seeking and thumbnail previews when Jellyfin provides trickplay images.
+- Apply subtitle text size, color, and background preferences to Elefin MPV text subtitles.
+- Select device-language audio when no explicit track is selected.
+- Use the compatible hardware-copy decoder immediately for known Realtek H.264 playback and remember successful decoder recovery.
+- Refresh new libraries and include library names in Recently Added, Recently Released, and Recently Added Episodes headings.
+
+- Added Elefin Cinema (MPV), an independently written TV player with cinematic controls, track and speed menus, subtitle downloads, and Jellyfin resume/progress reporting. Existing MPV and ExoPlayer choices remain available.
+
+- Find and download subtitles through Jellyfin server providers from movie/episode details and both players, without entering OpenSubtitles credentials in Elefin. Downloaded tracks are verified before selection.
+
+- Home and library backgrounds blend four artwork colors over two seconds with brightness limits and scroll-aware updates.
+- Trailer buttons try Jellyfin's local trailers, then server-provided remote YouTube or direct video URLs, before the optional TMDB fallback. Server-provided trailers need no user TMDB key.
+- Subtitle tracks preserve forced/default/SDH metadata and recognize more file-extension fallbacks.
+
+### Fixed
+
+- Recover stalled or failed playback through decoder recovery and a server-stream fallback when available.
+- Improve Dolby Vision playback compatibility, downloaded subtitle selection, subtitle language labels, and initial subtitle-picker focus.
+- Report playback start, progress, pause, and stop more reliably for Jellyfin resume tracking.
+- Preserve horizontal row positions during vertical Home navigation and prevent Back from resetting the row.
+- Match cast-card focus outlines to their circular shape.
+
+- Escape commas and backslashes in MPV HTTP headers so Jellyfin authorization stays in one header, fixing Cinema playback failing with HTTP 400 before decoding starts.
+
+- Main Home shows one complete shelf and only the following shelf's header, preventing the next row's cards from peeking through the bottom. Up/down navigation aligns shelves before transferring focus.
+- Subtitle caches distinguish media versions and servers; incomplete downloads are rejected and cleaned up.
+- Trailer preparation supports cancellation when leaving the details screen and removes incomplete cached media.
+
+## 1.1.29 — 2026-10-09
+
+### Fixed
+
+- **TV Show Artwork Fallbacks**
+  - Try thumbnail artwork before posters when backdrop previews are unavailable on Home, library home screens, and TV show details.
+  - Retry alternative artwork on show-details image failures and recognize Jellyfin's backdrop image tags.
+
+---
+
 ## 1.1.28 — 2026-10-03
 
 ### Fixed

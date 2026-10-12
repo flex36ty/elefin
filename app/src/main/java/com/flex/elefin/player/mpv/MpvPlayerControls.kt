@@ -285,6 +285,7 @@ fun MpvSettingsMenu(
     onAudioSelected: (Int) -> Unit,
     onSubtitleSelected: (Int) -> Unit,
     onPlaybackSpeedChange: (Double) -> Unit,
+    onFindSubtitles: (() -> Unit)? = null,
     initialMenuLevel: String = "main" // "main", "subtitles", "audio", "speed"
 ) {
     var currentMenuLevel by remember { mutableStateOf(initialMenuLevel) }
@@ -529,6 +530,13 @@ fun MpvSettingsMenu(
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
+                                if (onFindSubtitles != null) {
+                                    item {
+                                        androidx.tv.material3.ListItem(selected = false,
+                                            headlineContent = { Text("Find subtitles") },
+                                            onClick = onFindSubtitles, colors = listItemColors)
+                                    }
+                                }
                                 // None option
                                 item {
                                     androidx.tv.material3.ListItem(

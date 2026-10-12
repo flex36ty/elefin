@@ -7,6 +7,7 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
@@ -77,7 +78,9 @@ data class JellyfinItem(
     val RecursiveItemCount: Int? = null, // Total recursive item count (e.g., total episodes for Series)
     val NextEpisodeId: String? = null, // ID of the next episode for autoplay
     val Chapters: List<ChapterInfo>? = null, // Chapter markers for the video
-    val BackdropImageTags: List<String>? = null
+    val BackdropImageTags: List<String>? = null,
+    val Trickplay: Map<String, Map<String, com.flex.elefin.player.cinema.TrickplayInfo>>? = null,
+    val RemoteTrailers: List<RemoteTrailer>? = null
 ) {
     // Helper to get the last played date from either UserData or calculate from position
     fun getLastPlayedDateForSort(): String {
@@ -104,6 +107,9 @@ data class JellyfinItem(
         }
     }
 }
+
+@Serializable
+data class RemoteTrailer(val Url: String? = null, val Name: String? = null)
 
 @Stable
 @Serializable
@@ -204,6 +210,9 @@ data class MediaStream(
     val Title: String? = null, // Subtitle track title
     val Width: Int? = null, // Video/subtitle width
     val Height: Int? = null, // Video/subtitle height
+    val VideoRangeType: String? = null,
+    val VideoDoViTitle: String? = null,
+    val DvProfile: Int? = null,
     val ChannelLayout: String? = null // Audio channel layout (e.g., "5.1", "7.1", "stereo")
 )
 
@@ -298,6 +307,23 @@ class JellyfinApiService(
             connectTimeout = 10_000
             socketTimeout = 15_000
         }
+    }
+
+    suspend fun searchRemoteSubtitles(itemId: String, language: String): List<RemoteSubtitleInfo> {
+        val url = com.flex.elefin.subtitles.remoteSubtitleUrl(baseUrl, itemId, language)
+        val response = client.get(url) {
+            header(HttpHeaders.Authorization, jellyfinAuthorization(accessToken, config?.deviceId))
+        }
+        com.flex.elefin.subtitles.checkSubtitleResponse(response.status.value)
+        return response.body<List<RemoteSubtitleInfo>>().filter { !it.Id.isNullOrBlank() }
+    }
+
+    suspend fun downloadRemoteSubtitle(itemId: String, subtitleId: String) {
+        val url = com.flex.elefin.subtitles.remoteSubtitleUrl(baseUrl, itemId, subtitleId)
+        val response = client.post(url) {
+            header(HttpHeaders.Authorization, jellyfinAuthorization(accessToken, config?.deviceId))
+        }
+        com.flex.elefin.subtitles.checkSubtitleResponse(response.status.value)
     }
 
     suspend fun getContinueWatching(limit: Int = 20): List<JellyfinItem> {
@@ -730,7 +756,7 @@ class JellyfinApiService(
                 parameters.append("UserId", userId)
                 // Request UserData fields to get PositionTicks for resume functionality, and IndexNumber/ParentIndexNumber for episodes
                 // Also request Chapters for chapter markers
-                parameters.append("Fields", "MediaSources,Genres,Overview,People,ProviderIds,UserData,ImageTags,IndexNumber,ParentIndexNumber,NextEpisodeId,Chapters,CommunityRating,CriticRating,OfficialRating")
+                parameters.append("Fields", "MediaSources,Genres,Overview,People,ProviderIds,UserData,ImageTags,IndexNumber,ParentIndexNumber,NextEpisodeId,Chapters,CommunityRating,CriticRating,OfficialRating,RemoteTrailers,Trickplay")
             }.buildString()
             android.util.Log.d("JellyfinAPI", "Fetching item details from: $url")
             
@@ -761,6 +787,22 @@ class JellyfinApiService(
             null
         }
     }
+
+    /** Server-indexed trailer files; no TMDB key or external provider is required. */
+    suspend fun getLocalTrailers(itemId: String): List<JellyfinItem> {
+        val base = baseUrl.trimEnd('/')
+        return client.get("$base/Items/$itemId/LocalTrailers") {
+            parameter("userId", userId)
+            header(HttpHeaders.Authorization, jellyfinAuthorization(accessToken, config?.deviceId))
+        }.body()
+    }
+
+    /** Keep credentials in the player request headers instead of the media URL. */
+    fun getLocalTrailerPlaybackUrl(itemId: String, mediaSourceId: String? = null): String =
+        URLBuilder().takeFrom("${baseUrl.trimEnd('/')}/Videos/$itemId/stream").apply {
+            parameters.append("static", "true")
+            mediaSourceId?.let { parameters.append("mediaSourceId", it) }
+        }.buildString()
 
     // Get person details (biography, birthdate, etc.)
     // Uses /Users/{userId}/Items/{personId} endpoint which returns full item details
@@ -1037,7 +1079,8 @@ class JellyfinApiService(
             "pgs", "hdmv_pgs_subtitle" -> "sup"
             else -> {
                 // Fallback: extract from file path if available
-                path?.substringAfterLast('.')?.lowercase() ?: "srt"
+                val pathExtension = path?.substringAfterLast('.')?.lowercase()
+                if (pathExtension == "webvtt") "vtt" else pathExtension ?: "srt"
             }
         }
         
@@ -1046,7 +1089,7 @@ class JellyfinApiService(
         // Works for: external sidecar .srt files, embedded subtitles, forced subtitles
         val url = "$server/Videos/$itemId/$mediaSourceId/Subtitles/$streamIndex/Stream.$extension?api_key=$accessToken"
         
-        android.util.Log.d("JellyfinAPI", "✅ Subtitle URL (isExternal=$isExternal, codec=$codec, ext=$extension): $url")
+        android.util.Log.d("JellyfinAPI", "Subtitle request (isExternal=$isExternal, codec=$codec, ext=$extension)")
         return url
     }
     
@@ -1119,6 +1162,27 @@ class JellyfinApiService(
             android.util.Log.e("JellyfinAPI", "❌ Failed to get PlaybackInfo: ${e.message}", e)
             null
         }
+    }
+
+    /** Negotiate a server stream after direct playback fails; retain stream copy where supported. */
+    suspend fun getPlaybackFallbackUrl(itemId: String, audioIndex: Int): String? {
+        val url = URLBuilder().takeFrom("${baseUrl.trimEnd('/')}/Items/$itemId/PlaybackInfo").apply {
+            parameters.append("UserId", userId)
+            parameters.append("EnableDirectPlay", "false")
+            parameters.append("EnableDirectStream", "true")
+            parameters.append("EnableTranscoding", "true")
+            parameters.append("AllowVideoStreamCopy", "true")
+            parameters.append("AllowAudioStreamCopy", "true")
+            parameters.append("SubtitleStreamIndex", "-1")
+            if (audioIndex >= 0) parameters.append("AudioStreamIndex", audioIndex.toString())
+        }.buildString()
+        val response: JellyfinPlaybackInfo = client.post(url) {
+            header(HttpHeaders.Authorization, jellyfinAuthorization(accessToken, config?.deviceId))
+            contentType(ContentType.Application.Json)
+            setBody("""{"DeviceProfile":{"MaxStreamingBitrate":200000000,"DirectPlayProfiles":[],"TranscodingProfiles":[{"Container":"ts","Type":"Video","VideoCodec":"h264,hevc,mpeg2video","AudioCodec":"aac,ac3,eac3,mp3,dts","Protocol":"hls","Context":"Streaming","CopyTimestamps":true}],"CodecProfiles":[],"SubtitleProfiles":[]}}""")
+        }.body()
+        val path = response.MediaSources?.firstOrNull()?.TranscodingUrl ?: return null
+        return if (path.startsWith("http")) path else "${baseUrl.trimEnd('/')}/${path.trimStart('/')}"
     }
 
     fun getVideoRequestHeaders(): Map<String, String> {
@@ -2137,7 +2201,9 @@ class JellyfinApiService(
                 setBody(requestBody)
             }
             android.util.Log.d("JellyfinAPI", "✅ Reported playback START for item $itemId at position $positionTicks ticks (status: ${response.status})")
-            true
+            response.status.value in 200..299
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             android.util.Log.e("JellyfinAPI", "❌ Error reporting playback start", e)
             e.printStackTrace()
@@ -2193,7 +2259,9 @@ class JellyfinApiService(
                 setBody(requestBody)
             }
             android.util.Log.d("JellyfinAPI", "📊 Reported playback PROGRESS for item $itemId at ${positionTicks / 10_000_000}s (status: ${response.status})")
-            true
+            response.status.value in 200..299
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             android.util.Log.e("JellyfinAPI", "❌ Error reporting playback progress", e)
             e.printStackTrace()
@@ -2217,23 +2285,22 @@ class JellyfinApiService(
             val url = "${base}Sessions/Playing/Stopped"
             
             
-            // Build request body as JSON string
-            val requestBody = buildString {
-                append("{")
-                append("\"ItemId\":\"$itemId\",")
-                append("\"PositionTicks\":$positionTicks,")
-                if (audioStreamIndex != null) append("\"AudioStreamIndex\":$audioStreamIndex,")
-                if (subtitleStreamIndex != null) append("\"SubtitleStreamIndex\":$subtitleStreamIndex")
-                append("}")
-            }
-            
+            val requestBody = kotlinx.serialization.json.buildJsonObject {
+                put("ItemId", kotlinx.serialization.json.JsonPrimitive(itemId))
+                put("PositionTicks", kotlinx.serialization.json.JsonPrimitive(positionTicks))
+                audioStreamIndex?.let { put("AudioStreamIndex", kotlinx.serialization.json.JsonPrimitive(it)) }
+                subtitleStreamIndex?.let { put("SubtitleStreamIndex", kotlinx.serialization.json.JsonPrimitive(it)) }
+            }.toString()
+
             val response = client.post(url) {
                 header(HttpHeaders.Authorization, jellyfinAuthorization(accessToken, config?.deviceId))
                 contentType(ContentType.Application.Json)
                 setBody(requestBody)
             }
             android.util.Log.d("JellyfinAPI", "🛑 Reported playback STOPPED for item $itemId at ${positionTicks / 10_000_000}s (status: ${response.status})")
-            true
+            response.status.value in 200..299
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             android.util.Log.e("JellyfinAPI", "❌ Error reporting playback stopped", e)
             e.printStackTrace()

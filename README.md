@@ -1,5 +1,7 @@
 # Elefin
 
+Current version: **1.1.30**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 An Android TV client for Jellyfin built with Jetpack Compose. This is not a fork of the Jellyfin Android TV. Big credits to them for everything nonetheless.
 
 ## Description
@@ -9,14 +11,16 @@ Elefin is a modern Android TV Jellyfin client built from the ground up using Jet
 ## Features
 
 - Plex inspired home screen navigation
-- Play trailer for Movie or Show
+- In-app movie and show trailers from Jellyfin, with Elefin MPV controls and an embedded YouTube fallback
 - Auto play next episode
-- Download subtitles via the app from open Subtitles
+- Search and download subtitles through configured Jellyfin subtitle providers, including OpenSubtitles
 - Jellyseer integration to request movies and tv shows directly from the app itself
-- MPV player support / Exoplayer is still preferred
+- Elefin Cinema (MPV) is the default when no player choice is saved; ExoPlayer and the original MPV player remain selectable
+- Compact remote-seek progress and Jellyfin trickplay thumbnail previews when available
+- Jellyfin playback progress and resume reporting
 - Subtitles size and color customization
 - Dark mode support
-- Image and poster caching for smoother navigation
+- Image and poster caching, bounded row prefetching, and scroll-aware artwork transitions for smoother navigation
 - Autoupdates directly from github when new releases are available
 - Fake HDR and video sharpening options
 - Auto refresh media
@@ -92,7 +96,7 @@ Elefin is a modern Android TV Jellyfin client built from the ground up using Jet
 ### Settings
 
 Access settings from the home screen to configure:
-- **Player Preferences**: ExoPlayer (FFmpeg) vs MPV
+- **Player Preferences**: Elefin Cinema (MPV), ExoPlayer (FFmpeg), or the original MPV player
 - **Video Enhancements**: Fake HDR, sharpening with strength controls
 - **Subtitle Options**: Size, color, background transparency
 - **Performance Mode**: Disable animations for weaker devices
@@ -133,7 +137,7 @@ Elefin is optimized for smooth performance on all Android TV devices:
 - **ExoPlayer/Media3** - Video playback engine with full codec support
 - **Jellyfin FFmpeg Decoder** - Advanced audio codec support (DTS, TrueHD, AC3, etc.)
 - **OpenGL ES 2.0** - Custom video post-processing pipeline (fake HDR, sharpening)
-- **MPV** - Alternative video player (experimental)
+- **MPV** - Playback engine for Elefin Cinema and the original MPV player
 - **Ktor** - HTTP client for Jellyfin API
 - **Coil/Glide** - Image loading libraries
 - **Kotlin Serialization** - JSON parsing
@@ -168,3 +172,19 @@ This project is licensed under the GNU General Public License v3.0 - see the [LI
 
 Elefin is an independent client application and is not affiliated with or endorsed by the Jellyfin project.
 
+
+## Performance testing builds
+
+Use a non-debug build when assessing scrolling on lower-powered TVs. Debug builds can introduce substantial runtime compilation overhead.
+
+The performance variant uses release runtime behavior and the local debug signing key, so it can update an existing debug installation without clearing settings:
+
+```powershell
+.\gradlew.bat :app:assemblePerformance
+adb -s <device> install --no-incremental -r app/build/outputs/apk/performance/app-performance.apk
+adb -s <device> shell cmd package compile -m speed -f com.flex.elefin
+```
+
+Restart Elefin after compilation. This variant does not replace release signing for distribution and cannot update an installation signed with a different key. Ahead-of-time compilation above is a device testing step, not a bundled scrolling baseline profile.
+
+Home prepares adjacent off-screen shelves and pauses backdrop dissolves while scrolling. Trickplay previews require server-generated images; subtitle downloads require a configured Jellyfin provider and server support.

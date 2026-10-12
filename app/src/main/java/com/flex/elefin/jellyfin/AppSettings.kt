@@ -9,6 +9,7 @@ class AppSettings(context: Context) {
     companion object {
         private const val PREFS_NAME = "app_settings"
         private const val KEY_MPV_ENABLED = "mpv_enabled"
+        private const val KEY_PLAYBACK_PLAYER = "playback_player"
         private const val KEY_DEBUG_OUTLINES = "debug_outlines"
         private const val KEY_PRELOAD_LIBRARY_IMAGES = "preload_library_images"
         private const val KEY_CACHE_LIBRARY_IMAGES = "cache_library_images"
@@ -106,8 +107,18 @@ class AppSettings(context: Context) {
     }
 
     var isMpvEnabled: Boolean
-        get() = prefs.getBoolean(KEY_MPV_ENABLED, false) // Disabled by default (ExoPlayer is default)
-        set(value) = prefs.edit().putBoolean(KEY_MPV_ENABLED, value).apply()
+        get() = playbackPlayer == PlaybackPlayer.MPV
+        set(value) { playbackPlayer = if (value) PlaybackPlayer.MPV else PlaybackPlayer.EXOPLAYER }
+
+    var playbackPlayer: PlaybackPlayer
+        get() = PlaybackPlayer.fromPreference(
+            prefs.getString(KEY_PLAYBACK_PLAYER, null),
+            prefs.getBoolean(KEY_MPV_ENABLED, false)
+        )
+        set(value) = prefs.edit()
+            .putString(KEY_PLAYBACK_PLAYER, value.name)
+            .putBoolean(KEY_MPV_ENABLED, value == PlaybackPlayer.MPV)
+            .apply()
 
     var showDebugOutlines: Boolean
         get() = prefs.getBoolean(KEY_DEBUG_OUTLINES, false) // Disabled by default

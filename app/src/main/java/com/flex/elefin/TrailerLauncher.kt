@@ -3,11 +3,14 @@ package com.flex.elefin
 import android.content.Context
 import android.util.Log
 import android.widget.Toast
-import com.flex.elefin.player.mpv.MpvTvPlayerActivity
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
+import com.flex.elefin.player.cinema.CinemaPlayerActivity
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 
 import org.schabi.newpipe.extractor.ServiceList
@@ -20,19 +23,115 @@ import org.schabi.newpipe.extractor.ServiceList
 class TrailerLauncher {
     companion object {
         private val loading = java.util.concurrent.atomic.AtomicBoolean(false)
-        fun launchTmdbTrailer(context: Context, key: String, title: String) {
+        private val findingLocalTrailer = java.util.concurrent.atomic.AtomicBoolean(false)
+
+        /** Prefer the user's server-indexed trailer; retain YouTube as a fallback. */
+        fun launchTrailer(
+            context: Context,
+            apiService: com.flex.elefin.jellyfin.JellyfinApiService?,
+            itemId: String,
+            title: String,
+            youtubeKey: String?,
+            callerScope: CoroutineScope? = null
+        ) {
+            if (loading.get() || !findingLocalTrailer.compareAndSet(false, true)) return
+            val scope = callerScope ?: (context as? LifecycleOwner)?.lifecycleScope ?: CoroutineScope(Dispatchers.IO)
+            scope.launch(Dispatchers.IO) {
+                val localTrailer = try {
+                    apiService?.getLocalTrailers(itemId)?.firstOrNull { it.Id.isNotBlank() }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w("TrailerLauncher", "Local trailer lookup failed; trying online trailer")
+                    null
+                }
+                val remoteTrailers = if (localTrailer == null) try {
+                    apiService?.getItemDetails(itemId)?.RemoteTrailers.orEmpty()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w("TrailerLauncher", "Remote trailer lookup failed; trying optional fallback")
+                    emptyList()
+                } else emptyList()
+                withContext(Dispatchers.Main) {
+                    if (context is android.app.Activity && (context.isFinishing || context.isDestroyed)) {
+                        return@withContext
+                    }
+                    if (localTrailer != null && apiService != null) {
+                        val url = apiService.getLocalTrailerPlaybackUrl(
+                            localTrailer.Id, localTrailer.MediaSources?.firstOrNull()?.Id
+                        )
+                        // MPVView forwards this directly to MPV's string-list option.
+                        // Escape commas inside MediaBrowser authorization parameters.
+                        val headers = apiService.getVideoRequestHeaders().entries.joinToString(
+                            separator = ","
+                        ) {
+                            "${it.key}: ${it.value}".replace("\\", "\\\\").replace(",", "\\,")
+                        }
+                        try {
+                            context.startActivity(CinemaPlayerActivity.createIntent(
+                                context, url, headers, "Trailer: $title", "trailer-${localTrailer.Id}"
+                            ).apply {
+                                putExtra("is_trailer", true)
+                                if (context !is android.app.Activity) {
+                                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                            })
+                            return@withContext
+                        } catch (e: Exception) {
+                            Log.w("TrailerLauncher", "Could not open local trailer player")
+                        }
+                    }
+                    for (trailer in remoteTrailers) {
+                        val remoteUrl = trailer.Url ?: continue
+                        val remoteKey = TrailerUrl.youtubeId(remoteUrl)
+                        if (remoteKey != null) {
+                            launchTmdbTrailer(context, remoteKey, title, scope)
+                            return@withContext
+                        }
+                        val mediaUrl = TrailerUrl.directMedia(remoteUrl) ?: continue
+                        try {
+                            // Remote hosts must never receive the Jellyfin access token.
+                            context.startActivity(CinemaPlayerActivity.createIntent(
+                                context, mediaUrl, "", "Trailer: $title", "remote-trailer-$itemId"
+                            ).apply {
+                                putExtra("is_trailer", true)
+                                if (context !is android.app.Activity) addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            })
+                            return@withContext
+                        } catch (e: Exception) {
+                            Log.w("TrailerLauncher", "Could not open remote trailer player")
+                        }
+                    }
+                    if (!youtubeKey.isNullOrBlank()) {
+                        launchTmdbTrailer(context, youtubeKey, title, scope)
+                    } else {
+                        Toast.makeText(context, "No supported trailer found on Jellyfin. Add a local trailer or remote trailer URL, or optionally configure TMDB in settings.", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }.invokeOnCompletion { findingLocalTrailer.set(false) }
+        }
+
+        fun launchTmdbTrailer(context: Context, key: String, title: String, callerScope: CoroutineScope? = null) {
+            if (!key.matches(Regex("[A-Za-z0-9_-]{11}"))) {
+                Toast.makeText(context, "This trailer link is invalid.", Toast.LENGTH_SHORT).show()
+                return
+            }
             if (!loading.compareAndSet(false, true)) return
             Toast.makeText(context, "Loading trailer…", Toast.LENGTH_SHORT).show()
             val youtubeUrl = "https://www.youtube.com/watch?v=$key"
             
-            CoroutineScope(Dispatchers.IO).launch {
+            // Leaving the hosting screen cancels extraction/download rather than opening
+            // a trailer unexpectedly after the user has left the screen.
+            val scope = callerScope ?: (context as? LifecycleOwner)?.lifecycleScope ?: CoroutineScope(Dispatchers.IO)
+            scope.launch(Dispatchers.IO) {
                 val cachedFiles = mutableListOf<java.io.File>()
                 var handedToPlayer = false
                 try {
                     // Use ServiceList.YouTube (id 0)
                     val streamingService = ServiceList.YouTube
                     val extractor = streamingService.getStreamExtractor(youtubeUrl)
-                    extractor.fetchPage()
+                    runInterruptible { extractor.fetchPage() }
                     
 
                     
@@ -65,7 +164,6 @@ class TrailerLauncher {
                              streamUrl = fhdVideo.content
                              audioUrl = bestAudio.content
                              Log.d("TrailerLauncher", "Selected split FHD streams: Video=${fhdVideo.id}, Audio=${bestAudio.id}")
-                             Log.d("TrailerLauncher", "Audio URL: $audioUrl")
                         } else {
                              Log.w("TrailerLauncher", "Found 1080p video (${fhdVideo.id}) but NO suitable audio stream found.")
                         }
@@ -122,10 +220,12 @@ class TrailerLauncher {
                         // Download complete, bounded chunks before handing media to MPV.
                         if (android.net.Uri.parse(streamUrl).host?.endsWith(".googlevideo.com") == true
                             && android.net.Uri.parse(streamUrl).path == "/videoplayback") {
-                            fun cacheMedia(mediaUrl: String, suffix: String): String {
+                            suspend fun cacheMedia(mediaUrl: String, suffix: String): String {
                                 val file = java.io.File.createTempFile("elefin-trailer-", suffix, context.cacheDir)
                                 cachedFiles += file
-                                com.flex.elefin.networking.TrailerMediaDownloader.download(mediaUrl, file)
+                                runInterruptible {
+                                    com.flex.elefin.networking.TrailerMediaDownloader.download(mediaUrl, file)
+                                }
                                 return file.absolutePath
                             }
                             streamUrl = cacheMedia(streamUrl, ".mp4")
@@ -135,8 +235,8 @@ class TrailerLauncher {
                             if (context is android.app.Activity && (context.isFinishing || context.isDestroyed)) {
                                 return@withContext
                             }
-                            Log.d("TrailerLauncher", "Launching trailer: $streamUrl")
-                            val intent = MpvTvPlayerActivity.createIntent(
+                            Log.d("TrailerLauncher", "Launching in-app trailer for $key")
+                            val intent = CinemaPlayerActivity.createIntent(
                                 context,
                                 streamUrl,
                                 "",
@@ -150,6 +250,9 @@ class TrailerLauncher {
                                     Log.d("TrailerLauncher", "No audio_url to add to intent")
                                 }
                                 putExtra("is_trailer", true)
+                                if (context !is android.app.Activity) {
+                                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
                             }
                             context.startActivity(intent)
                             handedToPlayer = true
@@ -166,7 +269,7 @@ class TrailerLauncher {
                             return@withContext
                         }
                         if (e !is org.schabi.newpipe.extractor.exceptions.PrivateContentException) {
-                            context.startActivity(TrailerWebPlayerActivity.createIntent(context, key).apply {
+                            context.startActivity(TrailerWebPlayerActivity.createIntent(context, key, "Trailer: $title").apply {
                                 if (context !is android.app.Activity) addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                             })
                             return@withContext
@@ -177,8 +280,10 @@ class TrailerLauncher {
                     }
                 } finally {
                     if (!handedToPlayer) cachedFiles.forEach { it.delete() }
-                    loading.set(false)
                 }
+            }.invokeOnCompletion {
+                // Also reset if the lifecycle was already destroyed before launch ran.
+                loading.set(false)
             }
         }
     }
