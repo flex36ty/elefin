@@ -6,6 +6,10 @@ All notable changes to Elefin will be documented in this file.
 
 ### Improved
 
+- Split movie and TV library recommendations into individual lazy-list shelves so off-screen rows can be managed independently.
+- Cache movie and TV-show details artwork and scrims together to reduce full-screen redraw work while scrolling.
+- Reuse details backdrop, cast, and episode image requests, and remove the duplicate backdrop image fade.
+
 - Elefin Cinema (MPV) is now the default when no player choice is saved; explicit player selections remain respected.
 - Native trailers use Elefin MPV controls, with matching title, timeline, and playback buttons in the embedded YouTube fallback.
 - Prepare adjacent off-screen Home shelves in both directions during idle time, including direction reversals.
