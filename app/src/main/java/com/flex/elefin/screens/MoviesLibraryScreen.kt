@@ -962,9 +962,9 @@ fun MoviesLibraryScreen(
                 // Content rows (same as home screen - 60% for rows)
                 LazyColumn(
                         state = recommendationsScrollState,
-                    contentPadding = PaddingValues(bottom = 20.dp * 1.15f),
+                    contentPadding = PaddingValues(top = 24.dp, bottom = 20.dp * 1.15f),
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .fillMaxWidth().focusRequester(focusRequester)
                         .weight(0.6f)
                         .padding(start = 54.dp, top = 36.dp, end = 38.dp, bottom = 0.dp)
                             .clipToBounds()
@@ -976,14 +976,9 @@ fun MoviesLibraryScreen(
                             }
                         )
                 ) {
-                    item {
-                        Column(
-                            modifier = Modifier
-                                .padding(top = 24.dp) // Increased to ensure "Continue Watching" title is visible
-                                .focusRequester(focusRequester)
-                        ) {
-                            // Continue Watching row - using vertical poster cards
-                            if (continueWatchingMovies.isNotEmpty()) {
+                    if (continueWatchingMovies.isNotEmpty()) {
+                        item(key = "continueWatchingMovies", contentType = "library_shelf") {
+                            Column {
                                 Text(
                                     text = "Continue Watching",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -993,6 +988,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
+                                    state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1028,9 +1024,11 @@ fun MoviesLibraryScreen(
                                     }
                                 }
                             }
-                            
-                            // Recently Released row (same styling as home screen)
-                            if (recentlyReleasedMovies.isNotEmpty()) {
+                        }
+                    }
+                    if (recentlyReleasedMovies.isNotEmpty()) {
+                        item(key = "recentlyReleasedMovies", contentType = "library_shelf") {
+                            Column {
                                 Text(
                                     text = "Recently Released in $libraryName",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -1040,6 +1038,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
+                                    state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1071,9 +1070,11 @@ fun MoviesLibraryScreen(
                                     }
                                 }
                             }
-                            
-                            // Recently Added row (same styling as home screen)
-                            if (recentlyAddedMovies.isNotEmpty()) {
+                        }
+                    }
+                    if (recentlyAddedMovies.isNotEmpty()) {
+                        item(key = "recentlyAddedMovies", contentType = "library_shelf") {
+                            Column {
                                 Text(
                                     text = "Recently Added in $libraryName",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -1083,6 +1084,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
+                                    state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1114,9 +1116,11 @@ fun MoviesLibraryScreen(
                                     }
                                 }
                             }
-                            
-                            // Top Unwatched row (same styling as home screen)
-                            if (topUnwatchedMovies.isNotEmpty()) {
+                        }
+                    }
+                    if (topUnwatchedMovies.isNotEmpty()) {
+                        item(key = "topUnwatchedMovies", contentType = "library_shelf") {
+                            Column {
                                 Text(
                                     text = "Top Unwatched in $libraryName",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -1126,6 +1130,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
+                                    state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1157,9 +1162,11 @@ fun MoviesLibraryScreen(
                                     }
                                 }
                             }
-                            
-                            // Recently Watched row (same styling as home screen)
-                            if (recentlyWatchedMovies.isNotEmpty()) {
+                        }
+                    }
+                    if (recentlyWatchedMovies.isNotEmpty()) {
+                        item(key = "recentlyWatchedMovies", contentType = "library_shelf") {
+                            Column {
                                 Text(
                                     text = "Recently Watched in $libraryName",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -1169,6 +1176,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
+                                    state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1200,9 +1208,11 @@ fun MoviesLibraryScreen(
                                     }
                                 }
                             }
-                            
-                            // Favorites row (same styling as home screen)
-                            if (favoriteMovies.isNotEmpty()) {
+                        }
+                    }
+                    if (favoriteMovies.isNotEmpty()) {
+                        item(key = "favoriteMovies", contentType = "library_shelf") {
+                            Column {
                                 Text(
                                     text = "Favorites in $libraryName",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -1212,6 +1222,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
+                                    state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1243,9 +1254,11 @@ fun MoviesLibraryScreen(
                                     }
                                 }
                             }
-                            
-                            // Top Movies in Genre 1 row
-                            if (genreMovies1.isNotEmpty() && selectedGenre1.isNotEmpty()) {
+                        }
+                    }
+                    if (genreMovies1.isNotEmpty() && selectedGenre1.isNotEmpty()) {
+                        item(key = "genreMovies1", contentType = "library_shelf") {
+                            Column {
                                 Text(
                                     text = "Top Movies in $selectedGenre1",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -1255,6 +1268,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
+                                    state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1286,9 +1300,11 @@ fun MoviesLibraryScreen(
                                     }
                                 }
                             }
-                            
-                            // Top Movies in Genre 2 row
-                            if (genreMovies2.isNotEmpty() && selectedGenre2.isNotEmpty()) {
+                        }
+                    }
+                    if (genreMovies2.isNotEmpty() && selectedGenre2.isNotEmpty()) {
+                        item(key = "genreMovies2", contentType = "library_shelf") {
+                            Column {
                                 Text(
                                     text = "Top Movies in $selectedGenre2",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -1298,6 +1314,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
+                                    state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1329,9 +1346,11 @@ fun MoviesLibraryScreen(
                                     }
                                 }
                             }
-                            
-                            // Top Movies in Genre 3 row
-                            if (genreMovies3.isNotEmpty() && selectedGenre3.isNotEmpty()) {
+                        }
+                    }
+                    if (genreMovies3.isNotEmpty() && selectedGenre3.isNotEmpty()) {
+                        item(key = "genreMovies3", contentType = "library_shelf") {
+                            Column {
                                 Text(
                                     text = "Top Movies in $selectedGenre3",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -1341,6 +1360,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
+                                    state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1372,9 +1392,11 @@ fun MoviesLibraryScreen(
                                     }
                                 }
                             }
-                            
-                            // Top Movies in Genre 4 row
-                            if (genreMovies4.isNotEmpty() && selectedGenre4.isNotEmpty()) {
+                        }
+                    }
+                    if (genreMovies4.isNotEmpty() && selectedGenre4.isNotEmpty()) {
+                        item(key = "genreMovies4", contentType = "library_shelf") {
+                            Column {
                                 Text(
                                     text = "Top Movies in $selectedGenre4",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -1384,6 +1406,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
+                                    state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1415,9 +1438,11 @@ fun MoviesLibraryScreen(
                                     }
                                 }
                             }
-                            
-                            // Top Movies in Genre 5 row
-                            if (genreMovies5.isNotEmpty() && selectedGenre5.isNotEmpty()) {
+                        }
+                    }
+                    if (genreMovies5.isNotEmpty() && selectedGenre5.isNotEmpty()) {
+                        item(key = "genreMovies5", contentType = "library_shelf") {
+                            Column {
                                 Text(
                                     text = "Top Movies in $selectedGenre5",
                                     style = MaterialTheme.typography.headlineMedium.copy(
@@ -1427,6 +1452,7 @@ fun MoviesLibraryScreen(
                                 )
                                 
                                 LazyRow(
+                                    state = rememberLazyListState(),
                                     contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                                     flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -2448,6 +2474,7 @@ private fun MovieCategoryRow(
     )
     
     LazyRow(
+        state = rememberLazyListState(),
         contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
         horizontalArrangement = Arrangement.spacedBy(20.dp),
         flingBehavior = if (disableUIAnimations) ScrollableDefaults.flingBehavior() else ScrollableDefaults.flingBehavior(),

@@ -1035,9 +1035,9 @@ fun TvShowsLibraryScreen(
                         // Content rows (same as home screen - 60% for rows)
                         LazyColumn(
                         state = recommendationsScrollState,
-                            contentPadding = PaddingValues(bottom = 20.dp * 1.15f),
+                            contentPadding = PaddingValues(top = 24.dp, bottom = 20.dp * 1.15f),
                             modifier = Modifier
-                                .fillMaxWidth()
+                                .fillMaxWidth().focusRequester(focusRequester)
                                 .weight(0.6f)
                                 .padding(start = 54.dp, top = 36.dp, end = 38.dp, bottom = 0.dp)
                             .clipToBounds()
@@ -1049,14 +1049,9 @@ fun TvShowsLibraryScreen(
                                     }
                                 )
                         ) {
-                            item {
-                                Column(
-                                    modifier = Modifier
-                                        .padding(top = 24.dp) // Increased to ensure "Continue Watching" title is visible
-                                        .focusRequester(focusRequester)
-                                ) {
-                                    // Continue Watching row
-                                    if (continueWatchingEpisodes.isNotEmpty()) {
+                    if (continueWatchingEpisodes.isNotEmpty()) {
+                        item(key = "continueWatchingEpisodes", contentType = "library_shelf") {
+                            Column {
                                         Text(
                                             text = "Continue Watching",
                                             style = MaterialTheme.typography.headlineMedium.copy(
@@ -1066,6 +1061,7 @@ fun TvShowsLibraryScreen(
                                         )
                                         
                                         LazyRow(
+                                            state = rememberLazyListState(),
                                             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                             horizontalArrangement = Arrangement.spacedBy(26.dp),
                                             flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1103,10 +1099,12 @@ fun TvShowsLibraryScreen(
                                                 )
                                             }
                                         }
-                                    }
-
-                                    // Next Up row
-                                    if (nextUpEpisodes.isNotEmpty()) {
+                            }
+                        }
+                    }
+                    if (nextUpEpisodes.isNotEmpty()) {
+                        item(key = "nextUpEpisodes", contentType = "library_shelf") {
+                            Column {
                                         Text(
                                             text = "Next Up",
                                             style = MaterialTheme.typography.headlineMedium.copy(
@@ -1116,6 +1114,7 @@ fun TvShowsLibraryScreen(
                                         )
                                         
                                         LazyRow(
+                                            state = rememberLazyListState(),
                                             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                             horizontalArrangement = Arrangement.spacedBy(20.dp),
                                             flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1152,10 +1151,12 @@ fun TvShowsLibraryScreen(
                                                 )
                                             }
                                         }
-                                    }
-                                    
-                                    // Recently Released Episodes row - using poster cards (vertical)
-                                    if (recentlyReleasedEpisodes.isNotEmpty()) {
+                            }
+                        }
+                    }
+                    if (recentlyReleasedEpisodes.isNotEmpty()) {
+                        item(key = "recentlyReleasedEpisodes", contentType = "library_shelf") {
+                            Column {
                                         Text(
                                             text = "Recently Released Episodes",
                                             style = MaterialTheme.typography.headlineMedium.copy(
@@ -1165,6 +1166,7 @@ fun TvShowsLibraryScreen(
                                         )
                                         
                                         LazyRow(
+                                            state = rememberLazyListState(),
                                             contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                             horizontalArrangement = Arrangement.spacedBy(20.dp),
                                             flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1197,10 +1199,12 @@ fun TvShowsLibraryScreen(
                                                 )
                                             }
                                         }
-                                    }
-                                    
-                                    // Recently Added in TV Shows row
-                                    if (filteredRecentlyAddedShows.isNotEmpty()) {
+                            }
+                        }
+                    }
+                    if (filteredRecentlyAddedShows.isNotEmpty()) {
+                        item(key = "filteredRecentlyAddedShows", contentType = "library_shelf") {
+                            Column {
                                         Text(
                                             text = "Recently Added in $libraryName",
                                             style = MaterialTheme.typography.headlineMedium.copy(
@@ -1210,6 +1214,7 @@ fun TvShowsLibraryScreen(
                                         )
                                         
                                         LazyRow(
+                                            state = rememberLazyListState(),
                                             contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                             horizontalArrangement = Arrangement.spacedBy(20.dp),
                                             flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1240,10 +1245,12 @@ fun TvShowsLibraryScreen(
                                                 )
                                             }
                                         }
-                                    }
-                                    
-                                    // Start Watching row (random unwatched suggestions)
-                                    if (filteredStartWatchingShows.isNotEmpty()) {
+                            }
+                        }
+                    }
+                    if (filteredStartWatchingShows.isNotEmpty()) {
+                        item(key = "filteredStartWatchingShows", contentType = "library_shelf") {
+                            Column {
                                         Text(
                                             text = "Start Watching",
                                             style = MaterialTheme.typography.headlineMedium.copy(
@@ -1253,6 +1260,7 @@ fun TvShowsLibraryScreen(
                                         )
                                         
                                         LazyRow(
+                                            state = rememberLazyListState(),
                                             contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                             horizontalArrangement = Arrangement.spacedBy(20.dp),
                                             flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1283,10 +1291,12 @@ fun TvShowsLibraryScreen(
                                                 )
                                             }
                                         }
-                                    }
-                                    
-                                    // Top Rated TV Shows row
-                                    if (filteredTopRatedShows.isNotEmpty()) {
+                            }
+                        }
+                    }
+                    if (filteredTopRatedShows.isNotEmpty()) {
+                        item(key = "filteredTopRatedShows", contentType = "library_shelf") {
+                            Column {
                                         Text(
                                             text = "Top Rated TV Shows",
                                             style = MaterialTheme.typography.headlineMedium.copy(
@@ -1296,6 +1306,7 @@ fun TvShowsLibraryScreen(
                                         )
                                         
                                         LazyRow(
+                                            state = rememberLazyListState(),
                                             contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                             horizontalArrangement = Arrangement.spacedBy(20.dp),
                                             flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1326,10 +1337,12 @@ fun TvShowsLibraryScreen(
                                                 )
                                             }
                                         }
-                                    }
-                                    
-                                    // More in <Genre> row 1 (randomly selected genre)
-                                    if (filteredGenreShows1.isNotEmpty() && selectedGenre1.isNotEmpty()) {
+                            }
+                        }
+                    }
+                    if (filteredGenreShows1.isNotEmpty() && selectedGenre1.isNotEmpty()) {
+                        item(key = "filteredGenreShows1", contentType = "library_shelf") {
+                            Column {
                                         Text(
                                             text = "More in $selectedGenre1",
                                             style = MaterialTheme.typography.headlineMedium.copy(
@@ -1339,6 +1352,7 @@ fun TvShowsLibraryScreen(
                                         )
                                         
                                         LazyRow(
+                                            state = rememberLazyListState(),
                                             contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                             horizontalArrangement = Arrangement.spacedBy(20.dp),
                                             flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1369,10 +1383,12 @@ fun TvShowsLibraryScreen(
                                                 )
                                             }
                                         }
-                                    }
-                                    
-                                    // More in <Genre> row 2 (randomly selected genre)
-                                    if (filteredGenreShows2.isNotEmpty() && selectedGenre2.isNotEmpty()) {
+                            }
+                        }
+                    }
+                    if (filteredGenreShows2.isNotEmpty() && selectedGenre2.isNotEmpty()) {
+                        item(key = "filteredGenreShows2", contentType = "library_shelf") {
+                            Column {
                                         Text(
                                             text = "More in $selectedGenre2",
                                             style = MaterialTheme.typography.headlineMedium.copy(
@@ -1382,6 +1398,7 @@ fun TvShowsLibraryScreen(
                                         )
                                         
                                         LazyRow(
+                                            state = rememberLazyListState(),
                                             contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                             horizontalArrangement = Arrangement.spacedBy(20.dp),
                                             flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1412,10 +1429,12 @@ fun TvShowsLibraryScreen(
                                                 )
                                             }
                                         }
-                                    }
-                                    
-                                    // More in <Genre> row 3 (randomly selected genre)
-                                    if (filteredGenreShows3.isNotEmpty() && selectedGenre3.isNotEmpty()) {
+                            }
+                        }
+                    }
+                    if (filteredGenreShows3.isNotEmpty() && selectedGenre3.isNotEmpty()) {
+                        item(key = "filteredGenreShows3", contentType = "library_shelf") {
+                            Column {
                                         Text(
                                             text = "More in $selectedGenre3",
                                             style = MaterialTheme.typography.headlineMedium.copy(
@@ -1425,6 +1444,7 @@ fun TvShowsLibraryScreen(
                                         )
                                         
                                         LazyRow(
+                                            state = rememberLazyListState(),
                                             contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                             horizontalArrangement = Arrangement.spacedBy(20.dp),
                                             flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1455,10 +1475,12 @@ fun TvShowsLibraryScreen(
                                                 )
                                             }
                                         }
-                                    }
-                                    
-                                    // More in <Genre> row 4 (randomly selected genre)
-                                    if (filteredGenreShows4.isNotEmpty() && selectedGenre4.isNotEmpty()) {
+                            }
+                        }
+                    }
+                    if (filteredGenreShows4.isNotEmpty() && selectedGenre4.isNotEmpty()) {
+                        item(key = "filteredGenreShows4", contentType = "library_shelf") {
+                            Column {
                                         Text(
                                             text = "More in $selectedGenre4",
                                             style = MaterialTheme.typography.headlineMedium.copy(
@@ -1468,6 +1490,7 @@ fun TvShowsLibraryScreen(
                                         )
                                         
                                         LazyRow(
+                                            state = rememberLazyListState(),
                                             contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                             horizontalArrangement = Arrangement.spacedBy(20.dp),
                                             flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1498,10 +1521,12 @@ fun TvShowsLibraryScreen(
                                                 )
                                             }
                                         }
-                                    }
-                                    
-                                    // More in <Genre> row 5 (randomly selected genre)
-                                    if (filteredGenreShows5.isNotEmpty() && selectedGenre5.isNotEmpty()) {
+                            }
+                        }
+                    }
+                    if (filteredGenreShows5.isNotEmpty() && selectedGenre5.isNotEmpty()) {
+                        item(key = "filteredGenreShows5", contentType = "library_shelf") {
+                            Column {
                                         Text(
                                             text = "More in $selectedGenre5",
                                             style = MaterialTheme.typography.headlineMedium.copy(
@@ -1511,6 +1536,7 @@ fun TvShowsLibraryScreen(
                                         )
                                         
                                         LazyRow(
+                                            state = rememberLazyListState(),
                                             contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
                                             horizontalArrangement = Arrangement.spacedBy(20.dp),
                                             flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
@@ -1541,9 +1567,9 @@ fun TvShowsLibraryScreen(
                                                 )
                                             }
                                         }
-                                    }
-                                }
                             }
+                        }
+                    }
                         }
                     }
                 } else if (selectedTab == "library") {
@@ -2506,6 +2532,7 @@ private fun CategoryRow(
     )
     
     LazyRow(
+        state = rememberLazyListState(),
         contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
         horizontalArrangement = Arrangement.spacedBy(20.dp),
         flingBehavior = if (disableUIAnimations) ScrollableDefaults.flingBehavior() else ScrollableDefaults.flingBehavior(),

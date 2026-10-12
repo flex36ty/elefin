@@ -390,6 +390,9 @@ fun SeriesDetailsScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .graphicsLayer {
+                    compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
+                }
                 .align(Alignment.Center)
         ) {
             val imageUrl = backdropUrls.getOrNull(backdropIndex).orEmpty()
@@ -402,16 +405,18 @@ fun SeriesDetailsScreen(
                     label = "background_fade"
                 ) { currentUrl ->
                     if (currentUrl.isNotEmpty() && apiService != null) {
-                        val headerMap = apiService.getImageRequestHeaders()
-                        AsyncImage(
-                            model = ImageRequest.Builder(context)
+                        val backdropRequest = remember(context, currentUrl, apiService) {
+                            ImageRequest.Builder(context)
                                 .data(currentUrl)
-                                .headers(headerMap)
+                                .headers(apiService.getImageRequestHeaders())
                                 .memoryCachePolicy(CachePolicy.ENABLED)
                                 .diskCachePolicy(CachePolicy.ENABLED)
-                                .crossfade(300) // Smooth 300ms crossfade when loading
-                                .allowHardware(true) // Use GPU memory for faster rendering
-                                .build(),
+                                .crossfade(false)
+                                .allowHardware(true)
+                                .build()
+                        }
+                        AsyncImage(
+                            model = backdropRequest,
                             onError = {
                                 if (currentUrl == backdropUrls.getOrNull(backdropIndex) && backdropIndex < backdropUrls.lastIndex) backdropIndex++
                             },
@@ -1514,12 +1519,16 @@ fun EpisodeCard(
             ) {
                 Box(modifier = Modifier.aspectRatio(16f / 9f)) {
                     if (imageUrl.isNotEmpty() && apiService != null) {
-                            val headerMap = apiService.getImageRequestHeaders()
-                            AsyncImage(
-                                model = ImageRequest.Builder(LocalContext.current)
+                            val imageContext = LocalContext.current
+                            val episodeImageRequest = remember(imageContext, imageUrl, apiService) {
+                                ImageRequest.Builder(imageContext)
                                     .data(imageUrl)
-                                    .headers(headerMap)
-                                    .build(),
+                                    .headers(apiService.getImageRequestHeaders())
+                                    .crossfade(false)
+                                    .build()
+                            }
+                            AsyncImage(
+                                model = episodeImageRequest,
                                 onError = {
                                     if (imageCandidates.getOrNull(imageCandidateIndex) == imageUrl && imageCandidateIndex < imageCandidates.lastIndex) {
                                         imageCandidateIndex++

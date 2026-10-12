@@ -237,6 +237,9 @@ fun MovieDetailsScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .graphicsLayer {
+                    compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
+                }
                 .align(Alignment.Center)
         ) {
             // Get backdrop URL or fallback to primary
@@ -265,16 +268,18 @@ fun MovieDetailsScreen(
                     label = "background_fade"
                 ) { currentUrl ->
                     if (currentUrl.isNotEmpty() && apiService != null) {
-                        val headerMap = apiService.getImageRequestHeaders()
-                        AsyncImage(
-                            model = ImageRequest.Builder(context)
+                        val backdropRequest = remember(context, currentUrl, apiService) {
+                            ImageRequest.Builder(context)
                                 .data(currentUrl)
-                                .headers(headerMap)
+                                .headers(apiService.getImageRequestHeaders())
                                 .memoryCachePolicy(CachePolicy.ENABLED)
                                 .diskCachePolicy(CachePolicy.ENABLED)
-                                .crossfade(300) // Smooth 300ms crossfade when loading
-                                .allowHardware(true) // Use GPU memory for faster rendering
-                                .build(),
+                                .crossfade(false)
+                                .allowHardware(true)
+                                .build()
+                        }
+                        AsyncImage(
+                            model = backdropRequest,
                             contentDescription = displayItem.Name,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.FillBounds,
@@ -630,6 +635,7 @@ fun BottomContainer(
                         androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides horizontalScrollSpec
                     ) {
                     LazyRow(
+                        state = rememberLazyListState(),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp), // Extra padding for focus scale animation
                         modifier = Modifier.graphicsLayer { clip = false } // Prevent clipping of scaled cards
@@ -663,6 +669,7 @@ fun BottomContainer(
                         androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides horizontalScrollSpec
                     ) {
                     LazyRow(
+                        state = rememberLazyListState(),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp),
                         modifier = Modifier.graphicsLayer { clip = false }
@@ -719,6 +726,7 @@ fun BottomContainer(
                         androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides horizontalScrollSpec
                     ) {
                     LazyRow(
+                        state = rememberLazyListState(),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp), // Extra padding for focus scale animation
                         modifier = Modifier.graphicsLayer { clip = false } // Prevent clipping of scaled cards
@@ -758,6 +766,7 @@ fun BottomContainer(
                         androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides horizontalScrollSpec
                     ) {
                     LazyRow(
+                        state = rememberLazyListState(),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp), // Extra padding for focus scale animation
                         modifier = Modifier.graphicsLayer { clip = false } // Prevent clipping of scaled cards
@@ -835,12 +844,15 @@ fun CastMemberCard(
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 if (imageUrl.isNotEmpty() && apiService != null) {
-                    val headerMap = apiService.getImageRequestHeaders()
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
+                    val castImageRequest = remember(context, imageUrl, apiService) {
+                        ImageRequest.Builder(context)
                             .data(imageUrl)
-                            .headers(headerMap)
-                            .build(),
+                            .headers(apiService.getImageRequestHeaders())
+                            .crossfade(false)
+                            .build()
+                    }
+                    AsyncImage(
+                        model = castImageRequest,
                         contentDescription = person.Name,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
