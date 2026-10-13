@@ -4950,6 +4950,7 @@ fun ExoPlayerSettingsMenu(
 fun NextUpOverlay(
     nextEpisode: JellyfinItem,
     countdown: Int,
+    actionHint: String? = null,
     onCancel: () -> Unit
 ) {
     Box(
@@ -5019,6 +5020,9 @@ fun NextUpOverlay(
                     color = Color.White.copy(alpha = 0.7f),
                     modifier = Modifier.padding(top = 8.dp)
                 )
+                actionHint?.let {
+                    Text(it, color = Color.White, style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
     }

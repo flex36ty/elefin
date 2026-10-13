@@ -1,6 +1,6 @@
 # Elefin
 
-Current version: **1.1.32**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current version: **1.1.34**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 An Android TV client for Jellyfin built with Jetpack Compose. This is not a fork of the Jellyfin Android TV. Big credits to them for everything nonetheless.
 
@@ -9,6 +9,9 @@ An Android TV client for Jellyfin built with Jetpack Compose. This is not a fork
 Elefin is a modern Android TV Jellyfin client built from the ground up using Jetpack Compose for TV. It offers a polished Material Design 3 interface optimized for television viewing with professional-grade performance on all Android TV devices including NVIDIA Shield, ONN 4K, and budget boxes.
 
 ## Features
+
+- TV music browsing with a featured album, floating Now Playing bar, and lightweight artwork backgrounds
+- Optional Cinema sharpening/upscaling, debanding, denoising, and adjustable SDR-only HDR-like enhancement; all off by default. These are conventional effects, not AI upscaling or Dolby Vision, and are skipped on native compatibility playback.
 
 - Plex inspired home screen navigation
 - Multiple saved Jellyfin server logins, with switching under Settings → Accounts or the TV navigation drawer
@@ -205,6 +208,6 @@ Open **Settings → Accounts → Add server** to connect another Jellyfin server
 
 One server is active for browsing and playback at a time. Switching rebuilds the navigation stack so old-server details cannot open against the new server. Audio and subtitle track preferences are separated by server and account. **Remove** forgets an inactive saved connection locally; it does not delete the server or its media.
 
-### Optional TV navigation drawer
+### TV navigation drawer
 
-Enable **Settings → Appearance → Modal Navigation Drawer** to replace the Home and movie/TV library top bars with a side rail. Focus the rail to expand it, press OK to choose a destination, and press Right or Back to return to the content. This option is off by default and updates immediately.
+The side rail is enabled by default when no preference is saved. Toggle **Settings → Appearance → Modal Navigation Drawer** to switch between the rail and the original top bars. Focus the rail to expand it, press OK to choose a destination, and press Right or Back to return to the content. Existing saved preferences are preserved, and changes apply immediately.

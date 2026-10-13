@@ -1,6 +1,7 @@
 package com.flex.elefin.player.cinema
 
 import com.flex.elefin.screens.PlayerControlButton
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import com.flex.elefin.screens.PlayerSeekBar
 import com.flex.elefin.screens.AspectModeButton
 import androidx.compose.material.icons.filled.ClosedCaption
@@ -143,6 +144,11 @@ class CinemaPlayerActivity : ComponentActivity() {
     override fun onPause() { resumed = false; if (::controller.isInitialized) controller.pause(); super.onPause() }
     override fun onDestroy() { if (::controller.isInitialized) controller.release(); super.onDestroy() }
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (nextCountdown != null && !controls && menu == null &&
+            event.keyCode in listOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+            if (event.action == KeyEvent.ACTION_UP) startNextEpisode()
+            return true
+        }
         if (canSkipIntro && event.keyCode in listOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER)) {
             if (event.action == KeyEvent.ACTION_UP) controller.introRange?.let { controller.seekTo(it.endMs) }
             return true
@@ -255,7 +261,6 @@ class CinemaPlayerActivity : ComponentActivity() {
         }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             AndroidView(factory = { controller.createView() }, modifier = Modifier.fillMaxSize())
-            if (controller.buffering) Text("Loading…", Modifier.align(Alignment.Center), color = Color.White)
             if (controls && menu == null) {
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .4f))) {
                     Surface(
@@ -328,19 +333,30 @@ class CinemaPlayerActivity : ComponentActivity() {
                         }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(cinemaTime(controller.position), color = Color.White)
-                        Text(cinemaTime(controller.duration), color = Color.White)
+                        Text(cinemaTime(controller.position), color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                        Text(cinemaTime(controller.duration), color = Color.White, style = MaterialTheme.typography.bodyMedium)
                     }
                     Spacer(Modifier.height(8.dp))
-                    androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(4.dp)) {
-                        val fraction = if (controller.duration > 0) (controller.position / controller.duration).coerceIn(0.0, 1.0).toFloat() else 0f
-                        val radius = androidx.compose.ui.geometry.CornerRadius(size.height / 2)
-                        drawRoundRect(Color.White.copy(alpha = .3f), cornerRadius = radius)
-                        if (fraction > 0) drawRoundRect(Color.White, size = androidx.compose.ui.geometry.Size(size.width * fraction, size.height), cornerRadius = radius)
+                    // Match PlayerSeekBar's 24dp layout slot and centered 6dp track.
+                    Box(Modifier.fillMaxWidth().height(24.dp), contentAlignment = Alignment.Center) {
+                        androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(6.dp)) {
+                            val fraction = if (controller.duration > 0) (controller.position / controller.duration).coerceIn(0.0, 1.0).toFloat() else 0f
+                            val radius = androidx.compose.ui.geometry.CornerRadius(size.height / 2)
+                            drawRoundRect(Color.White.copy(alpha = .3f), cornerRadius = radius)
+                            if (fraction > 0) drawRoundRect(Color.White, size = androidx.compose.ui.geometry.Size(size.width * fraction, size.height), cornerRadius = radius)
+                        }
                     }
+                    // Reserve the normal controls' footer so either bar has the same baseline.
+                    if (controller.resolution.isNotEmpty()) {
+                        Text(controller.resolution, color = Color.Transparent,
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(top = 8.dp).padding(horizontal = 8.dp, vertical = 4.dp)
+                                .clearAndSetSemantics { })
+                    }
+                    Spacer(Modifier.height(24.dp + 48.dp))
                 }
             }
-            if (canSkipIntro || canSkipCredits) {
+            if (nextCountdown == null && (canSkipIntro || canSkipCredits)) {
                 Surface(
                     modifier = Modifier.align(Alignment.BottomEnd).padding(end = 32.dp, bottom = if (nextCountdown == null) 48.dp else 250.dp),
                     shape = RoundedCornerShape(24.dp),
@@ -351,15 +367,12 @@ class CinemaPlayerActivity : ComponentActivity() {
                         style = MaterialTheme.typography.titleMedium)
                 }
             }
-            nextCountdown?.let { seconds ->
+            nextCountdown?.takeIf { !controls && menu == null }?.let { seconds ->
                 controller.nextEpisode?.let { next ->
-                    com.flex.elefin.screens.NextUpOverlay(next, seconds) {
+                    com.flex.elefin.screens.NextUpOverlay(next, seconds, actionHint = "Press OK to play next now · Back to cancel") {
                         autoplayCancelled = true
                         nextCountdown = null
                     }
-                    Text("Press Back to cancel autoplay", color = Color.White,
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(end = 56.dp, bottom = 12.dp),
-                        style = MaterialTheme.typography.labelMedium)
                 }
             }
             controller.error?.let { message ->

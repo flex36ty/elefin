@@ -50,7 +50,7 @@ internal fun rememberLibraryDrawerEntries(
             catch (_: Exception) { /* Keep the current library available while offline. */ }
         }
     }
-    return libraries.filter { !it.Name.equals("Collections", true) && (settings.showMusicLibraries || it.CollectionType != "music") }.map { library ->
+    return libraries.filter { it.isVisibleInSideNavigation(settings.showMusicLibraries) }.map { library ->
         val icon = when (library.CollectionType) {
             "movies" -> Icons.Default.Movie
             "tvshows" -> Icons.Default.Tv
@@ -197,4 +197,15 @@ internal fun LibraryBrowseTools(
             LaunchedEffect(expanded) { withFrameNanos { }; optionFocus.requestFocus() }
         }
     }
+}
+
+/** Shared drawer filtering for home and movie/TV library screens. */
+internal fun JellyfinLibrary.isVisibleInSideNavigation(showMusic: Boolean): Boolean {
+    val excludedTypes = setOf("playlists", "playlist", "livetv", "livetvchannel", "livetvchannelgroup")
+    if (CollectionType?.lowercase(java.util.Locale.ROOT) in excludedTypes ||
+        Type?.lowercase(java.util.Locale.ROOT) in excludedTypes) return false
+    if (Name.equals("Playlists", ignoreCase = true) ||
+        Name.equals("Live TV", ignoreCase = true) ||
+        Name.equals("Collections", ignoreCase = true)) return false
+    return showMusic || !CollectionType.equals("music", ignoreCase = true)
 }

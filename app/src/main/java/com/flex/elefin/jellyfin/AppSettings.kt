@@ -322,6 +322,27 @@ class AppSettings(context: Context) {
         get() = prefs.getInt(KEY_EXO_SUBTITLE_TEXT_SIZE, 30).coerceIn(20, 100)
         set(value) = prefs.edit().putInt(KEY_EXO_SUBTITLE_TEXT_SIZE, value.coerceIn(20, 100)).apply()
     
+    // Independent Cinema options; never inherit legacy MPV/ExoPlayer enhancements.
+    var cinemaSharpenUpscale: Boolean
+        get() = prefs.getBoolean("cinema_sharpen_upscale", false)
+        set(value) = prefs.edit().putBoolean("cinema_sharpen_upscale", value).apply()
+
+    var cinemaDeband: Boolean
+        get() = prefs.getBoolean("cinema_deband", false)
+        set(value) = prefs.edit().putBoolean("cinema_deband", value).apply()
+
+    var cinemaHdrLike: Boolean
+        get() = prefs.getBoolean("cinema_hdr_like", false)
+        set(value) = prefs.edit().putBoolean("cinema_hdr_like", value).apply()
+
+    var cinemaHdrLikeStrength: Int
+        get() = prefs.getInt("cinema_hdr_like_strength", 30).coerceIn(0, 100)
+        set(value) = prefs.edit().putInt("cinema_hdr_like_strength", value.coerceIn(0, 100)).apply()
+
+    var cinemaDenoise: Boolean
+        get() = prefs.getBoolean("cinema_denoise", false)
+        set(value) = prefs.edit().putBoolean("cinema_denoise", value).apply()
+
     // Video enhancement settings
     var useGLEnhancements: Boolean
         get() = prefs.getBoolean(KEY_USE_GL_ENHANCEMENTS, false) // Disabled by default

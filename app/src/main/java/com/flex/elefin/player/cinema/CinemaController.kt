@@ -103,9 +103,49 @@ internal class CinemaController(private val context: Context, private val reques
         }
     }
 
+    private fun applyVideoEnhancements(directory: File) {
+        val settings = AppSettings(context)
+        // A fresh MPV instance uses the fast defaults when all three options are off.
+        if (!settings.cinemaSharpenUpscale && !settings.cinemaDeband && !settings.cinemaDenoise) return
+        fun option(name: String, value: String) {
+            runCatching { MPVLib.setPropertyString(name, value) }
+                .onFailure { android.util.Log.w("CinemaPlayer", "Enhancement option unavailable: $name", it) }
+        }
+        if (settings.cinemaSharpenUpscale) {
+            option("scale", "spline36")
+            option("cscale", "spline36")
+            option("sharpen", "0.25")
+        }
+        if (settings.cinemaDeband) {
+            option("deband-iterations", "1")
+            option("deband-threshold", "32")
+            option("deband-range", "16")
+            option("deband-grain", "0")
+            option("deband", "yes")
+        }
+        if (settings.cinemaDenoise) {
+            runCatching {
+                val shader = File(directory, "denoise.glsl")
+                context.assets.open("cinema/denoise.glsl").use { input ->
+                    shader.outputStream().use { input.copyTo(it) }
+                }
+                option("glsl-shaders", shader.absolutePath)
+            }.onFailure { android.util.Log.w("CinemaPlayer", "Denoise shader unavailable", it) }
+        }
+        android.util.Log.i("CinemaPlayer", "Video enhancements requested: sharpen=${settings.cinemaSharpenUpscale}, deband=${settings.cinemaDeband}, denoise=${settings.cinemaDenoise}")
+    }
+
     fun createView(): android.view.View {
         check(view == null && dolby == null)
-        if (request.getBooleanExtra("native_dolby_vision", false)) {
+        // Realtek AVC copy output can tint the padded bottom rows; use Media3's
+        // native decoder surface rather than copying its YUV buffers through MPV.
+        val realtekAvc = videoCodec == "h264" && runCatching {
+            android.media.MediaCodecList(android.media.MediaCodecList.ALL_CODECS).codecInfos.any {
+                !it.isEncoder && it.name.startsWith("OMX.realtek.", ignoreCase = true) &&
+                    it.supportedTypes.any { type -> type.equals("video/avc", ignoreCase = true) }
+            }
+        }.getOrDefault(false)
+        if (request.getBooleanExtra("native_dolby_vision", false) || realtekAvc) {
             val engine = CinemaDolbyPlayer(context, requireNotNull(request.getStringExtra("url")),
                 request.getStringExtra("headers"), (position * 1000).toLong(),
                 onReady = { scope.launch {
@@ -138,17 +178,10 @@ internal class CinemaController(private val context: Context, private val reques
                 view = engine
                 engine.addObserver(observer)
                 MPVLib.setPropertyString("osd-level", "0")
-                // Realtek AVC zero-copy stalled on the TCL; copy output was verified to advance.
-                val realtekAvc = videoCodec == "h264" && runCatching {
-                    android.media.MediaCodecList(android.media.MediaCodecList.ALL_CODECS).codecInfos.any {
-                        !it.isEncoder && it.name.startsWith("OMX.realtek.", ignoreCase = true) &&
-                            it.supportedTypes.any { type -> type.equals("video/avc", ignoreCase = true) }
-                    }
-                }.getOrDefault(false)
-                if (realtekAvc || decoderPrefs.getBoolean(decoderKey, false)) {
+                applyVideoEnhancements(config)
+                if (decoderPrefs.getBoolean(decoderKey, false)) {
                     MPVLib.setPropertyString("hwdec", "mediacodec-copy")
                     copyDecoderAttempted = true
-                    android.util.Log.i("CinemaPlayer", "Starting with compatible hardware copy decoder for $videoCodec")
                 }
 
                 // TV speaker routes can accept an 8-channel AudioTrack yet never advance its clock.
@@ -311,9 +344,27 @@ internal class CinemaController(private val context: Context, private val reques
         }
     }
 
+    private fun applySdrHighlightEnhancement() {
+        val settings = AppSettings(context)
+        if (view == null || !settings.cinemaHdrLike || settings.cinemaHdrLikeStrength == 0) return
+        runCatching {
+            val transfer = MPVLib.getPropertyString("video-params/gamma")
+            val primaries = MPVLib.getPropertyString("video-params/primaries")
+            if (!cinemaSupportsHdrLike(transfer, primaries)) {
+                android.util.Log.i("CinemaPlayer", "SDR enhancement skipped: transfer=$transfer, primaries=$primaries")
+                return
+            }
+            val shader = File(context.filesDir, "cinema-mpv/hdr-like.glsl")
+            shader.writeText(cinemaHdrLikeShader(settings.cinemaHdrLikeStrength))
+            MPVLib.command(arrayOf("change-list", "glsl-shaders", "append", shader.absolutePath))
+            android.util.Log.i("CinemaPlayer", "SDR highlight enhancement requested: ${settings.cinemaHdrLikeStrength}%")
+        }.onFailure { android.util.Log.w("CinemaPlayer", "SDR enhancement unavailable", it) }
+    }
+
     private suspend fun onLoaded() {
         if (loaded) return
         loaded = true
+        applySdrHighlightEnhancement()
         startReporting()
         buffering = false
         view?.seekTo(position)

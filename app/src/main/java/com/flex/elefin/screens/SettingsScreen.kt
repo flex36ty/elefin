@@ -118,6 +118,7 @@ import androidx.core.content.FileProvider
 // Settings categories
 enum class SettingsCategory(val title: String, val icon: ImageVector) {
     PLAYBACK("Playback", Icons.Default.PlayArrow),
+    CINEMA("Elefin Cinema", Icons.Default.Movie),
     VIDEO("Video", Icons.Default.Videocam),
     SUBTITLES("Audio & Subtitles", Icons.Default.Subtitles),
     APPEARANCE("Appearance", Icons.Default.Palette),
@@ -261,6 +262,12 @@ fun SettingsScreen(
     var jellyseerrEnabled by remember { mutableStateOf(settings.jellyseerrEnabled) }
     var jellyseerrSearchEnabled by remember { mutableStateOf(settings.jellyseerrSearchEnabled) }
     
+    var cinemaSharpen by remember { mutableStateOf(settings.cinemaSharpenUpscale) }
+    var cinemaDeband by remember { mutableStateOf(settings.cinemaDeband) }
+    var cinemaHdrLike by remember { mutableStateOf(settings.cinemaHdrLike) }
+    var cinemaHdrStrength by remember { mutableStateOf(settings.cinemaHdrLikeStrength) }
+    var cinemaDenoise by remember { mutableStateOf(settings.cinemaDenoise) }
+
     // MPV Shader Profile
     var mpvShaderProfile by remember { mutableStateOf(settings.mpvShaderProfile) }
 
@@ -279,6 +286,39 @@ fun SettingsScreen(
     @Composable
     fun SettingsOptions(category: SettingsCategory) {
         when (category) {
+            SettingsCategory.CINEMA -> {
+                Text("Video enhancements", style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(16.dp))
+                Text("Applies on the next playback in Elefin Cinema. Unavailable during Dolby Vision or native compatibility playback. Effects may reduce performance on slower devices.",
+                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                SettingToggle(title = "Sharpening / Upscaling",
+                    description = "Mild sharpening and higher-quality scaling for lower-resolution video. Not AI upscaling.",
+                    isEnabled = cinemaSharpen, onToggle = {
+                        cinemaSharpen = !cinemaSharpen; settings.cinemaSharpenUpscale = cinemaSharpen
+                    })
+                SettingToggle(title = "Debanding",
+                    description = "Smooth visible color bands in skies, shadows, and gradients.",
+                    isEnabled = cinemaDeband, onToggle = {
+                        cinemaDeband = !cinemaDeband; settings.cinemaDeband = cinemaDeband
+                    })
+                SettingToggle(title = "HDR-like enhancement",
+                    description = "Brighten highlights and add gentle contrast to SDR video. Stays SDR; not HDR or Dolby Vision. Unknown color formats are left unchanged.",
+                    isEnabled = cinemaHdrLike, onToggle = {
+                        cinemaHdrLike = !cinemaHdrLike; settings.cinemaHdrLike = cinemaHdrLike
+                    })
+                if (cinemaHdrLike) {
+                    SettingSlider(title = "HDR-like strength", description = "$cinemaHdrStrength% · Applies on next playback",
+                        onDecrease = { cinemaHdrStrength = (cinemaHdrStrength - 10).coerceAtLeast(0); settings.cinemaHdrLikeStrength = cinemaHdrStrength },
+                        onIncrease = { cinemaHdrStrength = (cinemaHdrStrength + 10).coerceAtMost(100); settings.cinemaHdrLikeStrength = cinemaHdrStrength },
+                        canDecrease = cinemaHdrStrength > 0, canIncrease = cinemaHdrStrength < 100)
+                }
+                SettingToggle(title = "Denoising",
+                    description = "Light edge-preserving noise reduction. Can soften grain and fine detail.",
+                    isEnabled = cinemaDenoise, onToggle = {
+                        cinemaDenoise = !cinemaDenoise; settings.cinemaDenoise = cinemaDenoise
+                    })
+            }
+
                         SettingsCategory.PLAYBACK -> {
                             SettingCycle(
                                 title = "Video Player",

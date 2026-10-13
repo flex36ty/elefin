@@ -552,7 +552,7 @@ fun JellyfinHomeScreen(
             selectedLibraryId = null
             selectedCollectionId = null
         })
-        libraries.filter { !it.Name.equals("Collections", true) && (settings.showMusicLibraries || it.CollectionType != "music") }.forEach { library ->
+        libraries.filter { it.isVisibleInSideNavigation(settings.showMusicLibraries) }.forEach { library ->
             val icon = when (library.CollectionType) {
                 "movies" -> Icons.Default.Movie
                 "tvshows" -> Icons.Default.Tv

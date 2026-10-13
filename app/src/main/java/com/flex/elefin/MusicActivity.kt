@@ -3,10 +3,12 @@ package com.flex.elefin
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.tv.material3.Surface
@@ -83,12 +85,22 @@ private fun MusicNavHost(
         }
     }
 
+    BackHandler(onBack = onBack)
+
     // Navigate to a new screen
     val navigateTo: (MusicScreen) -> Unit = { screen ->
         navigationStack.add(currentScreen)
         currentScreen = screen
     }
 
+    val screenState = rememberSaveableStateHolder()
+    val screenKey = when (val screen = currentScreen) {
+        MusicScreen.Home -> "home"
+        MusicScreen.NowPlaying -> "player"
+        is MusicScreen.Album -> "album:${screen.albumId}"
+        is MusicScreen.Artist -> "artist:${screen.artistId}"
+    }
+    screenState.SaveableStateProvider(screenKey) {
     when (val screen = currentScreen) {
         is MusicScreen.Home -> {
             MusicHomeScreen(
@@ -134,6 +146,8 @@ private fun MusicNavHost(
             )
         }
     }
+}
+
 }
 
 /**

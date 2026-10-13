@@ -47,7 +47,8 @@ import kotlinx.coroutines.launch
 private const val TAG = "AppleArtistScreen"
 
 // Apple Music signature colors
-private val AppleMusicRed = Color(0xFFFA2D55)
+private val MusicAccent: Color
+    @Composable get() = MaterialTheme.colorScheme.primary
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -125,7 +126,7 @@ fun AppleArtistScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = AppleMusicRed)
+                CircularProgressIndicator(color = MusicAccent)
             }
         } else {
             LazyColumn(
@@ -284,7 +285,7 @@ private fun AppleArtistHeader(
                         modifier = Modifier
                             .size(200.dp)
                             .clip(CircleShape)
-                            .border(4.dp, AppleMusicRed, CircleShape)
+                            .border(4.dp, MusicAccent, CircleShape)
                     )
                 } else {
                     Box(
@@ -292,7 +293,7 @@ private fun AppleArtistHeader(
                             .size(200.dp)
                             .clip(CircleShape)
                             .background(Color(0xFF2C2C2E))
-                            .border(4.dp, AppleMusicRed, CircleShape),
+                            .border(4.dp, MusicAccent, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -341,9 +342,9 @@ private fun AppleArtistHeader(
                         Button(
                             onClick = onPlayAll,
                             colors = ButtonDefaults.colors(
-                                containerColor = AppleMusicRed,
-                                contentColor = Color.White,
-                                focusedContainerColor = AppleMusicRed.copy(alpha = 0.8f)
+                                containerColor = MusicAccent,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                                focusedContainerColor = MusicAccent.copy(alpha = 0.8f)
                             ),
                             shape = ButtonDefaults.shape(RoundedCornerShape(10.dp))
                         ) {
@@ -360,7 +361,7 @@ private fun AppleArtistHeader(
                             onClick = onShuffle,
                             colors = ButtonDefaults.colors(
                                 containerColor = Color.White.copy(alpha = 0.15f),
-                                contentColor = AppleMusicRed,
+                                contentColor = MusicAccent,
                                 focusedContainerColor = Color.White.copy(alpha = 0.25f)
                             ),
                             shape = ButtonDefaults.shape(RoundedCornerShape(10.dp))
@@ -437,7 +438,7 @@ private fun AppleArtistTrackRow(
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
                         contentDescription = null,
-                        tint = AppleMusicRed,
+                        tint = MusicAccent,
                         modifier = Modifier.size(22.dp)
                     )
                 } else {
@@ -522,7 +523,7 @@ private fun AppleAlbumCard(
                 .then(
                     if (isFocused) Modifier.border(
                         3.dp,
-                        AppleMusicRed,
+                        MusicAccent,
                         RoundedCornerShape(12.dp)
                     ) else Modifier
                 ),
