@@ -2,6 +2,22 @@
 
 All notable changes to Elefin will be documented in this file.
 
+## 1.1.34 — 2026-10-12
+
+- Add a dedicated Elefin Cinema settings section with independent sharpening/upscaling, debanding, and light edge-preserving denoising toggles, all off by default.
+- Add an optional SDR-only HDR-like enhancement with adjustable strength. This remains SDR, excludes unknown/HDR color formats, and does not create Dolby Vision.
+- Enhancement changes apply on the next playback; Dolby Vision and native compatibility playback bypass MPV effects.
+- Align the left/right seek-only progress bar with the normal player controls while keeping trickplay previews above it.
+- Remove the Cinema loading text overlay.
+
+## 1.1.33 — 2026-10-12
+
+- Refreshed TV music browsing with a featured album, floating player bar, Elefin accent colors, and lighter artwork backgrounds.
+- Preserve the selected music browsing tab when returning; Back closes the player queue first.
+- Hide Playlists and Live TV from the side navigation on Home and library screens.
+- Allow OK to start the next episode immediately during the autoplay countdown.
+- Fix the purple letterbox strip on affected TCL Realtek H.264 playback by using the native video surface.
+
 ## 1.1.32 — 2026-10-12
 
 ### Added
