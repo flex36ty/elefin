@@ -54,6 +54,12 @@ Cinema uses Jellyfin intro/credits segments when available. Named intro chapters
 
 Press **OK** when the skip prompt is visible. Next-episode autoplay follows the existing settings, and **Back** cancels its countdown. Without a credits marker, the countdown uses the configured final seconds. Movies and episodes with nothing next return to their info screen when playback ends.
 
+Cinema controls include direct **Audio** and **Subtitles** pickers. Automatic audio selection prefers the device language and avoids commentary when a main track is available; saved selections remain available. Embedded image subtitles, including PGSSUB, are selected directly when available.
+
+Under **Settings → Elefin Cinema**, optional refresh-rate matching keeps the output resolution and restores the previous display mode when playback ends. Optional MPV motion smoothing uses temporal interpolation, not AI-generated frames. Both are off by default.
+
+On supported 2019 NVIDIA Shield models, **Prefer Shield AI upscaling** selects native video output. Enable AI-enhanced upscaling in the Shield's own settings; eligibility and activation are controlled by NVIDIA. Native playback bypasses MPV enhancement effects and motion smoothing. Realtek H.264/HEVC compatibility playback also uses the native video surface while retaining Cinema controls.
+
 ## Screenshots
 
 ### Android TV screenshots

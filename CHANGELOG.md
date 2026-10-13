@@ -2,7 +2,14 @@
 
 All notable changes to Elefin will be documented in this file.
 
-## 1.1.34 — 2026-10-12
+## 1.1.34 — 2026-10-13
+
+- Add optional display refresh-rate matching and MPV temporal motion smoothing, both off by default. Refresh matching preserves resolution and restores the previous mode on leaving playback; smoothing is not AI frame generation.
+- Add a Prefer Shield AI upscaling setting on supported 2019 Shield models. It selects native video output; NVIDIA settings and content eligibility determine whether AI enhancement activates. Native playback bypasses MPV effects and motion smoothing.
+- Add an Audio button beside Subtitles in Cinema controls, stabilize native audio track selection, and avoid commentary tracks during automatic language selection when a main track is available.
+- Improve Cinema logo loading with explicit image sizing and authenticated artwork requests.
+- Recognize PGSSUB image subtitles correctly, prefer embedded subtitle tracks over separate downloads, and keep subtitle download failures from blocking playback.
+- Extend the Realtek native video-surface workaround to HEVC to address severe TCL frame dropping. Inception playback with subtitles is confirmed on Shield; the TCL HEVC change still awaits playback confirmation.
 
 - Add a dedicated Elefin Cinema settings section with independent sharpening/upscaling, debanding, and light edge-preserving denoising toggles, all off by default.
 - Add an optional SDR-only HDR-like enhancement with adjustable strength. This remains SDR, excludes unknown/HDR color formats, and does not create Dolby Vision.
