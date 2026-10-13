@@ -331,6 +331,18 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("cinema_deband", false)
         set(value) = prefs.edit().putBoolean("cinema_deband", value).apply()
 
+    var cinemaPreferShieldAi: Boolean
+        get() = prefs.getBoolean("cinema_prefer_shield_ai", false)
+        set(value) = prefs.edit().putBoolean("cinema_prefer_shield_ai", value).apply()
+
+    var cinemaMatchRefreshRate: Boolean
+        get() = prefs.getBoolean("cinema_match_refresh_rate", false)
+        set(value) = prefs.edit().putBoolean("cinema_match_refresh_rate", value).apply()
+
+    var cinemaMotionSmoothing: Boolean
+        get() = prefs.getBoolean("cinema_motion_smoothing", false)
+        set(value) = prefs.edit().putBoolean("cinema_motion_smoothing", value).apply()
+
     var cinemaHdrLike: Boolean
         get() = prefs.getBoolean("cinema_hdr_like", false)
         set(value) = prefs.edit().putBoolean("cinema_hdr_like", value).apply()

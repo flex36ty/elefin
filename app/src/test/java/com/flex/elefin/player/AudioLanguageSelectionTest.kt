@@ -20,4 +20,11 @@ class AudioLanguageSelectionTest {
         assertEquals(2, preferredAudioIndex(tracks, Locale.JAPAN))
         assertNull(preferredAudioIndex(emptyList(), Locale.US))
     }
+    @Test fun avoidsCommentaryEvenWhenFlaggedDefault() {
+        val tracks = listOf(
+            MediaStream(Index=1, Type="Audio", Language="eng", IsDefault=true, Title="Director Commentary"),
+            MediaStream(Index=2, Type="Audio", Language="eng", Title="Main audio"))
+        assertEquals(2, preferredAudioIndex(tracks, Locale.US))
+        assertEquals(1, preferredAudioIndex(tracks.take(1), Locale.US))
+    }
 }

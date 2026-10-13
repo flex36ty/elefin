@@ -126,7 +126,7 @@ object SubtitleDownloader {
                     "vtt", "webvtt" -> "vtt"
                     "ass", "ssa", "substationalpha" -> "ass"
                     "ttml" -> "ttml"
-                    "pgs", "hdmv_pgs_subtitle" -> "sup"
+                    "pgs", "pgssub", "hdmv_pgs_subtitle" -> "sup"
                 else -> when (val pathExtension = stream.Path?.substringAfterLast('.')?.lowercase()) {
                     "webvtt" -> "vtt"
                     "srt", "vtt", "ass", "ssa", "ttml", "sup" -> pathExtension

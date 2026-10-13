@@ -135,17 +135,32 @@ internal class CinemaController(private val context: Context, private val reques
         android.util.Log.i("CinemaPlayer", "Video enhancements requested: sharpen=${settings.cinemaSharpenUpscale}, deband=${settings.cinemaDeband}, denoise=${settings.cinemaDenoise}")
     }
 
+    fun sourceFrameRate(): Double? {
+        if (released) return null
+        return dolby?.player?.videoFormat?.frameRate?.toDouble()?.takeIf { it > 0 }
+            ?: if (view != null && loaded) runCatching { MPVLib.getPropertyDouble("container-fps") }.getOrNull() else null
+    }
+
     fun createView(): android.view.View {
         check(view == null && dolby == null)
-        // Realtek AVC copy output can tint the padded bottom rows; use Media3's
-        // native decoder surface rather than copying its YUV buffers through MPV.
-        val realtekAvc = videoCodec == "h264" && runCatching {
+        // Realtek AVC copy output can tint padded rows; HEVC through MPV can
+        // stall frame output. Keep both on the platform's native video surface.
+        val realtekMime = when (videoCodec) {
+            "h264" -> "video/avc"
+            "hevc", "h265" -> "video/hevc"
+            else -> null
+        }
+        val realtekNative = realtekMime != null && runCatching {
             android.media.MediaCodecList(android.media.MediaCodecList.ALL_CODECS).codecInfos.any {
                 !it.isEncoder && it.name.startsWith("OMX.realtek.", ignoreCase = true) &&
-                    it.supportedTypes.any { type -> type.equals("video/avc", ignoreCase = true) }
+                    it.supportedTypes.any { type -> type.equals(realtekMime, ignoreCase = true) }
             }
         }.getOrDefault(false)
-        if (request.getBooleanExtra("native_dolby_vision", false) || realtekAvc) {
+        val preferShieldAi = AppSettings(context).cinemaPreferShieldAi && supportsShieldAiUpscaling(
+            android.os.Build.MANUFACTURER, android.os.Build.DEVICE)
+        if (preferShieldAi) android.util.Log.i("CinemaPlayer", "Shield AI preference: native surface selected; NVIDIA controls AI activation")
+        if (realtekNative) android.util.Log.i("CinemaPlayer", "Realtek native video surface selected: codec=$videoCodec")
+        if (request.getBooleanExtra("native_dolby_vision", false) || realtekNative || preferShieldAi) {
             val engine = CinemaDolbyPlayer(context, requireNotNull(request.getStringExtra("url")),
                 request.getStringExtra("headers"), (position * 1000).toLong(),
                 onReady = { scope.launch {
@@ -179,6 +194,20 @@ internal class CinemaController(private val context: Context, private val reques
                 engine.addObserver(observer)
                 MPVLib.setPropertyString("osd-level", "0")
                 applyVideoEnhancements(config)
+                if (AppSettings(context).cinemaMotionSmoothing) {
+                    runCatching {
+                        // Configure before loading so the decoder has interpolation buffers.
+                        MPVLib.setPropertyString("hwdec-extra-frames", "8")
+                        MPVLib.setPropertyString("audio-spdif", "")
+                        MPVLib.setPropertyString("video-sync", "display-resample")
+                        MPVLib.setPropertyString("tscale", "oversample")
+                        MPVLib.setPropertyString("interpolation", "yes")
+                    }.onFailure {
+                        runCatching { MPVLib.setPropertyString("interpolation", "no") }
+                        runCatching { MPVLib.setPropertyString("video-sync", "audio") }
+                        android.util.Log.w("CinemaPlayer", "Motion smoothing unavailable", it)
+                    }
+                }
                 if (decoderPrefs.getBoolean(decoderKey, false)) {
                     MPVLib.setPropertyString("hwdec", "mediacodec-copy")
                     copyDecoderAttempted = true
@@ -393,7 +422,7 @@ internal class CinemaController(private val context: Context, private val reques
                 details == null -> null
                 details.Type == "Episode" -> details.SeriesId?.takeIf { it.isNotBlank() }
                     ?: details.Id.takeIf { logoTag != null }
-                logoTag != null -> details.Id
+                details.Type == "Movie" || logoTag != null -> details.Id
                 else -> null
             }
             logoUrl = logoId?.let {
@@ -416,7 +445,12 @@ internal class CinemaController(private val context: Context, private val reques
             ?: com.flex.elefin.player.preferredAudioIndex(source?.MediaStreams.orEmpty()) ?: -1
         tracks.firstOrNull { it.kind == "audio" && it.streamIndex == audioIndex }?.let { select(it, rememberChoice = false) }
         val subtitleFile = request.getStringExtra("subtitle_file")
+        val embeddedSubtitle = tracks.firstOrNull { track ->
+            track.kind == "sub" && track.streamIndex == subtitleIndex &&
+                source?.MediaStreams?.any { it.Type == "Subtitle" && it.Index == subtitleIndex && it.IsExternal != true } == true
+        }
         when {
+            embeddedSubtitle != null -> select(embeddedSubtitle)
             subtitleFile != null -> attachFile(subtitleFile, subtitleIndex)
             subtitleIndex < 0 -> subtitlesOff()
             else -> {
@@ -483,7 +517,8 @@ internal class CinemaController(private val context: Context, private val reques
                     else api?.let { com.flex.elefin.subtitles.clearLocalProviderSubtitle(context, it, itemId) }
                     attachFile(path, stream.Index ?: -1, stream); subtitleIndex = stream.Index ?: -1
                 }
-                else error = "The subtitle could not be loaded. Retry playback or exit."
+                else android.widget.Toast.makeText(context,
+                    "Could not load this subtitle. Try another subtitle track.", android.widget.Toast.LENGTH_LONG).show()
             }
         }
     }

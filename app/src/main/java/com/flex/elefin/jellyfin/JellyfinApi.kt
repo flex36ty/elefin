@@ -1076,7 +1076,7 @@ class JellyfinApiService(
             "vtt", "webvtt" -> "vtt"
             "ass", "ssa", "substationalpha" -> "ass"
             "ttml" -> "ttml"
-            "pgs", "hdmv_pgs_subtitle" -> "sup"
+            "pgs", "pgssub", "hdmv_pgs_subtitle" -> "sup"
             else -> {
                 // Fallback: extract from file path if available
                 val pathExtension = path?.substringAfterLast('.')?.lowercase()

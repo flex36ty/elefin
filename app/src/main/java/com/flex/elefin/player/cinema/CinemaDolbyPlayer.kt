@@ -60,6 +60,8 @@ internal class CinemaDolbyPlayer(context: Context, url: String, headers: String?
         player.playWhenReady = true
     }
     private val choices = mutableMapOf<Int, Pair<Tracks.Group, Int>>()
+    private val choiceIds = mutableMapOf<Pair<TrackGroup, Int>, Int>()
+    private var nextChoiceId = 0
     private var sidecarIndex: Int? = null
     private var sidecarMetadata: MediaStream? = null
     private var ready = false
@@ -82,6 +84,12 @@ internal class CinemaDolbyPlayer(context: Context, url: String, headers: String?
                             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                             .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index)).build()
                         Log.i("CinemaPlayer", "Native downloaded subtitle selected: server index=$sidecarIndex")
+                    }
+                }
+                tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }.forEach { group ->
+                    for (i in 0 until group.length) {
+                        val f = group.getTrackFormat(i)
+                        Log.i("CinemaPlayer", "Native audio id=${f.id} label=${f.label} language=${f.language} codec=${f.sampleMimeType} selected=${group.isTrackSelected(i)} supported=${group.isTrackSupported(i)}")
                     }
                 }
                 onTracks()
@@ -123,11 +131,17 @@ internal class CinemaDolbyPlayer(context: Context, url: String, headers: String?
                     val kind = if (group.type == C.TRACK_TYPE_AUDIO) "audio" else "sub"
                     val format = group.getTrackFormat(i)
                     val external = format.label == SIDECAR_LABEL
-                    val stream = streams.filter { it.Type == (if (kind == "audio") "Audio" else "Subtitle") && it.IsExternal != true }.getOrNull(ordinal)
-                    val id = choices.size
+                    val candidates = streams.filter { it.Type == (if (kind == "audio") "Audio" else "Subtitle") && it.IsExternal != true }
+                    // Media3 may group/reorder tracks by renderer. Prefer the container's title
+                    // over an ordinal so the picker does not label commentary as main audio.
+                    val labelMatches = candidates.filter { candidate ->
+                        !format.label.isNullOrBlank() && (format.label.equals(candidate.Title, true) || format.label.equals(candidate.DisplayTitle, true))
+                    }
+                    val stream = labelMatches.singleOrNull() ?: candidates.getOrNull(ordinal)
+                    val id = choiceIds.getOrPut(group.mediaTrackGroup to i) { nextChoiceId++ }
                     choices[id] = group to i
                     val metadata = if (external) sidecarMetadata ?: streams.firstOrNull { it.Index == sidecarIndex } else stream
-                    add(CinemaTrack(id, kind, cinemaTrackLabel(metadata, if (external) null else format.label,
+                    add(CinemaTrack(id, kind, cinemaTrackLabel(if (kind == "audio" && !format.label.isNullOrBlank()) metadata?.copy(Title = format.label, DisplayTitle = format.label) else metadata, if (external) null else format.label,
                         format.language, if (external) "Downloaded subtitle" else "Track ${ordinal + 1}"),
                         if (external) sidecarIndex else stream?.Index))
                 }
@@ -135,12 +149,15 @@ internal class CinemaDolbyPlayer(context: Context, url: String, headers: String?
         }
     }
     fun selected(kind: String): Int = choices.entries.firstOrNull { (_, choice) ->
-        choice.first.type == (if (kind == "audio") C.TRACK_TYPE_AUDIO else C.TRACK_TYPE_TEXT) && choice.first.isTrackSelected(choice.second)
+        choice.first.type == (if (kind == "audio") C.TRACK_TYPE_AUDIO else C.TRACK_TYPE_TEXT) &&
+            player.currentTracks.groups.any { it.mediaTrackGroup == choice.first.mediaTrackGroup && it.isTrackSelected(choice.second) }
     }?.key ?: -1
     fun select(id: Int) {
         selectSidecar = false
         val (group, index) = choices[id] ?: return
+        Log.i("CinemaPlayer", "Native select type=${group.type} id=$id format=${group.getTrackFormat(index).id} label=${group.getTrackFormat(index).label}")
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(group.type)
             .setTrackTypeDisabled(group.type, false)
             .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index)).build()
     }
@@ -155,7 +172,7 @@ internal class CinemaDolbyPlayer(context: Context, url: String, headers: String?
             "ass", "ssa", "substationalpha" -> MimeTypes.TEXT_SSA
             "vtt", "webvtt" -> MimeTypes.TEXT_VTT
             "ttml" -> MimeTypes.APPLICATION_TTML
-            "pgs", "hdmv_pgs_subtitle", "sup" -> MimeTypes.APPLICATION_PGS
+            "pgs", "pgssub", "hdmv_pgs_subtitle", "sup" -> MimeTypes.APPLICATION_PGS
             else -> MimeTypes.APPLICATION_SUBRIP
         }
         val uri = if (path.startsWith("/")) Uri.fromFile(File(path)) else Uri.parse(path)

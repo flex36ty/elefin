@@ -5,6 +5,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import com.flex.elefin.screens.PlayerSeekBar
 import com.flex.elefin.screens.AspectModeButton
 import androidx.compose.material.icons.filled.ClosedCaption
+import androidx.compose.material.icons.filled.Audiotrack
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -57,6 +58,7 @@ import kotlinx.coroutines.delay
 class CinemaPlayerActivity : ComponentActivity() {
     private lateinit var controller: CinemaController
     private var controls by mutableStateOf(true)
+    private val refreshRate by lazy { CinemaRefreshRate(this) }
     private var seekOverlay by mutableStateOf(false)
     private var lastSeekKeyTime = 0L
     private var menu by mutableStateOf<String?>(null)
@@ -141,7 +143,7 @@ class CinemaPlayerActivity : ComponentActivity() {
         outState.putLong("position_ms", (controller.position * 1000).toLong())
         super.onSaveInstanceState(outState)
     }
-    override fun onPause() { resumed = false; if (::controller.isInitialized) controller.pause(); super.onPause() }
+    override fun onPause() { refreshRate.restore(); resumed = false; if (::controller.isInitialized) controller.pause(); super.onPause() }
     override fun onDestroy() { if (::controller.isInitialized) controller.release(); super.onDestroy() }
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (nextCountdown != null && !controls && menu == null &&
@@ -202,7 +204,9 @@ class CinemaPlayerActivity : ComponentActivity() {
         val logoRequest = remember(controller.logoUrl) {
             controller.logoUrl?.let { url ->
                 ImageRequest.Builder(this@CinemaPlayerActivity).data(url)
-                    .headers(controller.api!!.getImageRequestHeaders()).build()
+                    .headers(controller.api!!.getImageRequestHeaders())
+                    // Load before Image is composed; otherwise the fallback can wait on its size.
+                    .size(960, 300).build()
             }
         }
         val logoPainter = rememberAsyncImagePainter(logoRequest)
@@ -240,6 +244,14 @@ class CinemaPlayerActivity : ComponentActivity() {
         }
         BackHandler {
             when { menu != null && menu != "Settings" -> menu = "Settings"; menu != null -> menu = null; controls -> controls = false; seekOverlay -> seekOverlay = false; else -> finish() }
+        }
+        LaunchedEffect(resumed) {
+            if (resumed && com.flex.elefin.jellyfin.AppSettings(this@CinemaPlayerActivity).cinemaMatchRefreshRate) {
+                while (true) {
+                    refreshRate.match(controller.sourceFrameRate())
+                    delay(1_000)
+                }
+            }
         }
         LaunchedEffect(seekOverlay, interaction, controls, menu) {
             if (controls || menu != null) seekOverlay = false
@@ -315,6 +327,8 @@ class CinemaPlayerActivity : ComponentActivity() {
                             PlayerControlButton(Icons.Default.FastForward, "Forward 15s", { controller.seek(15) })
                             Spacer(Modifier.width(32.dp))
                             AspectModeButton(controller.aspectMode, { controller.cycleAspect() })
+                            Spacer(Modifier.width(32.dp))
+                            PlayerControlButton(Icons.Default.Audiotrack, "Audio", { controller.refreshTracks(); menu = "Audio" })
                             Spacer(Modifier.width(32.dp))
                             PlayerControlButton(Icons.Default.ClosedCaption, "Subtitles", { controller.refreshTracks(); menu = "Subtitles" })
                         }
@@ -397,6 +411,9 @@ class CinemaPlayerActivity : ComponentActivity() {
                     firstEntryFocus = firstEntryFocus.takeIf { subtitles || visibleTracks.isNotEmpty() }) {
                     if (subtitles) item { ListItem(modifier = Modifier.focusRequester(firstEntryFocus), selected = controller.subtitleId == -1,
                         headlineContent = { Text("Off") }, onClick = { controller.subtitlesOff(); menu = null }) }
+                    if (!subtitles && visibleTracks.isEmpty()) item {
+                        Text("No audio tracks available", Modifier.padding(12.dp))
+                    }
                     items(visibleTracks) { track ->
                         ListItem(modifier = if (!subtitles && track == visibleTracks.firstOrNull()) Modifier.focusRequester(firstEntryFocus) else Modifier,
                             selected = track.id == if (subtitles) controller.subtitleId else controller.audioId,

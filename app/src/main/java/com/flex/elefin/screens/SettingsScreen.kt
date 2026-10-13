@@ -264,6 +264,9 @@ fun SettingsScreen(
     
     var cinemaSharpen by remember { mutableStateOf(settings.cinemaSharpenUpscale) }
     var cinemaDeband by remember { mutableStateOf(settings.cinemaDeband) }
+    var cinemaPreferShieldAi by remember { mutableStateOf(settings.cinemaPreferShieldAi) }
+    var cinemaMatchRefresh by remember { mutableStateOf(settings.cinemaMatchRefreshRate) }
+    var cinemaSmoothMotion by remember { mutableStateOf(settings.cinemaMotionSmoothing) }
     var cinemaHdrLike by remember { mutableStateOf(settings.cinemaHdrLike) }
     var cinemaHdrStrength by remember { mutableStateOf(settings.cinemaHdrLikeStrength) }
     var cinemaDenoise by remember { mutableStateOf(settings.cinemaDenoise) }
@@ -287,6 +290,27 @@ fun SettingsScreen(
     fun SettingsOptions(category: SettingsCategory) {
         when (category) {
             SettingsCategory.CINEMA -> {
+                val shieldAiSupported = com.flex.elefin.player.cinema.supportsShieldAiUpscaling(
+                    android.os.Build.MANUFACTURER, android.os.Build.DEVICE)
+                if (shieldAiSupported) {
+                    SettingToggle(title = "Prefer Shield AI upscaling",
+                        description = "Use native playback on the next video. Enable AI-enhanced upscaling in Shield settings and use 4K output. Bypasses Cinema's MPV effects and motion smoothing. AI activation depends on the video; check Shield's upscaling status.",
+                        isEnabled = cinemaPreferShieldAi, onToggle = {
+                            cinemaPreferShieldAi = !cinemaPreferShieldAi
+                            settings.cinemaPreferShieldAi = cinemaPreferShieldAi
+                        })
+                }
+
+                SettingToggle(title = "Match display refresh rate",
+                    description = "Match the video's frame rate without changing resolution. May briefly blank the screen. Restores the display preference when leaving playback.",
+                    isEnabled = cinemaMatchRefresh, onToggle = {
+                        cinemaMatchRefresh = !cinemaMatchRefresh; settings.cinemaMatchRefreshRate = cinemaMatchRefresh
+                    })
+                SettingToggle(title = "Motion smoothing",
+                    description = "MPV temporal interpolation reduces cadence judder; may soften motion and increase GPU load. Not AI frame generation. Uses decoded audio rather than passthrough. Applies on next playback; unavailable with native compatibility playback.",
+                    isEnabled = cinemaSmoothMotion, onToggle = {
+                        cinemaSmoothMotion = !cinemaSmoothMotion; settings.cinemaMotionSmoothing = cinemaSmoothMotion
+                    })
                 Text("Video enhancements", style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(16.dp))
                 Text("Applies on the next playback in Elefin Cinema. Unavailable during Dolby Vision or native compatibility playback. Effects may reduce performance on slower devices.",
