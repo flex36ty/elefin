@@ -524,7 +524,14 @@ fun SeriesDetailsScreen(
                     seasons = seasons,
                     selectedSeasonIndex = selectedSeasonIndex,
                     onSeasonSelected = { index ->
-                        selectedSeasonId = seasons.getOrNull(index)?.Id
+                        val nextSeason = seasons.getOrNull(index)?.Id
+                        if (nextSeason != null && nextSeason != activeSeasonId) {
+                            hasPerformedInitialFocus = true
+                            episodes = emptyList()
+                            focusedEpisode = null
+                            isLoadingEpisodes = true
+                            selectedSeasonId = nextSeason
+                        }
                     },
                     firstSeasonFocusRequester = firstSeasonFocusRequester,
                     onShowSettings = { showSettings = true }
@@ -993,8 +1000,9 @@ fun SeriesBottomContainer(
     val context = LocalContext.current
     val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
     var showResumeDialog by remember { mutableStateOf<JellyfinItem?>(null) }
-    var focusedEpisode by remember { mutableStateOf<JellyfinItem?>(null) }
-    var lastFocusedEpisode by remember { mutableStateOf<JellyfinItem?>(null) } // Track last focused episode for buttons
+    val episodeSeasonKey = seasons.getOrNull(selectedSeasonIndex)?.Id
+    var focusedEpisode by remember(episodeSeasonKey) { mutableStateOf<JellyfinItem?>(null) }
+    var lastFocusedEpisode by remember(episodeSeasonKey) { mutableStateOf<JellyfinItem?>(null) } // Track last focused episode for buttons
     var showLongPressMenu by remember { mutableStateOf<JellyfinItem?>(null) }
     
     
@@ -1002,7 +1010,7 @@ fun SeriesBottomContainer(
     val lastFocusedEpisodeRequester = episodeFocusRequesters ?: remember { mutableMapOf<String, FocusRequester>() }
     
     // LazyListState for episodes row - needed to scroll to target episode before focusing
-    val episodesLazyListState = rememberLazyListState()
+    val episodesLazyListState = remember(episodeSeasonKey) { androidx.compose.foundation.lazy.LazyListState() }
     
     // Track if we've already done the initial focus to prevent refocusing when episodes change
     var hasPerformedInitialFocus by remember { mutableStateOf(false) }
@@ -1083,7 +1091,7 @@ fun SeriesBottomContainer(
                         Log.d("SeriesBottomContainer", "Updated focusedEpisode with refreshed data: PlayedPercentage=${refreshedEpisode.UserData?.PlayedPercentage}")
                     }
                     Log.d("SeriesBottomContainer", "Updated lastFocusedEpisode with refreshed data: PlayedPercentage=${refreshedEpisode.UserData?.PlayedPercentage}")
-                } else if (initialEpisodeId == null) {
+                } else if (initialEpisodeId == null || hasPerformedInitialFocus) {
                     // Season changed (previous focused episode not in new episodes list)
                     val firstEp = episodes.first()
                     lastFocusedEpisode = firstEp
@@ -1091,7 +1099,7 @@ fun SeriesBottomContainer(
                     episodesLazyListState.scrollToItem(0)
                     Log.d("SeriesBottomContainer", "Season changed: reset focus to first episode (${firstEp.Name}) and scrolled to start")
                 }
-            } else if (initialEpisodeId == null) {
+            } else if (initialEpisodeId == null || hasPerformedInitialFocus) {
                 // Initial load
                 val firstEp = episodes.first()
                 lastFocusedEpisode = firstEp
@@ -1150,7 +1158,10 @@ fun SeriesBottomContainer(
                         Tab(
                             selected = index == selectedSeasonIndex,
                             onFocus = { },
-                            onClick = { onSeasonSelected(index) },
+                            onClick = {
+                                if (index != selectedSeasonIndex) hasPerformedInitialFocus = true
+                                onSeasonSelected(index)
+                            },
                             colors = TabDefaults.underlinedIndicatorTabColors(),
                             modifier = Modifier
                                 .then(

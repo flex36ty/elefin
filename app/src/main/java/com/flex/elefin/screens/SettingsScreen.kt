@@ -1714,6 +1714,34 @@ fun SettingsScreen(
                             }
 
                             // Dark Mode
+                            if (isTv && com.flex.elefin.discovery.TvHome.supported(context)) {
+                                var tvHomeEnabled by remember { mutableStateOf(settings.tvHomeRecommendations) }
+                                SettingToggle(
+                                    controlModifier = appearanceControlModifier,
+                                    title = "TV Home Recommendations",
+                                    description = "Show Continue Watching and Recently Added from the active account on your TV home screen. Launcher support varies.",
+                                    isEnabled = tvHomeEnabled,
+                                    onToggle = {
+                                        tvHomeEnabled = !tvHomeEnabled
+                                        settings.tvHomeRecommendations = tvHomeEnabled
+                                        com.flex.elefin.discovery.TvHome.schedule(context)
+                                    }
+                                )
+                                if (tvHomeEnabled) SettingButton(
+                                    title = "Recently Added TV Row",
+                                    description = "Ask your TV launcher to show Elefin's Recently Added channel",
+                                    buttonText = "Add row",
+                                    onClick = { scope.launch {
+                                        try {
+                                            val id = com.flex.elefin.discovery.TvHome.addRecent(context)
+                                            context.startActivity(android.content.Intent(androidx.tvprovider.media.tv.TvContractCompat.ACTION_REQUEST_CHANNEL_BROWSABLE)
+                                                .putExtra(androidx.tvprovider.media.tv.TvContractCompat.EXTRA_CHANNEL_ID, id))
+                                        } catch (e: Exception) {
+                                            android.widget.Toast.makeText(context, "This launcher does not support adding TV rows.", android.widget.Toast.LENGTH_LONG).show()
+                                        }
+                                    } }
+                                )
+                            }
                             SettingToggle(
                                     controlModifier = appearanceControlModifier,
                                 title = "Dark Mode",

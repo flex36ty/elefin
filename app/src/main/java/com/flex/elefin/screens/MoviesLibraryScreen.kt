@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.clip
@@ -371,7 +372,9 @@ fun MoviesLibraryScreen(
     }
     
     // Fetch item details when highlighted item changes (same as home screen)
-    LaunchedEffect(instantHighlightedItem?.Id) {
+    LaunchedEffect(selectedTab, instantHighlightedItem?.Id) {
+        if (selectedTab == "library") return@LaunchedEffect
+        delay(180)
         instantHighlightedItem?.let { item ->
             withContext(Dispatchers.IO) {
                 try {
@@ -1572,6 +1575,10 @@ JellyfinHorizontalCard(
             // Library grid view (same as home screen library view)
             val columns = 6
             val lazyListState = rememberLazyListState()
+            val libraryRows = remember(sortedLibraryItems) { sortedLibraryItems.chunked(columns) }
+            val libraryIndexes = remember(sortedLibraryItems) { sortedLibraryItems.mapIndexed { i, entry -> entry.Id to i }.toMap() }
+            val gridFocus = remember(sortedLibraryItems) { mutableMapOf<String, FocusRequester>() }
+            var gridMove by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
             
             // A-Z Index state - only show when sorted alphabetically AND not in low power mode
             val showAlphabetIndex = sortType == SortType.Alphabetically && !lowPowerMode.value
@@ -1654,7 +1661,7 @@ JellyfinHorizontalCard(
                                 .focusRequester(focusRequester)
                         ) {
                         items(
-                            items = sortedLibraryItems.chunked(columns),
+                            items = libraryRows,
                             key = { rowItems -> rowItems.firstOrNull()?.Id ?: "" },
                             contentType = { "library_row" }
                         ) { rowItems ->
@@ -1671,7 +1678,36 @@ JellyfinHorizontalCard(
                                         Spacer(modifier = Modifier.width(20.dp))
                                     }
                                     Column(
-                                        modifier = Modifier.width(105.dp),
+                                        modifier = Modifier.width(105.dp)
+                                            .focusRequester(gridFocus.getOrPut(item.Id) { FocusRequester() })
+                                            .onPreviewKeyEvent { event ->
+                                                val key = event.nativeKeyEvent
+                                                val direction = when (key.keyCode) {
+                                                    android.view.KeyEvent.KEYCODE_DPAD_UP -> -1
+                                                    android.view.KeyEvent.KEYCODE_DPAD_DOWN -> 1
+                                                    else -> 0
+                                                }
+                                                if (direction == 0) false
+                                                else if (key.action != android.view.KeyEvent.ACTION_DOWN) true
+                                                else if (gridMove?.isActive == true) true
+                                                else {
+                                                    val current = libraryIndexes[item.Id] ?: 0
+                                                    val target = libraryVerticalTarget(current, direction, columns, sortedLibraryItems.size)
+                                                    if (target == null) direction > 0
+                                                    else {
+                                                        gridMove = scope.launch {
+                                                            val targetItem = sortedLibraryItems[target]
+                                                            val targetRow = target / columns
+                                                            if (lazyListState.layoutInfo.visibleItemsInfo.none { it.index == targetRow })
+                                                                lazyListState.scrollToItem(targetRow)
+                                                            repeat(2) { withFrameNanos { } }
+                                                            runCatching { gridFocus[targetItem.Id]?.requestFocus() }
+                                                            delay(100)
+                                                        }
+                                                        true
+                                                    }
+                                                }
+                                            },
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
                                         JellyfinHorizontalCard(

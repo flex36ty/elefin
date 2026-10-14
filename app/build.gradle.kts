@@ -80,6 +80,7 @@ android {
 }
 
 dependencies {
+    implementation("androidx.tvprovider:tvprovider:1.0.0")
     testImplementation("junit:junit:4.13.2")
 
     // -------------------------------------------------------------

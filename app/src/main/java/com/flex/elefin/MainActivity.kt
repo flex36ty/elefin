@@ -26,6 +26,10 @@ import com.flex.elefin.updater.UpdateService
  * Main entry point that loads the Jellyfin home screen.
  */
 class MainActivity : ComponentActivity() {
+    override fun onResume() {
+        super.onResume()
+        com.flex.elefin.discovery.TvHome.schedule(this)
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         

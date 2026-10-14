@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.SharedPreferences
 
 class AppSettings(context: Context) {
+    var tvHomeRecommendations: Boolean
+        get() = prefs.getBoolean("tv_home_recommendations", true)
+        set(value) = prefs.edit().putBoolean("tv_home_recommendations", value).apply()
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     // Capture the session for this settings instance; old screens never adopt a new server's keys.
     private val mediaScope = JellyfinConfig(context).let {

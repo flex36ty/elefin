@@ -326,7 +326,10 @@ class JellyfinApiService(
         com.flex.elefin.subtitles.checkSubtitleResponse(response.status.value)
     }
 
-    suspend fun getContinueWatching(limit: Int = 20): List<JellyfinItem> {
+    /** Release clients owned by short-lived background tasks. */
+    fun close() { client.close() }
+
+    suspend fun getContinueWatching(limit: Int = 20, throwOnError: Boolean = false): List<JellyfinItem> {
         return try {
             val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
             val url = URLBuilder().takeFrom("${base}Users/$userId/Items/Resume").apply {
@@ -351,6 +354,7 @@ class JellyfinApiService(
             android.util.Log.d("JellyfinAPI", "Continue Watching SORTED order: ${sorted.mapIndexed { i, it -> "$i: ${it.Name} (LastPlayed: ${it.UserData?.LastPlayedDate})" }}")
             sorted
         } catch (e: Exception) {
+            if (throwOnError || e is kotlinx.coroutines.CancellationException) throw e
             e.printStackTrace()
             emptyList()
         }
@@ -526,7 +530,7 @@ class JellyfinApiService(
         }
     }
 
-    suspend fun getRecentlyAddedMovies(limit: Int = 20): List<JellyfinItem> {
+    suspend fun getRecentlyAddedMovies(limit: Int = 20, throwOnError: Boolean = false): List<JellyfinItem> {
         return try {
             val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
             val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
@@ -535,7 +539,7 @@ class JellyfinApiService(
                 parameters.append("SortOrder", "Descending")
                 parameters.append("Limit", limit.toString())
                 parameters.append("Recursive", "true")
-                parameters.append("Fields", "ImageTags") // Request ImageTags for image loading
+                parameters.append("Fields", "ImageTags,DateCreated,Overview") // Request ImageTags for image loading
             }.buildString()
             
             val response: ItemsResponse = client.get(url) {
@@ -543,6 +547,7 @@ class JellyfinApiService(
             }.body()
             response.Items
         } catch (e: Exception) {
+            if (throwOnError || e is kotlinx.coroutines.CancellationException) throw e
             e.printStackTrace()
             emptyList()
         }
@@ -639,7 +644,7 @@ class JellyfinApiService(
         }
     }
 
-    suspend fun getRecentlyAddedEpisodes(limit: Int = 20): List<JellyfinItem> {
+    suspend fun getRecentlyAddedEpisodes(limit: Int = 20, throwOnError: Boolean = false): List<JellyfinItem> {
         return try {
             val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
             val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
@@ -649,7 +654,7 @@ class JellyfinApiService(
                 parameters.append("Limit", limit.toString())
                 parameters.append("Recursive", "true")
                 // Request SeriesId, SeriesName, IndexNumber, ParentIndexNumber, ImageTags, and Type fields for episodes
-                parameters.append("Fields", "SeriesId,SeriesName,IndexNumber,ParentIndexNumber,ImageTags,Type")
+                parameters.append("Fields", "SeriesId,SeriesName,IndexNumber,ParentIndexNumber,ImageTags,Type,DateCreated,Overview")
             }.buildString()
             
             val response: ItemsResponse = client.get(url) {
@@ -657,6 +662,7 @@ class JellyfinApiService(
             }.body()
             response.Items
         } catch (e: Exception) {
+            if (throwOnError || e is kotlinx.coroutines.CancellationException) throw e
             e.printStackTrace()
             emptyList()
         }
