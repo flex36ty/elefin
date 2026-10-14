@@ -13,6 +13,9 @@ Elefin is a modern Android TV Jellyfin client built from the ground up using Jet
 - TV music browsing with a featured album, floating Now Playing bar, and lightweight artwork backgrounds
 - Optional Cinema sharpening/upscaling, debanding, denoising, and adjustable SDR-only HDR-like enhancement; all off by default. These are conventional effects, not AI upscaling or Dolby Vision, and are skipped on native compatibility playback.
 
+- Android TV launcher rows for Continue Watching and Recently Added, with controls under Settings → Appearance
+- Browse Library uses bounded row navigation for responsive held-key scrolling
+- Switching seasons resets the episode row to the first episode; returning from playback keeps the current season
 - Plex inspired home screen navigation
 - Multiple saved Jellyfin server logins, with switching under Settings → Accounts or the TV navigation drawer
 - TV side navigation is enabled by default, with server branding, animated focus, and separate library Recommendations/Browse Library tabs; switch to the top navigation in Settings → Appearance
@@ -59,6 +62,12 @@ Cinema controls include direct **Audio** and **Subtitles** pickers. Automatic au
 Under **Settings → Elefin Cinema**, optional refresh-rate matching keeps the output resolution and restores the previous display mode when playback ends. Optional MPV motion smoothing uses temporal interpolation, not AI-generated frames. Both are off by default.
 
 On supported 2019 NVIDIA Shield models, **Prefer Shield AI upscaling** selects native video output. Enable AI-enhanced upscaling in the Shield's own settings; eligibility and activation are controlled by NVIDIA. Native playback bypasses MPV enhancement effects and motion smoothing. Realtek H.264/HEVC compatibility playback also uses the native video surface while retaining Cinema controls.
+
+### TV home-screen rows
+
+On Android TV 8.0 and later, Elefin can publish **Continue Watching** and **Recently Added** to compatible TV launchers. Cards open the movie details or the relevant series episode in Elefin. Under **Settings → Appearance**, use **TV Home Recommendations** to turn publishing off, or **Recently Added TV Row → Add row** to request the additional channel. Launcher support and row visibility vary, especially on Google TV.
+
+Recommendations use the active Jellyfin account, refresh after app activity and periodically in the background (approximately every 30 minutes, subject to Android scheduling), and are cleared when publishing is disabled or the account changes. Launcher artwork is cached locally; server credentials are not included in cards or links.
 
 ## Screenshots
 
