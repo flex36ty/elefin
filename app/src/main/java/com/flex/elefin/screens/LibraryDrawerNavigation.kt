@@ -57,7 +57,7 @@ internal fun rememberLibraryDrawerEntries(
             "music" -> Icons.Default.LibraryMusic
             else -> Icons.Default.VideoLibrary
         }
-        TvDrawerEntry(library.Id, library.Name, icon, library.Id == libraryId) {
+        TvDrawerEntry(library.Id, library.Name, icon, library.Id == libraryId, libraryType = library.CollectionType) {
             if (library.Id != libraryId) {
                 val intent = when (library.CollectionType) {
                     "movies" -> MoviesLibraryActivity.createIntent(context, library.Id, library.Name)

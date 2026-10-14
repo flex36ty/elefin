@@ -329,6 +329,23 @@ class JellyfinApiService(
     /** Release clients owned by short-lived background tasks. */
     fun close() { client.close() }
 
+    suspend fun latestLibraryAddition(libraryId: String, television: Boolean): String? {
+        val url = URLBuilder().takeFrom("${baseUrl.trimEnd('/')}/Users/$userId/Items").apply {
+            parameters.append("ParentId", libraryId)
+            parameters.append("IncludeItemTypes", if (television) "Series,Episode" else "Movie")
+            parameters.append("Recursive", "true")
+            parameters.append("SortBy", "DateCreated")
+            parameters.append("SortOrder", "Descending")
+            parameters.append("Limit", "1")
+            parameters.append("Fields", "DateCreated")
+            parameters.append("EnableImages", "false")
+        }.buildString()
+        val response: ItemsResponse = client.get(url) {
+            header(HttpHeaders.Authorization, jellyfinAuthorization(accessToken, config?.deviceId))
+        }.body()
+        return response.Items.firstOrNull()?.DateCreated
+    }
+
     suspend fun getContinueWatching(limit: Int = 20, throwOnError: Boolean = false): List<JellyfinItem> {
         return try {
             val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"

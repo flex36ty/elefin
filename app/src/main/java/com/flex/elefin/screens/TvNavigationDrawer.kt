@@ -2,6 +2,12 @@ package com.flex.elefin.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import com.flex.elefin.jellyfin.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Brush
@@ -32,6 +38,7 @@ internal data class TvDrawerEntry(
     val icon: ImageVector,
     val selected: Boolean = false,
     val enabled: Boolean = true,
+    val libraryType: String? = null,
     val onClick: () -> Unit
 )
 
@@ -60,6 +67,41 @@ internal fun TvNavigationDrawer(
     }
     val state = rememberDrawerState(DrawerValue.Closed)
     val context = LocalContext.current
+    val account = LibraryNewContent.account(context)
+    val libraryEntries = entries.filter { it.libraryType == "movies" || it.libraryType == "tvshows" }
+    var newLibraries by remember(account) { mutableStateOf(emptySet<String>()) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    val selectedLibraries = libraryEntries.filter { it.selected }.map { it.id }
+    LaunchedEffect(account, selectedLibraries) {
+        if (account != null) selectedLibraries.forEach {
+            LibraryNewContent.opened(context, account, it)
+            newLibraries = newLibraries - it
+        }
+    }
+    LaunchedEffect(account, libraryEntries.map { it.id to it.libraryType }, selectedLibraries, lifecycle) {
+        if (account == null) return@LaunchedEffect
+        LibraryNewContent.baseline(context, account)
+        val config = JellyfinConfig(context)
+        val api = JellyfinApiService(config.serverUrl, config.accessToken, config.userId, config)
+        try {
+            lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                while (true) {
+                    for (entry in libraryEntries) {
+                        if (entry.id in selectedLibraries) continue
+                        try {
+                            val added = libraryAddedMillis(api.latestLibraryAddition(entry.id, entry.libraryType == "tvshows"))
+                            if (LibraryNewContent.account(context) == account) {
+                                newLibraries = if (LibraryNewContent.hasNew(context, account, entry.id, added))
+                                    newLibraries + entry.id else newLibraries - entry.id
+                            }
+                        } catch (e: CancellationException) { throw e }
+                        catch (_: Exception) { /* Keep the previous indicator when offline. */ }
+                    }
+                    delay(60_000)
+                }
+            }
+        } finally { api.close() }
+    }
     val settings = remember(context) { AppSettings(context) }
     val focusHighlight = remember { DrawerFocusHighlight() }
     val contentFocus = remember { FocusRequester() }
@@ -111,7 +153,13 @@ internal fun TvNavigationDrawer(
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     entries.forEach { entry ->
                         key(entry.id) {
-                            CompactDrawerItem(entry, expanded, Modifier.drawerFocusTarget(focusHighlight, entry.id).then(if (entry.selected && entry.enabled) Modifier.focusRequester(selectedFocus) else Modifier)) { close(); entry.onClick() }
+                            CompactDrawerItem(entry, expanded, Modifier.drawerFocusTarget(focusHighlight, entry.id).then(if (entry.selected && entry.enabled) Modifier.focusRequester(selectedFocus) else Modifier), entry.id in newLibraries) {
+                                if (account != null && entry.libraryType in listOf("movies", "tvshows")) {
+                                    LibraryNewContent.opened(context, account, entry.id)
+                                    newLibraries = newLibraries - entry.id
+                                }
+                                close(); entry.onClick()
+                            }
                         }
                     }
                 }
@@ -131,7 +179,7 @@ internal fun TvNavigationDrawer(
 
 /** Small glyphs inside full-size focus targets keep remote navigation comfortable. */
 @Composable
-private fun CompactDrawerItem(entry: TvDrawerEntry, expanded: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun CompactDrawerItem(entry: TvDrawerEntry, expanded: Boolean, modifier: Modifier = Modifier, isNew: Boolean = false, onClick: () -> Unit) {
     Surface(
         selected = entry.selected,
         enabled = entry.enabled,
@@ -151,10 +199,18 @@ private fun CompactDrawerItem(entry: TvDrawerEntry, expanded: Boolean, modifier:
         )
     ) {
         Row(Modifier.fillMaxSize().padding(horizontal = 13.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(entry.icon, contentDescription = entry.title, modifier = Modifier.size(18.dp))
+            Box(Modifier.size(18.dp)) {
+                Icon(entry.icon, contentDescription = if (isNew) "${entry.title}, new content" else entry.title, modifier = Modifier.size(18.dp))
+                if (isNew && !expanded) Box(Modifier.align(Alignment.TopEnd).offset(x = 5.dp, y = (-4).dp).size(6.dp).background(Color(0xFFF0B5A6), CircleShape))
+            }
             if (expanded) {
                 Spacer(Modifier.width(14.dp))
-                Text(entry.title, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(entry.title, modifier = Modifier.weight(1f), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (isNew) {
+                    Spacer(Modifier.width(6.dp))
+                    Text("NEW", color = Color(0xFF512E29), fontSize = 9.sp,
+                        modifier = Modifier.background(Color(0xFFF0B5A6), RoundedCornerShape(50)).padding(horizontal = 6.dp, vertical = 2.dp))
+                }
             }
         }
     }

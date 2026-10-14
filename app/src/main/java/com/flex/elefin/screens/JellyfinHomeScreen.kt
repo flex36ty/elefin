@@ -559,7 +559,7 @@ fun JellyfinHomeScreen(
                 "music" -> Icons.Default.LibraryMusic
                 else -> Icons.Default.VideoLibrary
             }
-            add(TvDrawerEntry(library.Id, library.Name, icon, selectedLibraryId == library.Id) {
+            add(TvDrawerEntry(library.Id, library.Name, icon, selectedLibraryId == library.Id, libraryType = library.CollectionType) {
                 when (library.CollectionType) {
                     "movies" -> onMoviesLibraryClick(library.Id, library.Name)
                     "tvshows" -> onTvShowsLibraryClick(library.Id, library.Name)
