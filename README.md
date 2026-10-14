@@ -1,6 +1,6 @@
 # Elefin
 
-Current version: **1.1.34**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current version: **1.1.35**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 An Android TV client for Jellyfin built with Jetpack Compose. This is not a fork of the Jellyfin Android TV. Big credits to them for everything nonetheless.
 

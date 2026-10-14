@@ -2,8 +2,9 @@
 
 All notable changes to Elefin will be documented in this file.
 
-## Unreleased
+## 1.1.35 — 2026-10-14
 
+- Add NEW badges to movie and TV libraries in the navigation drawer when content has been added since the previous Elefin session, with a small dot when collapsed. Opening a library clears its badge; tracking is separate for each server and account, and the first session establishes a baseline.
 - Add optional Android TV launcher channels for Continue Watching and Recently Added, with account-scoped links, local artwork, background refresh, and Appearance settings.
 - Reset the episode row to the first episode when manually switching seasons, while preserving explicit initial episode navigation and same-season playback return.
 - Bound Browse Library vertical focus movement to the adjacent row and remove unused per-card detail requests during grid navigation, addressing the TCL input timeout during held-key scrolling. Held-key scrolling and season-switch behavior verified on TCL.
