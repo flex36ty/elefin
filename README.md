@@ -2,6 +2,8 @@
 
 Current version: **1.1.35**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
+Upcoming **1.1.36 (unreleased)** adds NEW library badges for recently added content.
+
 An Android TV client for Jellyfin built with Jetpack Compose. This is not a fork of the Jellyfin Android TV. Big credits to them for everything nonetheless.
 
 ## Description
