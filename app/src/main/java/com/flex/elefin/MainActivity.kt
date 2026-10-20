@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.core.content.pm.PackageInfoCompat
 import androidx.tv.material3.Surface
 import com.flex.elefin.jellyfin.JellyfinItem
 import com.flex.elefin.jellyfin.AppSettings
@@ -44,7 +45,7 @@ class MainActivity : ComponentActivity() {
         
         // Get version code from package manager
         val versionCode = try {
-            packageManager.getPackageInfo(packageName, 0).longVersionCode.toInt()
+            PackageInfoCompat.getLongVersionCode(packageManager.getPackageInfo(packageName, 0)).toInt()
         } catch (e: Exception) {
             android.util.Log.e("MainActivity", "Error getting version code", e)
             1 // Fallback to 1

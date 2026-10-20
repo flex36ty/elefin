@@ -43,6 +43,7 @@ import com.flex.elefin.music.model.Track
 import com.flex.elefin.music.player.AudioPlayerService
 import com.flex.elefin.music.player.PlayerConnection
 import kotlinx.coroutines.launch
+import androidx.core.content.ContextCompat
 
 private const val TAG = "AppleArtistScreen"
 
@@ -586,7 +587,7 @@ private fun formatDuration(durationMs: Long): String {
 
 private fun startPlayback(context: Context, tracks: List<Track>, startIndex: Int) {
     val intent = Intent(context, AudioPlayerService::class.java)
-    context.startForegroundService(intent)
+    ContextCompat.startForegroundService(context, intent)
     PlayerConnection.connect(context)
     PlayerConnection.playTracks(tracks, startIndex)
 }
