@@ -16,8 +16,8 @@ android {
         targetSdk = 36
 
         // Version code: major * 10000 + minor * 100 + patch
-        versionCode = 10126
-        versionName = "1.1.26"
+        versionCode = 10136
+        versionName = "1.1.36"
 
         ndk {
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
@@ -25,12 +25,26 @@ android {
     }
 
     buildTypes {
+        create("eleginDebug") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            matchingFallbacks += listOf("debug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        // Production runtime behavior for TV performance testing, signed to update
+        // existing debug installations without wiping their server/settings data.
+        create("performance") {
+            initWith(getByName("release"))
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
         }
     }
 
@@ -66,6 +80,8 @@ android {
 }
 
 dependencies {
+    implementation("androidx.tvprovider:tvprovider:1.0.0")
+    testImplementation("junit:junit:4.13.2")
 
     // -------------------------------------------------------------
     // AndroidX Core + Leanback

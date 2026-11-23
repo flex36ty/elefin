@@ -104,6 +104,7 @@ public class YoutubeStreamExtractor extends StreamExtractor {
     @Nullable
     private static PoTokenProvider poTokenProvider;
     private static boolean fetchIosClient;
+    private static boolean fetchVisionosClient;
 
     private JsonObject playerResponse;
     private JsonObject nextResponse;
@@ -848,7 +849,7 @@ public class YoutubeStreamExtractor extends StreamExtractor {
 
         fetchAndroidClient(localization, contentCountry, videoId, androidPoTokenResult);
 
-        if (fetchIosClient) {
+        if (fetchIosClient || fetchVisionosClient) {
             final PoTokenResult iosPoTokenResult = noPoTokenProviderSet ? null
                     : poTokenProviderInstance.getIosClientPoToken(videoId);
             fetchIosClient(localization, contentCountry, videoId, iosPoTokenResult);
@@ -1057,8 +1058,9 @@ public class YoutubeStreamExtractor extends StreamExtractor {
         try {
             iosCpn = generateContentPlaybackNonce();
 
-            final JsonObject iosPlayerResponse = YoutubeStreamHelper.getIosPlayerResponse(
-                    contentCountry, localization, videoId, iosCpn, iosPoTokenResult);
+            final JsonObject iosPlayerResponse = fetchVisionosClient
+                    ? YoutubeStreamHelper.getVisionosPlayerResponse(contentCountry, localization, videoId, iosCpn)
+                    : YoutubeStreamHelper.getIosPlayerResponse(contentCountry, localization, videoId, iosCpn, iosPoTokenResult);
 
             if (!isPlayerResponseNotValid(iosPlayerResponse, videoId)) {
                 iosStreamingData = iosPlayerResponse.getObject(STREAMING_DATA);
@@ -1758,5 +1760,9 @@ public class YoutubeStreamExtractor extends StreamExtractor {
     @SuppressWarnings("unused")
     public static void setFetchIosClient(final boolean fetchIosClient) {
         YoutubeStreamExtractor.fetchIosClient = fetchIosClient;
+    }
+
+    public static void setFetchVisionosClient(final boolean enabled) {
+        fetchVisionosClient = enabled;
     }
 }

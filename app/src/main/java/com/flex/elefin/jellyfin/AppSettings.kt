@@ -4,11 +4,43 @@ import android.content.Context
 import android.content.SharedPreferences
 
 class AppSettings(context: Context) {
+    var tvHomeRecommendations: Boolean
+        get() = prefs.getBoolean("tv_home_recommendations", true)
+        set(value) = prefs.edit().putBoolean("tv_home_recommendations", value).apply()
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    // Capture the session for this settings instance; old screens never adopt a new server's keys.
+    private val mediaScope = JellyfinConfig(context).let {
+        if (it.isConfigured()) serverAccountId(it.serverUrl, it.userId) else "unconfigured"
+    }
+    init {
+        if (mediaScope != "unconfigured" && !prefs.getBoolean("media_scope_migrated", false)) {
+            val edit = prefs.edit()
+            for ((key, value) in prefs.all) {
+                if (value is Int && (key.startsWith("audio_") || key.startsWith("subtitle_"))) {
+                    edit.putInt("media:$mediaScope:$key", value).remove(key)
+                }
+            }
+            edit.putBoolean("media_scope_migrated", true).apply()
+        }
+    }
+
+
+    var modalNavigationDrawerEnabled: Boolean
+        get() = prefs.getBoolean("modal_navigation_drawer", true)
+        set(value) = prefs.edit().putBoolean("modal_navigation_drawer", value).apply()
+
+    fun observeModalNavigationDrawer(onChanged: (Boolean) -> Unit): () -> Unit {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "modal_navigation_drawer") onChanged(modalNavigationDrawerEnabled)
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        return { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
 
     companion object {
         private const val PREFS_NAME = "app_settings"
         private const val KEY_MPV_ENABLED = "mpv_enabled"
+        private const val KEY_PLAYBACK_PLAYER = "playback_player"
         private const val KEY_DEBUG_OUTLINES = "debug_outlines"
         private const val KEY_PRELOAD_LIBRARY_IMAGES = "preload_library_images"
         private const val KEY_CACHE_LIBRARY_IMAGES = "cache_library_images"
@@ -102,11 +134,22 @@ class AppSettings(context: Context) {
         private const val KEY_ROW_CARD_COUNT = "row_card_count"
         private const val KEY_NAVIGATION_SOUNDS_ENABLED = "navigation_sounds_enabled"
         private const val KEY_THEME_COLOR_HEX = "theme_color_hex"
+        private const val KEY_SHOW_MUSIC_LIBRARIES = "show_music_libraries"
     }
 
     var isMpvEnabled: Boolean
-        get() = prefs.getBoolean(KEY_MPV_ENABLED, false) // Disabled by default (ExoPlayer is default)
-        set(value) = prefs.edit().putBoolean(KEY_MPV_ENABLED, value).apply()
+        get() = playbackPlayer == PlaybackPlayer.MPV
+        set(value) { playbackPlayer = if (value) PlaybackPlayer.MPV else PlaybackPlayer.EXOPLAYER }
+
+    var playbackPlayer: PlaybackPlayer
+        get() = PlaybackPlayer.fromPreference(
+            prefs.getString(KEY_PLAYBACK_PLAYER, null),
+            prefs.getBoolean(KEY_MPV_ENABLED, false)
+        )
+        set(value) = prefs.edit()
+            .putString(KEY_PLAYBACK_PLAYER, value.name)
+            .putBoolean(KEY_MPV_ENABLED, value == PlaybackPlayer.MPV)
+            .apply()
 
     var showDebugOutlines: Boolean
         get() = prefs.getBoolean(KEY_DEBUG_OUTLINES, false) // Disabled by default
@@ -165,16 +208,16 @@ class AppSettings(context: Context) {
     
     // Subtitle preferences per episode/item
     fun getSubtitlePreference(itemId: String): Int? {
-        val index = prefs.getInt("subtitle_$itemId", -1)
+        val index = prefs.getInt("media:$mediaScope:subtitle_$itemId", -1)
         return if (index >= 0) index else null
     }
     
     fun setSubtitlePreference(itemId: String, subtitleIndex: Int?) {
         prefs.edit().apply {
             if (subtitleIndex != null) {
-                putInt("subtitle_$itemId", subtitleIndex)
+                putInt("media:$mediaScope:subtitle_$itemId", subtitleIndex)
             } else {
-                remove("subtitle_$itemId")
+                remove("media:$mediaScope:subtitle_$itemId")
             }
             apply()
         }
@@ -182,16 +225,16 @@ class AppSettings(context: Context) {
     
     // Audio track preferences per episode/item
     fun getAudioPreference(itemId: String): Int? {
-        val index = prefs.getInt("audio_$itemId", -1)
+        val index = prefs.getInt("media:$mediaScope:audio_$itemId", -1)
         return if (index >= 0) index else null
     }
     
     fun setAudioPreference(itemId: String, audioIndex: Int?) {
         prefs.edit().apply {
             if (audioIndex != null) {
-                putInt("audio_$itemId", audioIndex)
+                putInt("media:$mediaScope:audio_$itemId", audioIndex)
             } else {
-                remove("audio_$itemId")
+                remove("media:$mediaScope:audio_$itemId")
             }
             apply()
         }
@@ -282,6 +325,43 @@ class AppSettings(context: Context) {
         get() = prefs.getInt(KEY_EXO_SUBTITLE_TEXT_SIZE, 30).coerceIn(20, 100)
         set(value) = prefs.edit().putInt(KEY_EXO_SUBTITLE_TEXT_SIZE, value.coerceIn(20, 100)).apply()
     
+    // Independent Cinema options; never inherit legacy MPV/ExoPlayer enhancements.
+    var cinemaSubtitleTimingControls: Boolean
+        get() = prefs.getBoolean("cinema_subtitle_timing_controls", false)
+        set(value) = prefs.edit().putBoolean("cinema_subtitle_timing_controls", value).apply()
+
+    var cinemaSharpenUpscale: Boolean
+        get() = prefs.getBoolean("cinema_sharpen_upscale", false)
+        set(value) = prefs.edit().putBoolean("cinema_sharpen_upscale", value).apply()
+
+    var cinemaDeband: Boolean
+        get() = prefs.getBoolean("cinema_deband", false)
+        set(value) = prefs.edit().putBoolean("cinema_deband", value).apply()
+
+    var cinemaPreferShieldAi: Boolean
+        get() = prefs.getBoolean("cinema_prefer_shield_ai", false)
+        set(value) = prefs.edit().putBoolean("cinema_prefer_shield_ai", value).apply()
+
+    var cinemaMatchRefreshRate: Boolean
+        get() = prefs.getBoolean("cinema_match_refresh_rate", false)
+        set(value) = prefs.edit().putBoolean("cinema_match_refresh_rate", value).apply()
+
+    var cinemaMotionSmoothing: Boolean
+        get() = prefs.getBoolean("cinema_motion_smoothing", false)
+        set(value) = prefs.edit().putBoolean("cinema_motion_smoothing", value).apply()
+
+    var cinemaHdrLike: Boolean
+        get() = prefs.getBoolean("cinema_hdr_like", false)
+        set(value) = prefs.edit().putBoolean("cinema_hdr_like", value).apply()
+
+    var cinemaHdrLikeStrength: Int
+        get() = prefs.getInt("cinema_hdr_like_strength", 30).coerceIn(0, 100)
+        set(value) = prefs.edit().putInt("cinema_hdr_like_strength", value.coerceIn(0, 100)).apply()
+
+    var cinemaDenoise: Boolean
+        get() = prefs.getBoolean("cinema_denoise", false)
+        set(value) = prefs.edit().putBoolean("cinema_denoise", value).apply()
+
     // Video enhancement settings
     var useGLEnhancements: Boolean
         get() = prefs.getBoolean(KEY_USE_GL_ENHANCEMENTS, false) // Disabled by default
@@ -524,5 +604,9 @@ class AppSettings(context: Context) {
     var themeColorHex: String
         get() = prefs.getString(KEY_THEME_COLOR_HEX, "#FFFFFF") ?: "#FFFFFF"
         set(value) = prefs.edit().putString(KEY_THEME_COLOR_HEX, value).apply()
-}
 
+    // Whether music libraries are shown in the mobile bottom nav and content tabs (default: true)
+    var showMusicLibraries: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_MUSIC_LIBRARIES, false) // Disabled by default
+        set(value) = prefs.edit().putBoolean(KEY_SHOW_MUSIC_LIBRARIES, value).apply()
+}

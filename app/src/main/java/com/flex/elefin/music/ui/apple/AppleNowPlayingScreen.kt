@@ -1,6 +1,7 @@
 package com.flex.elefin.music.ui.apple
 
 import androidx.compose.animation.core.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -37,8 +38,8 @@ import com.flex.elefin.music.player.PlayerConnection
 import kotlinx.coroutines.delay
 
 // Apple Music signature red/pink color
-private val AppleMusicRed = Color(0xFFFA2D55)
-private val AppleMusicPink = Color(0xFFFC3C6C)
+private val MusicAccent: Color
+    @Composable get() = MaterialTheme.colorScheme.primary
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -61,12 +62,14 @@ fun AppleNowPlayingScreen(
     LaunchedEffect(isPlaying) {
         while (isPlaying) {
             PlayerConnection.updatePosition()
-            delay(500)
+            delay(1000)
         }
     }
 
     // View state
     var showQueue by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = showQueue) { showQueue = false }
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Blurred background
@@ -304,7 +307,7 @@ private fun AppleMainNowPlayingView(
                 Text(
                     text = track.artist,
                     style = MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp),
-                    color = AppleMusicRed,
+                    color = MusicAccent,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                 )
@@ -343,7 +346,7 @@ private fun AppleMainNowPlayingView(
                     },
                     colors = SliderDefaults.colors(
                         thumbColor = Color.White,
-                        activeTrackColor = AppleMusicRed,
+                        activeTrackColor = MusicAccent,
                         inactiveTrackColor = Color.White.copy(alpha = 0.3f)
                     ),
                     modifier = Modifier.fillMaxWidth()
@@ -381,7 +384,7 @@ private fun AppleMainNowPlayingView(
                     Icon(
                         imageVector = Icons.Default.Shuffle,
                         contentDescription = "Shuffle",
-                        tint = if (shuffleEnabled) AppleMusicRed else Color(0xFF8E8E93),
+                        tint = if (shuffleEnabled) MusicAccent else Color(0xFF8E8E93),
                         modifier = Modifier.size(26.dp)
                     )
                 }
@@ -406,8 +409,8 @@ private fun AppleMainNowPlayingView(
                     colors = ButtonDefaults.colors(
                         containerColor = Color.White,
                         contentColor = Color.Black,
-                        focusedContainerColor = AppleMusicRed,
-                        focusedContentColor = Color.White
+                        focusedContainerColor = MusicAccent,
+                        focusedContentColor = MaterialTheme.colorScheme.onPrimary
                     ),
                     shape = ButtonDefaults.shape(CircleShape)
                 ) {
@@ -444,7 +447,7 @@ private fun AppleMainNowPlayingView(
                         contentDescription = "Repeat",
                         tint = when (repeatMode) {
                             AudioQueueManager.RepeatMode.OFF -> Color(0xFF8E8E93)
-                            else -> AppleMusicRed
+                            else -> MusicAccent
                         },
                         modifier = Modifier.size(26.dp)
                     )
@@ -558,7 +561,7 @@ private fun AppleQueueTrackRow(
     var isFocused by remember { mutableStateOf(false) }
 
     val backgroundColor = when {
-        isCurrentTrack -> AppleMusicRed.copy(alpha = 0.2f)
+        isCurrentTrack -> MusicAccent.copy(alpha = 0.2f)
         else -> Color.Transparent
     }
 
@@ -571,7 +574,7 @@ private fun AppleQueueTrackRow(
         colors = ClickableSurfaceDefaults.colors(
             containerColor = backgroundColor,
             focusedContainerColor = if (isCurrentTrack) 
-                AppleMusicRed.copy(alpha = 0.3f) 
+                MusicAccent.copy(alpha = 0.3f)
             else 
                 Color.White.copy(alpha = 0.1f)
         )
@@ -590,7 +593,7 @@ private fun AppleQueueTrackRow(
                     Icon(
                         imageVector = Icons.Default.GraphicEq,
                         contentDescription = "Playing",
-                        tint = AppleMusicRed,
+                        tint = MusicAccent,
                         modifier = Modifier.size(22.dp)
                     )
                 } else {
@@ -620,7 +623,7 @@ private fun AppleQueueTrackRow(
                 Text(
                     text = track.name,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = if (isCurrentTrack) AppleMusicRed else Color.White,
+                    color = if (isCurrentTrack) MusicAccent else Color.White,
                     fontWeight = if (isCurrentTrack) FontWeight.SemiBold else FontWeight.Normal,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

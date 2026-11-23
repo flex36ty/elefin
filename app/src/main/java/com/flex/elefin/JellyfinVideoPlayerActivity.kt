@@ -19,6 +19,8 @@ import com.flex.elefin.jellyfin.JellyfinConfig
 import com.flex.elefin.jellyfin.JellyfinItem
 import com.flex.elefin.jellyfin.AppSettings
 import com.flex.elefin.player.mpv.MpvTvPlayerActivity
+import com.flex.elefin.player.cinema.CinemaPlayerActivity
+import com.flex.elefin.jellyfin.PlaybackPlayer
 import com.flex.elefin.player.mpv.MpvUrlBuilder
 import com.flex.elefin.screens.JellyfinVideoPlayerScreen
 import `is`.xyz.mpv.MPVLib
@@ -134,17 +136,17 @@ class JellyfinVideoPlayerActivity : ComponentActivity() {
             return
         }
 
-        // Check if MPV is enabled in settings
-        if (settings.isMpvEnabled) {
+        val playbackPlayer = settings.playbackPlayer
+        if (playbackPlayer != PlaybackPlayer.EXOPLAYER) {
             val serverUrl = config.serverUrl.removeSuffix("/")
             val accessToken = config.accessToken ?: ""
             
-            android.util.Log.d("VideoPlayer", "MPV player enabled - launching embedded MpvTvPlayerActivity")
+            android.util.Log.d("VideoPlayer", "Launching ${playbackPlayer.label}")
             
             lifecycleScope.launch {
                 var finalUrl: String
                 var extraSubtitleUrl: String? = null
-                val headers = "X-Emby-Token: $accessToken" // Basic header needed
+                val headers = "Authorization: ${com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken)}" // Basic header needed
 
                 // Fetch PlaybackInfo to check for transcoding needs and subtitle details
                 val playbackInfo = apiService.getPlaybackInfo(
@@ -188,7 +190,7 @@ class JellyfinVideoPlayerActivity : ComponentActivity() {
                              // Use standard extraction URL which MPV can stream
                              extraSubtitleUrl = apiService.buildJellyfinSubtitleUrl(
                                  itemId = itemId,
-                                 mediaSourceId = itemId,
+                                 mediaSourceId = mediaSource?.Id ?: itemId,
                                  streamIndex = subtitleStreamIndex,
                                  isExternal = subStream.IsExternal == true,
                                  codec = subStream.Codec,
@@ -203,16 +205,28 @@ class JellyfinVideoPlayerActivity : ComponentActivity() {
                 
                 // Prioritize local cached subtitle (if any), otherwise use remote soft-sub URL
                 val cachedSubtitlePath = subtitleStreamIndex?.let { streamIndex ->
-                    com.flex.elefin.player.SubtitleDownloader.getCachedSubtitle(itemId, streamIndex)
+                    com.flex.elefin.player.SubtitleDownloader.getCachedSubtitle(
+                        config.serverUrl, itemId, mediaSource?.Id ?: itemId, streamIndex
+                    )
                 }
                 
-                // Final subtitle source: Cached Local > Remote Soft Sub > None
-                val subtitleSource = cachedSubtitlePath ?: extraSubtitleUrl
+                // A chosen download takes priority over the server default subtitle.
+                val selectedLocalSubtitle = com.flex.elefin.subtitles.selectedLocalProviderSubtitle(this@JellyfinVideoPlayerActivity, apiService, itemId)
+                val subtitleSource = selectedLocalSubtitle ?: cachedSubtitlePath ?: extraSubtitleUrl
                 if (subtitleSource != null) {
                     android.util.Log.d("VideoPlayer", "Using Subtitle Source: $subtitleSource")
                 }
                 
-                val intent = MpvTvPlayerActivity.createIntent(
+                val intent = if (playbackPlayer == PlaybackPlayer.CINEMA) {
+                    CinemaPlayerActivity.createIntent(
+                        context = this@JellyfinVideoPlayerActivity,
+                        url = finalUrl,
+                        headers = headers,
+                        title = itemName,
+                        itemId = itemId,
+                        resumePositionMs = resumePositionMs
+                    )
+                } else MpvTvPlayerActivity.createIntent(
                     context = this@JellyfinVideoPlayerActivity,
                     url = finalUrl,
                     headers = headers,
@@ -221,9 +235,18 @@ class JellyfinVideoPlayerActivity : ComponentActivity() {
                     resumePositionMs = resumePositionMs
                 )
                 
+                if (playbackPlayer == PlaybackPlayer.CINEMA) {
+                    intent.putExtra("native_dolby_vision", !(enforceTranscoding && mediaSource?.TranscodingUrl != null) &&
+                        com.flex.elefin.player.cinema.requiresNativeDolbyVision(videoStream))
+                }
+
+                val preferredAudio = audioStreamIndex ?: settings.getAudioPreference(itemId)
+                    ?: com.flex.elefin.player.preferredAudioIndex(mediaSource?.MediaStreams.orEmpty())
+                intent.putExtra("video_codec", videoCodec)
                 // Pass selected streams
-                subtitleStreamIndex?.let { intent.putExtra("subtitle_stream_index", it) }
-                audioStreamIndex?.let { intent.putExtra("audio_stream_index", it) }
+                if (selectedLocalSubtitle != null) intent.putExtra("subtitle_stream_index", -1)
+                else subtitleStreamIndex?.let { intent.putExtra("subtitle_stream_index", it) }
+                preferredAudio?.let { intent.putExtra("audio_stream_index", it) }
                 
                 // Pass the subtitle file/URL
                 if (subtitleSource != null) {

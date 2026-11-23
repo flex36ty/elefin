@@ -44,8 +44,7 @@ class ThemeLoader(
                 android.util.Log.d("ThemeLoader", "Fetching CSS from: $cssUrl")
                 
                 val cssResponse: HttpResponse = client.get(cssUrl) {
-                    header(HttpHeaders.Authorization, "MediaBrowser Token=\"$accessToken\"")
-                    header("X-Emby-Authorization", "MediaBrowser Client=\"Elefin\", Device=\"Android TV\", DeviceId=\"\", Version=\"${BuildConfig.VERSION_NAME}\"")
+                    header(HttpHeaders.Authorization, com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
                 }
                 
                 val cssStatus = cssResponse.status

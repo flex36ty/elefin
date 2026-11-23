@@ -1,9 +1,24 @@
 package com.flex.elefin.screens
 
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Collections
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.VideoLibrary
+
+import com.flex.elefin.ui.shelfUpdateModifier
+
+import com.flex.elefin.components.RatingDisplay
+
 import android.app.Activity
 import android.content.Context
 import android.util.Log
 import com.flex.elefin.ui.TvBringIntoViewProvider
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -74,6 +89,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
@@ -115,7 +131,6 @@ import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.request.CachePolicy
-import coil.ImageLoader
 import coil.imageLoader
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.platform.LocalContext
@@ -131,12 +146,15 @@ import com.flex.elefin.jellyfin.JellyfinLibrary
 import com.flex.elefin.jellyfin.JellyfinRepository
 import java.text.SimpleDateFormat
 import java.util.Locale
-import com.flex.elefin.ui.ArtworkPalette
-import com.flex.elefin.ui.PlexPaletteExtractor
-import com.flex.elefin.ui.PlexBackdropGradient
-import android.graphics.drawable.BitmapDrawable
-import coil.request.SuccessResult
+import com.flex.elefin.ui.HomeBackdrop
+import com.flex.elefin.ui.HomeStyle
+import com.flex.elefin.ui.homeCardFocus
+import kotlinx.coroutines.CancellationException
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.Dispatchers
+
+private data class HomeShelf(val id: String, val title: String, val items: List<JellyfinItem>, val progress: Boolean = false, val resume: Boolean = false)
 
 enum class SortType {
     Alphabetically,
@@ -144,7 +162,7 @@ enum class SortType {
     DateReleased
 }
 
-@OptIn(ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalComposeUiApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun JellyfinHomeScreen(
     initialTabAction: String? = null,
@@ -278,6 +296,7 @@ fun JellyfinHomeScreen(
     
     val continueWatchingItemsState = repository?.continueWatchingItems?.collectAsState(initial = emptyList())
     val continueWatchingItems = continueWatchingItemsState?.value ?: emptyList()
+    var initialDrawerCardFocused by remember { mutableStateOf(false) }
     
     val nextUpItemsState = repository?.nextUpItems?.collectAsState(initial = emptyList())
     val nextUpItems = nextUpItemsState?.value ?: emptyList()
@@ -291,12 +310,16 @@ fun JellyfinHomeScreen(
     val allMovieLibraries = movieLibrariesState?.value ?: emptyList()
     
     // Get movie libraries (libraries that have movies)
-    val movieLibraries = allMovieLibraries.filter { library ->
-        recentlyAddedMoviesByLibrary.containsKey(library.Id)
-    }.sortedBy { it.Name } // Sort by name for consistent ordering
+    val movieLibraries = remember(allMovieLibraries, recentlyAddedMoviesByLibrary) {
+        allMovieLibraries.filter { library ->
+            recentlyAddedMoviesByLibrary.containsKey(library.Id)
+        }.sortedBy { it.Name } // Sort by name for consistent ordering
+    }
     
     val recentlyReleasedMoviesState = repository?.recentlyReleasedMovies?.collectAsState(initial = emptyList())
     val recentlyReleasedMovies = recentlyReleasedMoviesState?.value ?: emptyList()
+    val releasedByLibraryState = repository?.recentlyReleasedMoviesByLibrary?.collectAsState(initial = emptyMap())
+    val releasedByLibrary = releasedByLibraryState?.value ?: emptyMap()
     
     val recentlyAddedShowsByLibraryState = repository?.recentlyAddedShowsByLibrary?.collectAsState(initial = emptyMap())
     val recentlyAddedShowsByLibrary = recentlyAddedShowsByLibraryState?.value ?: emptyMap()
@@ -305,9 +328,11 @@ fun JellyfinHomeScreen(
     val recentlyAddedEpisodesByLibrary = recentlyAddedEpisodesByLibraryState?.value ?: emptyMap()
     
     // Get TV show libraries (libraries that have shows or episodes)
-    val tvShowLibraries = (movieLibrariesState?.value ?: emptyList()).filter { library ->
-        recentlyAddedShowsByLibrary.containsKey(library.Id) || recentlyAddedEpisodesByLibrary.containsKey(library.Id)
-    }.sortedBy { it.Name } // Sort by name for consistent ordering
+    val tvShowLibraries = remember(allMovieLibraries, recentlyAddedShowsByLibrary, recentlyAddedEpisodesByLibrary) {
+        allMovieLibraries.filter { library ->
+            recentlyAddedShowsByLibrary.containsKey(library.Id) || recentlyAddedEpisodesByLibrary.containsKey(library.Id)
+        }.sortedBy { it.Name } // Sort by name for consistent ordering
+    }
     
     val librariesState = repository?.libraries?.collectAsState(initial = emptyList())
     val libraries = librariesState?.value ?: emptyList()
@@ -326,6 +351,14 @@ fun JellyfinHomeScreen(
     
     var selectedLibraryId by remember { mutableStateOf<String?>(null) }
     var selectedCollectionId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(initialTabAction) {
+        if (initialTabAction?.startsWith("library:") == true) {
+            selectedLibraryId = initialTabAction.removePrefix("library:")
+            selectedCollectionId = null
+            onTabActionHandled()
+        }
+    }
+
     var showExitConfirmation by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var darkModeWhenSettingsOpened by remember { mutableStateOf(false) }
@@ -349,7 +382,7 @@ fun JellyfinHomeScreen(
     
     
     // Handle back button press
-    BackHandler(enabled = true) {
+    val handleHomeBack: () -> Unit = {
         if (selectedLibraryId != null) {
             // If library is selected, deselect it
             selectedLibraryId = null
@@ -361,21 +394,21 @@ fun JellyfinHomeScreen(
             showExitConfirmation = true
         }
     }
+    BackHandler(enabled = true, onBack = handleHomeBack)
     
     LaunchedEffect(repository, config.isConfigured()) {
         // Only fetch data if properly configured
         if (config.isConfigured() && repository != null) {
             // Small delay to allow UI to render first and prevent ANR
             delay(150)
+            repository.fetchLibraries()
             repository.fetchContinueWatching()
             repository.fetchNextUp()
             repository.fetchRecentlyAddedMovies()
             repository.fetchRecentlyReleasedMovies()
-            repository.fetchLibraries()
             repository.fetchCollections()
             repository.fetchRecentlyAddedShows()
             repository.fetchRecentlyAddedEpisodes()
-            repository.fetchLibraries()
         }
     }
     
@@ -393,11 +426,11 @@ fun JellyfinHomeScreen(
                 // Refresh all content when returning to the screen
                 // This fixes issue where only Continue Watching and Next Up show after device resume
                 scope.launch {
+                    repository?.fetchLibraries()
                     repository?.fetchContinueWatching()
                     repository?.fetchNextUp()
                     repository?.fetchRecentlyAddedMovies()
                     repository?.fetchRecentlyReleasedMovies()
-                    repository?.fetchLibraries()
                     repository?.fetchCollections()
                     repository?.fetchRecentlyAddedShows()
                     repository?.fetchRecentlyAddedEpisodes()
@@ -410,45 +443,11 @@ fun JellyfinHomeScreen(
         }
     }
     
-    // Auto-refresh: Periodically check for new media and refresh rows if new content is detected
-    var autoRefreshEnabled by remember { mutableStateOf(settings.autoRefreshEnabled) }
-    var autoRefreshIntervalMinutes by remember { mutableStateOf(settings.autoRefreshIntervalMinutes) }
-    
-    // Image refresh key - incremented when new content is detected to force image reload
-    // This ensures Coil re-fetches images that may have failed to load initially
     var imageRefreshKey by remember { mutableStateOf(0L) }
-    
-    LaunchedEffect(autoRefreshEnabled, autoRefreshIntervalMinutes, repository) {
-        if (autoRefreshEnabled && repository != null) {
-            while (true) {
-                // Wait for the specified interval (convert minutes to milliseconds)
-                delay(autoRefreshIntervalMinutes * 60 * 1000L)
-                
-                // Check if auto-refresh is still enabled (user might have disabled it)
-                autoRefreshEnabled = settings.autoRefreshEnabled
-                autoRefreshIntervalMinutes = settings.autoRefreshIntervalMinutes
-                
-                if (!autoRefreshEnabled) {
-                    break // Exit loop if disabled
-                }
-                
-                // Check for new media and refresh if found (only checks for media already detected by Jellyfin backend)
-                try {
-                    val refreshed = repository.checkForNewMediaAndRefresh()
-                    if (refreshed) {
-                        android.util.Log.d("JellyfinHomeScreen", "Auto-refresh: New media detected, rows refreshed")
-                        // Increment image refresh key to force Coil to reload images
-                        // This fixes issue where new content appears but posters don't load
-                        imageRefreshKey = System.currentTimeMillis()
-                        android.util.Log.d("JellyfinHomeScreen", "Auto-refresh: Image cache invalidated, forcing reload")
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.w("JellyfinHomeScreen", "Auto-refresh: Error checking for new media", e)
-                }
-            }
-        }
+    LiveLibraryUpdates(repository?.apiService) {
+        repository?.refreshLibraryRows()
     }
-    
+
     // Fetch library items when a library is selected (only on Enter/OK press via onClick, not on focus)
     LaunchedEffect(selectedLibraryId, repository) {
         selectedLibraryId?.let { libraryId ->
@@ -468,31 +467,24 @@ fun JellyfinHomeScreen(
     val focusRequester = remember { FocusRequester() }
     
     // Primary scroll states for different views
-    val homeLazyListState = rememberLazyListState()
+    val homeLazyListState = rememberLazyListState(
+        prefetchStrategy = remember { com.flex.elefin.ui.HomeShelfPrefetchStrategy() }
+    )
     val libraryLazyListState = rememberLazyListState()
     val collectionsLazyListState = rememberLazyListState()
     
     // highlightedItem is used for background image (debounced)
     var highlightedItem by remember { mutableStateOf<JellyfinItem?>(null) }
-    var highlightedItemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     // instantHighlightedItem is used for metadata text (updates immediately)
     var instantHighlightedItem by remember { mutableStateOf<JellyfinItem?>(null) }
-    var instantHighlightedItemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     
     // Debounced states for metadata panel to optimize scroll performance on TV
-    var debouncedHighlightedItem by remember { mutableStateOf<JellyfinItem?>(null) }
-    var debouncedHighlightedItemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
-    var debouncedOriginalEpisodeItem by remember { mutableStateOf<JellyfinItem?>(null) }
     
     // Track the original episode item when highlighting a series from an episode
     var originalEpisodeItem by remember { mutableStateOf<JellyfinItem?>(null) }
     
     // Job to track debounced background image changes
     var backgroundChangeJob by remember { mutableStateOf<Job?>(null) }
-    
-    // Plex-style dynamic background palette
-    val paletteCache = remember { mutableMapOf<String, ArtworkPalette>() }
-    var currentArtworkPalette by remember { mutableStateOf<ArtworkPalette?>(null) }
     
     // Set initial highlighted item to first continue watching item or first recently added movie
     LaunchedEffect(continueWatchingItems, recentlyAddedMoviesByLibrary) {
@@ -504,245 +496,110 @@ fun JellyfinHomeScreen(
             val initialItem = continueWatchingItems.firstOrNull() ?: firstMovie
             highlightedItem = initialItem
             instantHighlightedItem = initialItem
-            debouncedHighlightedItem = initialItem
         }
     }
     
-    // Fetch details for highlighted item (for background)
-    LaunchedEffect(highlightedItem?.Id, apiService) {
-        highlightedItemDetails = null
-        highlightedItem?.Id?.let { itemId ->
-            if (apiService != null) {
-                try {
-                    val details = apiService.getItemDetails(itemId)
-                    highlightedItemDetails = details
-                } catch (e: Exception) {
-                    // Silently fail - use basic item info
-                    highlightedItemDetails = highlightedItem
-                }
-            }
-        }
-    }
     
-    // Debounce the metadata focus changes to prevent layout thrashing and unnecessary details API requests during fast scrolling
-    LaunchedEffect(instantHighlightedItem, originalEpisodeItem) {
-        if (instantHighlightedItem != null) {
-            delay(250)
-            debouncedHighlightedItem = instantHighlightedItem
-            debouncedOriginalEpisodeItem = originalEpisodeItem
-        }
-    }
-    
-    // Fetch details only for the stable debounced item
-    LaunchedEffect(debouncedHighlightedItem?.Id, apiService) {
-        debouncedHighlightedItemDetails = debouncedHighlightedItem
-        debouncedHighlightedItem?.Id?.let { itemId ->
-            if (apiService != null) {
-                try {
-                    val details = apiService.getItemDetails(itemId)
-                    if (debouncedHighlightedItem?.Id == itemId) {
-                        debouncedHighlightedItemDetails = details
+    val drawerEnabled = rememberTvDrawerEnabled(settings)
+    val openDrawerSettings: () -> Unit = {
+                        darkModeWhenSettingsOpened = settings.darkModeEnabled
+                        debugOutlinesWhenSettingsOpened = settings.showDebugOutlines
+                        disableUIAnimationsWhenSettingsOpened = settings.disableUIAnimations
+                        lowPowerModeWhenSettingsOpened = settings.lowPowerMode
+                        useSimpleCardsWhenSettingsOpened = settings.useSimpleCards
+                        useGoogleTvCardsWhenSettingsOpened = settings.useGoogleTvCards
+                        use24HourTimeWhenSettingsOpened = settings.use24HourTime
+                        rowCardCountWhenSettingsOpened = settings.rowCardCount
+                        showSettings = true
                     }
-                } catch (e: Exception) {
-                    // Keep using basic item info on failure
-                }
-            }
-        }
-    }
-    
-    // Track scrolling state for background optimization
-    val isScrolling: State<Boolean> = remember {
-        derivedStateOf {
-            homeLazyListState.isScrollInProgress || 
-            libraryLazyListState.isScrollInProgress || 
-            collectionsLazyListState.isScrollInProgress
-        }
-    }
-    
-    // Main content (navigation drawer removed due to performance issues - using tab bar instead)
-    // Wrap with TV-optimized bring-into-view behavior for better focus handling
-    TvBringIntoViewProvider {
-    Box(Modifier.fillMaxSize()) {
-            // Featured carousel with backdrop - extends behind bottom container
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-            ) {
-                // Get image URL for current highlighted item - use backdrop photo
-                // For episodes, use the series backdrop; for other items, use their own backdrop
-                val imageUrl = highlightedItem?.let { item ->
-                // If this is an episode, get the series backdrop
-                val itemId = if (item.Type == "Episode" && item.SeriesId != null) {
-                    item.SeriesId
-                } else {
-                    item.Id
-                }
-                
-                // Prioritize backdrop for home screen background
-                // Low power mode uses 720p, normal mode uses 1080p, 4K mode uses 2160p
-                val bgMaxWidth = if (lowPowerMode.value) 1280 else if (settings.use4KBackgrounds) 3840 else 1920
-                val bgMaxHeight = if (lowPowerMode.value) 720 else if (settings.use4KBackgrounds) 2160 else 1080
-                val bgQuality = if (lowPowerMode.value) 75 else if (settings.use4KBackgrounds) 95 else 90
-                
-                val backdropUrl = apiService?.getImageUrl(itemId, "Backdrop", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
-                if (backdropUrl.isNotEmpty()) {
-                    backdropUrl
-                } else {
-                    // Fall back to primary image if no backdrop
-                    apiService?.getImageUrl(itemId, "Primary", null, maxWidth = bgMaxWidth, maxHeight = bgMaxHeight, quality = bgQuality) ?: ""
-                }
-            } ?: ""
-            
-            // Extract palette from the current image URL
-            LaunchedEffect(imageUrl) {
-                if (imageUrl.isNotEmpty()) {
-                    // Check cache first
-                    val cacheKey = highlightedItem?.Id ?: imageUrl
-                    paletteCache[cacheKey]?.let {
-                        currentArtworkPalette = it
-                        return@LaunchedEffect
-                    }
+    val refreshFromDrawer: () -> Unit = {
+                        if (selectedLibraryId != null) {
+                            // Show sort dialog when library is selected
+                            showSortDialog = true
+                        } else {
+                            // Refresh when on home screen
+                            if (!isRefreshing && repository != null) {
+                                isRefreshing = true
+                                scope.launch {
+                                    try {
+                                        // Clear image cache for home screen cards so new images can be downloaded
+                                        withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            val imageLoader = context.imageLoader
+                                            imageLoader.diskCache?.clear()
+                                            imageLoader.memoryCache?.clear()
+                                            Log.d("JellyfinHomeScreen", "Image cache cleared for home screen refresh")
+                                        }
 
-                    withContext(Dispatchers.IO) {
-                        try {
-                            val loader = coil.ImageLoader(context)
-                            val request = ImageRequest.Builder(context)
-                                .data(imageUrl)
-                                .allowHardware(false) // Required for Palette
-                                .build()
-                            
-                            val result = loader.execute(request)
-                            if (result is SuccessResult) {
-                                val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
-                                if (bitmap != null) {
-                                    val palette = PlexPaletteExtractor.extract(context, bitmap)
-                                    withContext(Dispatchers.Main) {
-                                        paletteCache[cacheKey] = palette
-                                        currentArtworkPalette = palette
+                                        // Trigger server-side library scan and refresh all media rows
+                                        repository.triggerLibraryScanAndRefresh()
+
+                                        // Also refresh libraries in case new ones were added
+                                        repository.fetchLibraries()
+
+                                        Log.d("JellyfinHomeScreen", "Manual refresh completed")
+                                    } catch (e: Exception) {
+                                        Log.e("JellyfinHomeScreen", "Manual refresh error", e)
+                                    } finally {
+                                        isRefreshing = false
                                     }
                                 }
                             }
-                        } catch (e: Exception) {
-                            Log.e("JellyfinHomeScreen", "Error extracting palette", e)
                         }
                     }
-                } else {
-                    currentArtworkPalette = null
+    val drawerEntries = buildList {
+        add(TvDrawerEntry("search", "Search", Icons.Default.Search) { showSearch = true })
+        add(TvDrawerEntry("home", "Home", Icons.Default.Home, selectedLibraryId == null && selectedCollectionId == null) {
+            selectedLibraryId = null
+            selectedCollectionId = null
+        })
+        libraries.filter { it.isVisibleInSideNavigation(settings.showMusicLibraries) }.forEach { library ->
+            val icon = when (library.CollectionType) {
+                "movies" -> Icons.Default.Movie
+                "tvshows" -> Icons.Default.Tv
+                "music" -> Icons.Default.LibraryMusic
+                else -> Icons.Default.VideoLibrary
+            }
+            add(TvDrawerEntry(library.Id, library.Name, icon, selectedLibraryId == library.Id, libraryType = library.CollectionType) {
+                when (library.CollectionType) {
+                    "movies" -> onMoviesLibraryClick(library.Id, library.Name)
+                    "tvshows" -> onTvShowsLibraryClick(library.Id, library.Name)
+                    "music" -> onMusicClick()
+                    else -> { selectedLibraryId = library.Id; selectedCollectionId = null }
                 }
-            }
-            
-            // Use Crossfade for smooth fade in/out animation
-            // In dark mode, don't show background image - use Material dark background instead
-            // Optimization: Disable crossfade while scrolling to reduce GPU load
-            if (!darkModeEnabled) {
-                if (isScrolling.value) {
-                    // Show target image instantly without animation while scrolling
-                    if (imageUrl.isNotEmpty() && apiService != null) {
-                        val headerMap = apiService.getImageRequestHeaders()
-                        AsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data(imageUrl)
-                                .headers(headerMap)
-                                .memoryCachePolicy(CachePolicy.ENABLED)
-                                .diskCachePolicy(CachePolicy.ENABLED)
-                                .allowHardware(true)
-                                .build(),
-                            contentDescription = highlightedItem?.Name ?: "",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.FillBounds,
-                            alignment = Alignment.Center
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                        )
-                    }
-                } else {
-                    Crossfade(
-                        targetState = imageUrl,
-                        animationSpec = tween(durationMillis = 500),
-                        label = "background_fade"
-                    ) { currentUrl ->
-                        if (currentUrl.isNotEmpty() && apiService != null) {
-                            val headerMap = apiService.getImageRequestHeaders()
-                            AsyncImage(
-                                model = ImageRequest.Builder(LocalContext.current)
-                                    .data(currentUrl)
-                                    .headers(headerMap)
-                                    .memoryCachePolicy(CachePolicy.ENABLED)
-                                    .diskCachePolicy(CachePolicy.ENABLED)
-                                    .crossfade(300) // Smooth 300ms crossfade when loading
-                                    .allowHardware(true) // Use GPU memory for faster rendering
-                                    .build(),
-                                contentDescription = highlightedItem?.Name ?: "",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.FillBounds,
-                                alignment = Alignment.Center
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                            )
-                        }
-                    }
-                }
-            } else {
-                // Dark mode: use Material dark background
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surface)
-                )
-            }
-            
-            // Dark overlay and scrim - different opacity based on view mode
-            // Skip overlay in dark mode since we're using a dark background
-            if ((selectedLibraryId == null && selectedCollectionId == null) && !darkModeEnabled) {
-                // Default home view: 20% darkness + gradient scrim
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.1f))
-                )
-                
-                // Scrim gradient overlay
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .carouselGradient()
-                )
-            } else if (!darkModeEnabled) {
-                // Library or Collections view: 20% darkness + gradient scrim (same as home)
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.1f))
-                )
-                
-                // Scrim gradient overlay
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .carouselGradient()
-                )
-            }
-            
-            // Apply Plex-style dynamic gradient overlay
-            if (currentArtworkPalette != null && !darkModeEnabled) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(PlexBackdropGradient(currentArtworkPalette!!))
-                )
-            }
+            })
         }
+        if (collections.isNotEmpty()) add(TvDrawerEntry("collections", "Collections", Icons.Default.Collections, selectedCollectionId == "__COLLECTIONS__") {
+            selectedLibraryId = null
+            selectedCollectionId = "__COLLECTIONS__"
+        })
+        add(TvDrawerEntry("refresh", if (selectedLibraryId != null) "Sort" else "Refresh", if (selectedLibraryId != null) Icons.Default.SwapVert else Icons.Default.Refresh,
+            enabled = !isRefreshing || selectedLibraryId != null, onClick = refreshFromDrawer))
+    }
+
+    TvBringIntoViewProvider {
+        TvNavigationDrawer(
+            enabled = drawerEnabled,
+            entries = drawerEntries,
+            settingsEntry = TvDrawerEntry("settings", "Settings", Icons.Default.Settings, onClick = openDrawerSettings)
+        ) {
+
+        Box(Modifier.fillMaxSize()) {
+            TvHomeBackground(
+                itemProvider = { highlightedItem },
+                isScrolling = { homeLazyListState.isScrollInProgress },
+                apiService = apiService,
+                darkModeEnabled = darkModeEnabled,
+                lowPowerMode = lowPowerMode.value,
+                use4KBackgrounds = settings.use4KBackgrounds,
+                selectedLibraryId = selectedLibraryId,
+                selectedCollectionId = selectedCollectionId,
+                disableAnimations = disableUIAnimations.value
+            )
+        Box(Modifier.fillMaxSize().padding(start = if (drawerEnabled) 16.dp else 0.dp)) {
+
         
         // Top row with home button and library buttons - positioned absolutely on top of carousel
-        Box(
+        if (!drawerEnabled) Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
@@ -767,17 +624,7 @@ fun JellyfinHomeScreen(
                 ) {
                 // Settings button - first on the left (same size as library buttons)
                 IconButton(
-                    onClick = {
-                        darkModeWhenSettingsOpened = settings.darkModeEnabled
-                        debugOutlinesWhenSettingsOpened = settings.showDebugOutlines
-                        disableUIAnimationsWhenSettingsOpened = settings.disableUIAnimations
-                        lowPowerModeWhenSettingsOpened = settings.lowPowerMode
-                        useSimpleCardsWhenSettingsOpened = settings.useSimpleCards
-                        useGoogleTvCardsWhenSettingsOpened = settings.useGoogleTvCards
-                        use24HourTimeWhenSettingsOpened = settings.use24HourTime
-                        rowCardCountWhenSettingsOpened = settings.rowCardCount
-                        showSettings = true
-                    },
+                    onClick = openDrawerSettings,
                     colors = IconButtonDefaults.colors(
                         containerColor = MaterialTheme.colorScheme.surface,
                         contentColor = MaterialTheme.colorScheme.onSurface
@@ -829,40 +676,7 @@ fun JellyfinHomeScreen(
                 val isLibrarySelected = selectedLibraryId != null
                 
                 IconButton(
-                    onClick = {
-                        if (isLibrarySelected) {
-                            // Show sort dialog when library is selected
-                            showSortDialog = true
-                        } else {
-                            // Refresh when on home screen
-                            if (!isRefreshing && repository != null) {
-                                isRefreshing = true
-                                scope.launch {
-                                    try {
-                                        // Clear image cache for home screen cards so new images can be downloaded
-                                        withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                            val imageLoader = context.imageLoader
-                                            imageLoader.diskCache?.clear()
-                                            imageLoader.memoryCache?.clear()
-                                            Log.d("JellyfinHomeScreen", "Image cache cleared for home screen refresh")
-                                        }
-                                        
-                                        // Trigger server-side library scan and refresh all media rows
-                                        repository.triggerLibraryScanAndRefresh()
-                                        
-                                        // Also refresh libraries in case new ones were added
-                                        repository.fetchLibraries()
-                                        
-                                        Log.d("JellyfinHomeScreen", "Manual refresh completed")
-                                    } catch (e: Exception) {
-                                        Log.e("JellyfinHomeScreen", "Manual refresh error", e)
-                                    } finally {
-                                        isRefreshing = false
-                                    }
-                                }
-                            }
-                        }
-                    },
+                    onClick = refreshFromDrawer,
                     enabled = !isRefreshing || isLibrarySelected,
                     colors = IconButtonDefaults.colors(
                         containerColor = MaterialTheme.colorScheme.surface,
@@ -951,15 +765,19 @@ fun JellyfinHomeScreen(
                 
                 // Library buttons with underlined indicator using TV Material3 TabRow
                 // Add a single "Collections" tab if collections are available
-                val allTabs = remember(libraries, collections) {
+                val showMusicLibraries = remember { settings.showMusicLibraries }
+                val allTabs = remember(libraries, collections, showMusicLibraries) {
                     // Debug: Log all libraries and their CollectionType
                     libraries.forEach { lib ->
-                        android.util.Log.d("JellyfinHomeScreen", "📚 Library loaded: ${lib.Name}, Type: ${lib.Type}, CollectionType: ${lib.CollectionType}, Id: ${lib.Id}")
+                        android.util.Log.d("JellyfinHomeScreen", "ðŸ“š Library loaded: ${lib.Name}, Type: ${lib.Type}, CollectionType: ${lib.CollectionType}, Id: ${lib.Id}")
                     }
                     
                     buildList<Pair<String?, String>> {
-                        // Add all libraries (exclude any library named "Collections" to avoid conflicts)
-                        addAll(libraries.filter { !it.Name.equals("Collections", ignoreCase = true) }.map { null to it.Id })
+                        // Add all libraries (exclude "Collections" tab conflicts, and music if disabled)
+                        addAll(libraries.filter { lib ->
+                            !lib.Name.equals("Collections", ignoreCase = true) &&
+                            (showMusicLibraries || lib.CollectionType != "music")
+                        }.map { null to it.Id })
                         // Add a single "Collections" tab if collections exist
                         // Use a unique identifier to avoid conflicts with library names
                         if (collections.isNotEmpty()) {
@@ -1021,21 +839,21 @@ fun JellyfinHomeScreen(
                                 onClick = {
                                     // Handle music library specially - navigate to music screen
                                     if (isMusicLibrary) {
-                                        android.util.Log.d("JellyfinHomeScreen", "🎵 Music library clicked! Navigating to music screen...")
+                                        android.util.Log.d("JellyfinHomeScreen", "ðŸŽµ Music library clicked! Navigating to music screen...")
                                         onMusicClick()
                                         return@Tab
                                     }
                                     
                                     // Handle movies library specially - navigate to movies library screen
                                     if (isMoviesLibrary && library != null) {
-                                        android.util.Log.d("JellyfinHomeScreen", "🎬 Movies library clicked! Navigating to movies library screen...")
+                                        android.util.Log.d("JellyfinHomeScreen", "ðŸŽ¬ Movies library clicked! Navigating to movies library screen...")
                                         onMoviesLibraryClick(library.Id, library.Name)
                                         return@Tab
                                     }
                                     
                                     // Handle TV shows library specially - navigate to TV shows library screen
                                     if (isTvShowsLibrary && library != null) {
-                                        android.util.Log.d("JellyfinHomeScreen", "📺 TV Shows library clicked! Navigating to TV shows library screen...")
+                                        android.util.Log.d("JellyfinHomeScreen", "ðŸ“º TV Shows library clicked! Navigating to TV shows library screen...")
                                         onTvShowsLibraryClick(library.Id, library.Name)
                                         return@Tab
                                     }
@@ -1082,9 +900,9 @@ fun JellyfinHomeScreen(
                             ) {
                                 // Make 30% bigger, then 10% smaller (1.3 * 0.9 = 1.17x normal size)
                                 // Now reduced by additional 30% from the enlarged state: 1.17 * 0.7 = 0.819f
-                                val scaledFontSize = MaterialTheme.typography.labelLarge.fontSize * 0.90f // Increased by 10% from 0.82f
+                                val scaledFontSize = 13.sp
                                 // Add horizontal padding (Reduced by 30% from current enlarged state: 1.2 * 0.7 = 0.84)
-                                val horizontalPadding = 16.dp * 0.84f
+                                val horizontalPadding = 14.dp
                                 Text(
                                     text = itemName,
                                     style = MaterialTheme.typography.labelLarge.copy(
@@ -1105,16 +923,24 @@ fun JellyfinHomeScreen(
         }
     }
         
+        if (drawerEnabled) {
+            Box(Modifier.align(Alignment.TopEnd).padding(top = 22.dp)) {
+                DigitalClock(use24HourFormat = use24HourTime)
+            }
+        }
+
         // Item details section - below settings button (only show when not viewing a library)
         // Show highlighted item panel for home screen and collections
         // Use debouncedHighlightedItem for smooth metadata updates without layouts/image requests on intermediate cards
         // Use Crossfade to animate all metadata together when item changes
         if (selectedLibraryId == null) {
-            MetadataSection(
-                itemProvider = { debouncedHighlightedItem },
-                detailsProvider = { debouncedHighlightedItemDetails },
-                originalEpisodeItemProvider = { debouncedOriginalEpisodeItem },
-                apiService = apiService
+            HomeHero(
+                itemProvider = { instantHighlightedItem },
+                isScrolling = { homeLazyListState.isScrollInProgress },
+                episodeProvider = { originalEpisodeItem },
+                apiService = apiService,
+                imageRefreshKey = imageRefreshKey,
+                disableAnimations = disableUIAnimations.value || lowPowerMode.value
             )
         }
         
@@ -1215,72 +1041,11 @@ fun JellyfinHomeScreen(
                 val context = LocalContext.current
                 val imageLoader = context.imageLoader
                 
-                // Preload images for items that are about to come into view
-                LaunchedEffect(items, apiService, selectedLibraryId, preloadLibraryImages, cacheLibraryImages, reducePosterResolution) {
-                    if (preloadLibraryImages && apiService != null && items.isNotEmpty()) {
-                        // Preload images for the first 6 rows (36 items) - more aggressive preloading
-                        val preloadCount = minOf(36, items.size) // First 6 rows (6 columns * 6 rows)
-                        
-                        items.take(preloadCount).forEach { item ->
-                            // Use reduced resolution (300x450) or standard resolution (400x600) based on setting
-                            val imageUrl = if (reducePosterResolution) {
-                                apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 300, maxHeight = 450, quality = 80)
-                            } else {
-                                apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 400, maxHeight = 600, quality = 85)
-                            }
-                            if (imageUrl.isNotEmpty()) {
-                                try {
-                                    val request = ImageRequest.Builder(context)
-                                        .data(imageUrl)
-                                        .headers(apiService.getImageRequestHeaders())
-                                        .size(300) // Hint to Coil about target size
-                                        .memoryCachePolicy(if (cacheLibraryImages) CachePolicy.ENABLED else CachePolicy.DISABLED)
-                                        .diskCachePolicy(if (cacheLibraryImages) CachePolicy.ENABLED else CachePolicy.DISABLED)
-                                        .build()
-                                    imageLoader.enqueue(request)
-                                } catch (e: Exception) {
-                                    // Silently fail preloading
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                // Preload images as user scrolls - more aggressive (5 rows ahead)
-                LaunchedEffect(libraryLazyListState.firstVisibleItemIndex, items, apiService, selectedLibraryId, preloadLibraryImages, cacheLibraryImages, reducePosterResolution) {
-                    if (preloadLibraryImages && apiService != null && items.isNotEmpty()) {
-                        val firstVisible = libraryLazyListState.firstVisibleItemIndex
-                        val columns = 6
-                        val preloadStart = (firstVisible + 5) * columns // Start preloading 5 rows ahead
-                        val preloadEnd = minOf(preloadStart + (5 * columns), items.size) // Preload 5 rows
-                        
-                        if (preloadStart < items.size && preloadEnd > preloadStart) {
-                            items.subList(preloadStart, preloadEnd).forEach { item ->
-                                // Use reduced resolution (300x450) or standard resolution (400x600) based on setting
-                                val imageUrl = if (reducePosterResolution) {
-                                    apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 300, maxHeight = 450, quality = 80)
-                                } else {
-                                    apiService.getImageUrl(item.Id, "Primary", null, maxWidth = 400, maxHeight = 600, quality = 85)
-                                }
-                                if (imageUrl.isNotEmpty()) {
-                                    try {
-                                        val request = ImageRequest.Builder(context)
-                                            .data(imageUrl)
-                                            .headers(apiService.getImageRequestHeaders())
-                                            .size(300) // Hint to Coil about target size
-                                            .memoryCachePolicy(if (cacheLibraryImages) CachePolicy.ENABLED else CachePolicy.DISABLED)
-                                            .diskCachePolicy(if (cacheLibraryImages) CachePolicy.ENABLED else CachePolicy.DISABLED)
-                                            .build()
-                                        imageLoader.enqueue(request)
-                                    } catch (e: Exception) {
-                                        // Silently fail preloading
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                
+                com.flex.elefin.ui.LibraryImagePrefetch(
+                    state = libraryLazyListState, items = items, api = apiService,
+                    enabled = preloadLibraryImages, cacheImages = cacheLibraryImages,
+                    reducedResolution = reducePosterResolution
+                )
                 // Container for library grid - positioned below tab row
                 Spacer(modifier = Modifier.height(86.dp)) // Add space below tab row (reduced by 40% from 144: 144 * 0.6 = 86)
                 
@@ -1433,9 +1198,9 @@ fun JellyfinHomeScreen(
                                                                 
                                                                 // Debounce: wait 1 second before changing background
                                                                 backgroundChangeJob = scope.launch {
-                                                                    delay(1300)
-                                                                    highlightedItem = item
-                                                                }
+                                                                delay(400)
+                                                                highlightedItem = item
+                                                            }
                                                             }
                                                         },
                                                         enableCaching = cacheLibraryImages,
@@ -1497,11 +1262,12 @@ fun JellyfinHomeScreen(
                 // Content rows - same layout as library screens
                 LazyColumn(
                     state = collectionsLazyListState,
-                    contentPadding = PaddingValues(bottom = 20.dp * 1.15f),
+                    contentPadding = PaddingValues(bottom = 24.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(0.6f)
-                        .padding(start = 54.dp, top = 0.dp, end = 38.dp, bottom = 0.dp)
+                        .padding(start = 54.dp, top = 36.dp, end = 38.dp, bottom = 0.dp)
+                            .clipToBounds()
                         .then(
                             if (debugOutlinesEnabled) {
                                 Modifier.border(3.dp, Color.Yellow)
@@ -1545,7 +1311,7 @@ fun JellyfinHomeScreen(
                                     
                                     LazyRow(
                                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
-                                        horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(HomeStyle.shelfGap),
                                         flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
                                         modifier = if (debugOutlinesEnabled) {
                                             Modifier.border(2.dp, Color.Magenta)
@@ -1588,9 +1354,9 @@ fun JellyfinHomeScreen(
                                                         originalEpisodeItem = null
                                                         backgroundChangeJob?.cancel()
                                                         backgroundChangeJob = scope.launch {
-                                                            delay(1300)
-                                                            highlightedItem = item
-                                                        }
+                                                                delay(400)
+                                                                highlightedItem = item
+                                                            }
                                                     }
                                                 },
                                                 enableCaching = cacheLibraryImages,
@@ -1611,14 +1377,109 @@ fun JellyfinHomeScreen(
             }
             
             if (selectedLibraryId == null && selectedCollectionId != "__COLLECTIONS__") {
-                    // Default rows when no library or collection is selected
+                    val homeShelves = remember(continueWatchingItems, nextUpItems, movieLibraries, allMovieLibraries,
+                        recentlyAddedMoviesByLibrary, releasedByLibrary, tvShowLibraries,
+                        recentlyAddedShowsByLibrary, recentlyAddedEpisodesByLibrary, hideShowsWithZeroEpisodes) {
+                        buildList {
+                            fun addShelf(id: String, title: String, items: List<JellyfinItem>, progress: Boolean = false, resume: Boolean = false) {
+                                if (items.isNotEmpty()) add(HomeShelf(id, title, items, progress, resume))
+                            }
+                            addShelf("continue", "Continue Watching", continueWatchingItems, progress = true)
+                            addShelf("next", "Next Up", nextUpItems)
+                            movieLibraries.forEach { library ->
+                                addShelf("movies:${library.Id}", "Recently Added in ${library.Name}",
+                                    recentlyAddedMoviesByLibrary[library.Id].orEmpty())
+                            }
+                            allMovieLibraries.filter { it.CollectionType.equals("movies", ignoreCase = true) }.sortedBy { it.Name }.forEach { library ->
+                                addShelf("released:${library.Id}", "Recently Released in ${library.Name}", releasedByLibrary[library.Id].orEmpty())
+                            }
+                            tvShowLibraries.forEach { library ->
+                                val shows = recentlyAddedShowsByLibrary[library.Id].orEmpty().filter {
+                                    !hideShowsWithZeroEpisodes || it.Type != "Series" || (it.RecursiveItemCount ?: it.ChildCount ?: 0) > 0
+                                }
+                                addShelf("shows:${library.Id}", "Recently Added Shows in ${library.Name}", shows)
+                            }
+                            tvShowLibraries.forEach { library ->
+                                addShelf("episodes:${library.Id}", "Recently Added Episodes in ${library.Name}",
+                                    recentlyAddedEpisodesByLibrary[library.Id].orEmpty(), resume = true)
+                            }
+                        }
+                    }
+                    // Reserve one complete shelf plus only the next shelf's title.
+                    // Equal shelf slots keep short Continue Watching cards from exposing the next row.
+                    val shelfHeaderHeight = 44.dp
+                    val shelfCardsHeight = 157.5.dp + HomeStyle.shelfVerticalPadding * 2
+                    val shelfViewportHeight = shelfCardsHeight + shelfHeaderHeight * 2
+                    val shelfDensity = androidx.compose.ui.platform.LocalDensity.current
+                    val shelfVerticalSpec = remember(shelfDensity) {
+                        com.flex.elefin.ui.TvBringIntoViewSpec(
+                            vertical = true,
+                            verticalAnchor = with(shelfDensity) {
+                                (shelfHeaderHeight + HomeStyle.shelfVerticalPadding).toPx()
+                            })
+                    }
+                    var horizontalShelfNavigation by remember { mutableStateOf(false) }
+                    // Focus history is consulted only when pendingShelfFocus changes. Making
+                    // every focus write observable invalidates all composed shelves.
+                    val focusedCardByShelf = remember { mutableMapOf<String, String>() }
+                    val shelfHorizontalSpec = remember {
+                        com.flex.elefin.ui.TvBringIntoViewSpec(vertical = false,
+                            horizontalPivotEnabled = { horizontalShelfNavigation })
+                    }
+                    var pendingShelfFocus by remember { mutableStateOf<String?>(null) }
+                    var shelfNavigationJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+                    val shelfTransitionFocus = remember { FocusRequester() }
+                    CompositionLocalProvider(
+                        androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides shelfVerticalSpec
+                    ) {
                     LazyColumn(
                         state = homeLazyListState,
-                        contentPadding = PaddingValues(bottom = 20.dp * 1.15f), // 15% increase in bottom padding
+                        contentPadding = PaddingValues(bottom = shelfHeaderHeight),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(0.6f)
-                            .padding(start = 54.dp, top = 0.dp, end = 38.dp, bottom = 0.dp)
+                            .padding(start = 54.dp, top = 36.dp, end = 38.dp)
+                            .height(shelfViewportHeight)
+                            .clipToBounds()
+                            .onPreviewKeyEvent { event ->
+                                val key = event.nativeKeyEvent
+                                if (key.keyCode == android.view.KeyEvent.KEYCODE_BACK) {
+                                    // Back must leave Home, not exit the card's focus group
+                                    // and re-enter it at the leading card.
+                                    if (key.action == android.view.KeyEvent.ACTION_UP && !key.isCanceled) {
+                                        shelfNavigationJob?.cancel()
+                                        pendingShelfFocus = null
+                                        handleHomeBack()
+                                    }
+                                    true
+                                } else {
+                                    if (key.action == android.view.KeyEvent.ACTION_DOWN &&
+                                        shelfNavigationJob?.isActive != true && pendingShelfFocus == null) {
+                                        when (key.keyCode) {
+                                            android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> horizontalShelfNavigation = true
+                                            android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN -> horizontalShelfNavigation = false
+                                        }
+                                    }
+                                    val directional = key.keyCode in listOf(
+                                        android.view.KeyEvent.KEYCODE_DPAD_UP,
+                                        android.view.KeyEvent.KEYCODE_DPAD_DOWN,
+                                        android.view.KeyEvent.KEYCODE_DPAD_LEFT,
+                                        android.view.KeyEvent.KEYCODE_DPAD_RIGHT)
+                                    directional && (shelfNavigationJob?.isActive == true || pendingShelfFocus != null)
+                                }
+                            }
+                            .focusRequester(shelfTransitionFocus)
+                            .onFocusChanged { state ->
+                                if (state.isFocused) {
+                                    scope.launch {
+                                        androidx.compose.runtime.withFrameNanos { }
+                                        // Entering from the navigation bar should land on a card.
+                                        if (shelfNavigationJob?.isActive != true && pendingShelfFocus == null) {
+                                            pendingShelfFocus = homeShelves.getOrNull(homeLazyListState.firstVisibleItemIndex)?.id
+                                        }
+                                    }
+                                }
+                            }
+                            .focusable()
                             .then(
                                 if (debugOutlinesEnabled) {
                                     Modifier.border(3.dp, Color.Yellow)
@@ -1627,458 +1488,159 @@ fun JellyfinHomeScreen(
                                 }
                             )
                     ) {
-                        // Continue Watching row
-                        if (continueWatchingItems.isNotEmpty()) {
-                            item(key = "continue_watching", contentType = "media_row") {
-                                Column(
-                                    modifier = Modifier
-                                        .padding(top = 12.dp)
-                                        .focusRequester(focusRequester)
-                                ) {
-                                    Text(
-                                        text = "Continue Watching",
-                                        style = MaterialTheme.typography.headlineMedium.copy(
-                                            fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
-                                        ),
-                                        modifier = Modifier.padding(bottom = 12.dp, top = 12.dp)
-                                    )
-                                    
-                                    LazyRow(
-                                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
-                                        horizontalArrangement = Arrangement.spacedBy(26.dp),
-                                        flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
-                                        modifier = if (debugOutlinesEnabled) {
-                                            Modifier.border(2.dp, Color.Magenta)
-                                        } else {
-                                            Modifier
-                                        }
-                                    ) {
-                                        items(
-                                            items = continueWatchingItems,
-                                            key = { it.Id },
-                                            contentType = { "horizontal_card_progress" }
-                                        ) { item ->
-                                            JellyfinHorizontalCardWithProgress(
-                                                item = item,
-                                                apiService = apiService,
-                                                onClick = {
-                                                    val resumePositionMs = item.UserData?.PositionTicks?.let { it / 10_000 } ?: 0L
-                                                    onItemClick(item, resumePositionMs)
-                                                },
-                                                onFocusChanged = { isFocused ->
-                                                    if (isFocused) {
-                                                        instantHighlightedItem = item
-                                                        originalEpisodeItem = if (item.Type == "Episode") item else null
-                                                        backgroundChangeJob?.cancel()
-                                                        backgroundChangeJob = scope.launch {
-                                                            delay(1300)
-                                                            if (item.Type == "Episode" && item.SeriesId != null) {
-                                                                val seriesDetails = apiService?.getItemDetails(item.SeriesId)
-                                                                if (seriesDetails != null) {
-                                                                    highlightedItem = seriesDetails
-                                                                } else {
-                                                                    highlightedItem = item
-                                                                }
-                                                            } else {
-                                                                highlightedItem = item
-                                                            }
-                                                        }
-                                                    }
-                                                },
-                                                useSimpleCards = useSimpleCards.value,
-                                                useGoogleTvCards = useGoogleTvCards.value,
-                                                lowPowerMode = lowPowerMode.value,
-                                                imageRefreshKey = imageRefreshKey
-                                            )
-                                        }
+                        items(items = homeShelves, key = { it.id }, contentType = { "home_shelf" }) { shelf ->
+                            // Prepare the visible cards of the next shelf during idle frames.
+                            val cardSlot = if (shelf.progress && !useGoogleTvCards.value) 181 else 125
+                            val visibleCards = ((androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp - 92) / cardSlot + 1).coerceAtLeast(1)
+                            val shelfState = rememberLazyListState(
+                                prefetchStrategy = remember(visibleCards) {
+                                    androidx.compose.foundation.lazy.LazyListPrefetchStrategy(visibleCards)
+                                }
+                            )
+                            val entryCard by remember(shelf.id, shelf.items) {
+                                derivedStateOf {
+                                    if (pendingShelfFocus != shelf.id) null else {
+                                        focusedCardByShelf[shelf.id]?.takeIf { id -> shelf.items.any { it.Id == id } }
+                                            ?: (shelfState.layoutInfo.visibleItemsInfo.firstOrNull {
+                                                it.offset >= shelfState.layoutInfo.viewportStartOffset &&
+                                                    it.offset + it.size <= shelfState.layoutInfo.viewportEndOffset
+                                            }?.key as? String)
+                                            ?: shelf.items.getOrNull(shelfState.firstVisibleItemIndex)?.Id
                                     }
                                 }
                             }
-                        }
-                        
-                        // Next Up row
-                        if (nextUpItems.isNotEmpty()) {
-                            item(key = "next_up", contentType = "media_row") {
-                                val isFirst = continueWatchingItems.isEmpty()
-                                Column(
-                                    modifier = Modifier
-                                        .then(
-                                            if (isFirst) {
-                                                Modifier.padding(top = 12.dp).focusRequester(focusRequester)
-                                            } else {
-                                                Modifier
-                                            }
-                                        )
+                            LaunchedEffect(pendingShelfFocus, shelf.id) {
+                                if (pendingShelfFocus == shelf.id) {
+                                    val index = shelf.items.indexOfFirst { it.Id == focusedCardByShelf[shelf.id] }
+                                    if (index >= 0 && shelfState.layoutInfo.visibleItemsInfo.none { it.index == index }) {
+                                        shelfState.scrollToItem(index)
+                                    }
+                                }
+                            }
+                            Column {
+                                Text(
+                                    text = shelf.title,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, fontWeight = FontWeight.SemiBold),
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier.height(shelfHeaderHeight)
+                                        .padding(start = 16.dp, top = 12.dp, bottom = 8.dp)
+                                )
+                                CompositionLocalProvider(
+                                    androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides shelfHorizontalSpec
                                 ) {
-                                    Text(
-                                        text = "Next Up",
-                                        style = MaterialTheme.typography.headlineMedium.copy(
-                                            fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
-                                        ),
-                                        modifier = Modifier.padding(bottom = 12.dp, top = if (isFirst) 12.dp else 30.36.dp)
-                                    )
-                                    
-                                    LazyRow(
-                                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
-                                        horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                        flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
-                                        modifier = if (debugOutlinesEnabled) {
-                                            Modifier.border(2.dp, Color.Magenta)
-                                        } else {
-                                            Modifier
+                                LazyRow(
+                                    state = shelfState,
+                                    contentPadding = PaddingValues(horizontal = HomeStyle.shelfInset, vertical = HomeStyle.shelfVerticalPadding),
+                                    horizontalArrangement = Arrangement.spacedBy(HomeStyle.shelfGap),
+                                    flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
+                                    modifier = Modifier.height(shelfCardsHeight)
+                                        .drawWithContent {
+                                            // Keep scrolled-off cards out of the leading gutter,
+                                            // while retaining space for the first card's focus outline.
+                                            clipRect(left = (HomeStyle.shelfInset / 2).toPx()) {
+                                                this@drawWithContent.drawContent()
+                                            }
                                         }
-                                    ) {
-                                        items(
-                                            items = nextUpItems,
-                                            key = { it.Id },
-                                            contentType = { "collection_item" }
-                                        ) { item ->
-                                            JellyfinHorizontalCard(
-                                                item = item,
-                                                apiService = apiService,
-                                                onClick = {
-                                                    onItemClick(item, 0L)
-                                                },
-                                                onFocusChanged = { isFocused ->
-                                                    if (isFocused) {
-                                                        instantHighlightedItem = item
-                                                        originalEpisodeItem = if (item.Type == "Episode") item else null
-                                                        backgroundChangeJob?.cancel()
-                                                        backgroundChangeJob = scope.launch {
-                                                            delay(1300)
-                                                            if (item.Type == "Episode" && item.SeriesId != null) {
-                                                                val seriesDetails = apiService?.getItemDetails(item.SeriesId)
-                                                                if (seriesDetails != null) {
-                                                                    highlightedItem = seriesDetails
-                                                                } else {
-                                                                    highlightedItem = item
-                                                                }
-                                                            } else {
-                                                                highlightedItem = item
-                                                            }
-                                                        }
+                                        .then(if (shelf.id == homeShelves.firstOrNull()?.id) Modifier.focusRequester(focusRequester) else Modifier)
+                                        .onPreviewKeyEvent { event ->
+                                            val key = event.nativeKeyEvent
+                                            val direction = when (key.keyCode) {
+                                                android.view.KeyEvent.KEYCODE_DPAD_DOWN -> 1
+                                                android.view.KeyEvent.KEYCODE_DPAD_UP -> -1
+                                                else -> 0
+                                            }
+                                            val current = homeShelves.indexOfFirst { it.id == shelf.id }
+                                            val target = current + direction
+                                            if (direction == 0 || (target < 0 && direction < 0)) {
+                                                false // Let Up on the first shelf return to navigation.
+                                            } else {
+                                                if (key.action == android.view.KeyEvent.ACTION_DOWN &&
+                                                    target in homeShelves.indices && shelfNavigationJob?.isActive != true) {
+                                                    shelfNavigationJob = scope.launch {
+                                                        // The next row's cards are outside the viewport. Place it
+                                                        // before requesting focus, instead of searching invisible cards.
+                                                        horizontalShelfNavigation = false
+                                                        shelfTransitionFocus.requestFocus()
+                                                        if (disableUIAnimations.value) homeLazyListState.scrollToItem(target)
+                                                        else homeLazyListState.animateScrollToItem(target)
+                                                        pendingShelfFocus = homeShelves[target].id
                                                     }
-                                                },
-                                                enableCaching = cacheLibraryImages,
+                                                }
+                                                true
+                                            }
+                                        }
+                                        .then(if (debugOutlinesEnabled) Modifier.border(2.dp, Color.Magenta) else Modifier)
+                                ) {
+                                    items(items = shelf.items, key = { it.Id }, contentType = { if (shelf.progress) "progress" else "poster" }) { item ->
+                                        val onFocused: (Boolean) -> Unit = { focused ->
+                                            if (focused) {
+                                                focusedCardByShelf[shelf.id] = item.Id
+                                                instantHighlightedItem = item
+                                                originalEpisodeItem = item.takeIf { it.Type == "Episode" }
+                                                backgroundChangeJob?.cancel()
+                                                backgroundChangeJob = scope.launch {
+                                                    delay(400)
+                                                    highlightedItem = item
+                                                }
+                                            }
+                                        }
+                                        val cardEntryFocus = remember { FocusRequester() }
+                                        val initialDrawerCard = drawerEnabled && !initialDrawerCardFocused &&
+                                            shelf.id == homeShelves.firstOrNull()?.id && item.Id == shelf.items.firstOrNull()?.Id
+                                        LaunchedEffect(initialDrawerCard) {
+                                            if (initialDrawerCard) {
+                                                androidx.compose.runtime.withFrameNanos { }
+                                                cardEntryFocus.requestFocus()
+                                                initialDrawerCardFocused = true
+                                            }
+                                        }
+                                        val shouldEnterShelf = entryCard == item.Id
+                                        LaunchedEffect(shouldEnterShelf) {
+                                            if (shouldEnterShelf) {
+                                                androidx.compose.runtime.withFrameNanos { }
+                                                cardEntryFocus.requestFocus()
+                                                pendingShelfFocus = null
+                                            }
+                                        }
+                                        // Focus is requested by a composed card, never an off-screen requester.
+                                        Box(shelfUpdateModifier(!disableUIAnimations.value && !lowPowerMode.value).focusRequester(cardEntryFocus)) {
+                                        if (shelf.progress) {
+                                            JellyfinHorizontalCardWithProgress(
+                                                item = item, apiService = apiService,
+                                                onClick = { onItemClick(item, (item.UserData?.PositionTicks ?: 0L) / 10_000) },
+                                                onFocusChanged = onFocused,
+                                                disableAnimations = disableUIAnimations.value,
+                                                useSimpleCards = useSimpleCards.value, useGoogleTvCards = useGoogleTvCards.value,
+                                                lowPowerMode = lowPowerMode.value, imageRefreshKey = imageRefreshKey
+                                            )
+                                        } else {
+                                            JellyfinHorizontalCard(
+                                                item = item, apiService = apiService,
+                                                onClick = { onItemClick(item, if (shelf.resume) (item.UserData?.PositionTicks ?: 0L) / 10_000 else 0L) },
+                                                onFocusChanged = onFocused, enableCaching = cacheLibraryImages,
                                                 reducePosterResolution = reducePosterResolution,
                                                 useSeriesPosterForEpisodes = true,
-                                                useSimpleCards = useSimpleCards.value,
-                                                useGoogleTvCards = useGoogleTvCards.value,
-                                                lowPowerMode = lowPowerMode.value,
-                                                imageRefreshKey = imageRefreshKey
+                                                unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null,
+                                                disableAnimations = disableUIAnimations.value,
+                                                useSimpleCards = useSimpleCards.value, useGoogleTvCards = useGoogleTvCards.value,
+                                                lowPowerMode = lowPowerMode.value, imageRefreshKey = imageRefreshKey
                                             )
+                                        }
                                         }
                                     }
                                 }
-                            }
-                        }
-                        
-                        // Recently Added Movies rows - one per movie library
-                        movieLibraries.forEachIndexed { index, library ->
-                            val libraryMovies = recentlyAddedMoviesByLibrary[library.Id] ?: emptyList()
-                            if (libraryMovies.isNotEmpty()) {
-                                item(key = "recently_added_movies_${library.Id}", contentType = "media_row") {
-                                    val isFirst = continueWatchingItems.isEmpty() && nextUpItems.isEmpty() && index == 0
-                                    val rowTitle = if (index == 0) "Recently Added Movies" else "Recently Added ${library.Name}"
-                                    Column(
-                                        modifier = Modifier
-                                            .then(
-                                                if (isFirst) {
-                                                    Modifier.padding(top = 12.dp).focusRequester(focusRequester)
-                                                } else {
-                                                    Modifier
-                                                }
-                                            )
-                                    ) {
-                                        Text(
-                                            text = rowTitle,
-                                            style = MaterialTheme.typography.headlineMedium.copy(
-                                                fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
-                                            ),
-                                            modifier = Modifier.padding(bottom = 12.dp, top = if (isFirst) 12.dp else 30.36.dp)
-                                        )
-                                        
-                                        LazyRow(
-                                            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
-                                            horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                            flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
-                                            modifier = if (debugOutlinesEnabled) {
-                                                Modifier.border(2.dp, Color.Magenta)
-                                            } else {
-                                                Modifier
-                                            }
-                                        ) {
-                                            items(
-                                                items = libraryMovies,
-                                                key = { it.Id },
-                                                contentType = { "collection_item" }
-                                            ) { item ->
-                                                JellyfinHorizontalCard(
-                                                    item = item,
-                                                    apiService = apiService,
-                                                    onClick = { onItemClick(item, 0L) },
-                                                    onFocusChanged = { isFocused ->
-                                                        if (isFocused) {
-                                                            instantHighlightedItem = item
-                                                            originalEpisodeItem = null
-                                                            backgroundChangeJob?.cancel()
-                                                            backgroundChangeJob = scope.launch {
-                                                                delay(1300)
-                                                                highlightedItem = item
-                                                            }
-                                                        }
-                                                    },
-                                                    enableCaching = cacheLibraryImages,
-                                                    reducePosterResolution = reducePosterResolution,
-                                                    useSimpleCards = useSimpleCards.value,
-                                                    useGoogleTvCards = useGoogleTvCards.value,
-                                                    lowPowerMode = lowPowerMode.value,
-                                                    imageRefreshKey = imageRefreshKey
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Recently Released Movies row
-                        if (recentlyReleasedMovies.isNotEmpty()) {
-                            item(key = "recently_released_movies", contentType = "media_row") {
-                                val isFirst = continueWatchingItems.isEmpty() && nextUpItems.isEmpty() && movieLibraries.none { (recentlyAddedMoviesByLibrary[it.Id] ?: emptyList()).isNotEmpty() }
-                                Column(
-                                    modifier = Modifier
-                                        .then(
-                                            if (isFirst) {
-                                                Modifier.padding(top = 12.dp).focusRequester(focusRequester)
-                                            } else {
-                                                Modifier
-                                            }
-                                        )
-                                ) {
-                                    Text(
-                                        text = "Recently Released Movies",
-                                        style = MaterialTheme.typography.headlineMedium.copy(
-                                            fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
-                                        ),
-                                        modifier = Modifier.padding(bottom = 12.dp, top = if (isFirst) 12.dp else 30.36.dp)
-                                    )
-                                    
-                                    LazyRow(
-                                        contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
-                                        horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                        modifier = if (debugOutlinesEnabled) {
-                                            Modifier.border(2.dp, Color.Magenta)
-                                        } else {
-                                            Modifier
-                                        }
-                                    ) {
-                                        items(
-                                            items = recentlyReleasedMovies,
-                                            key = { it.Id },
-                                            contentType = { "collection_item" }
-                                        ) { item ->
-                                            JellyfinHorizontalCard(
-                                                item = item,
-                                                apiService = apiService,
-                                                onClick = { onItemClick(item, 0L) },
-                                                onFocusChanged = { isFocused ->
-                                                    if (isFocused) {
-                                                        instantHighlightedItem = item
-                                                        originalEpisodeItem = null
-                                                        backgroundChangeJob?.cancel()
-                                                        backgroundChangeJob = scope.launch {
-                                                            delay(1300)
-                                                            highlightedItem = item
-                                                        }
-                                                    }
-                                                },
-                                                enableCaching = cacheLibraryImages,
-                                                reducePosterResolution = reducePosterResolution,
-                                                useSimpleCards = useSimpleCards.value,
-                                                useGoogleTvCards = useGoogleTvCards.value,
-                                                lowPowerMode = lowPowerMode.value,
-                                                imageRefreshKey = imageRefreshKey
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Recently Added Shows rows - one per TV show library
-                        val hasPrecedingRowsForShows = continueWatchingItems.isNotEmpty() || nextUpItems.isNotEmpty() || movieLibraries.any { (recentlyAddedMoviesByLibrary[it.Id] ?: emptyList()).isNotEmpty() } || recentlyReleasedMovies.isNotEmpty()
-                        tvShowLibraries.forEachIndexed { libraryIndex, library ->
-                            val libraryShows = recentlyAddedShowsByLibrary[library.Id]?.let { shows ->
-                                if (hideShowsWithZeroEpisodes) {
-                                    shows.filter { item ->
-                                        if (item.Type != "Series") {
-                                            true
-                                        } else {
-                                            val episodeCount = item.RecursiveItemCount ?: item.ChildCount ?: 0
-                                            episodeCount > 0
-                                        }
-                                    }
-                                } else {
-                                    shows
-                                }
-                            } ?: emptyList()
-                            
-                            if (libraryShows.isNotEmpty()) {
-                                item(key = "recently_added_shows_${library.Id}", contentType = "media_row") {
-                                    val isFirst = !hasPrecedingRowsForShows && libraryIndex == 0
-                                    val rowTitle = if (libraryIndex == 0) "Recently Added Shows" else "Recently Added Shows in ${library.Name}"
-                                    Column(
-                                        modifier = Modifier
-                                            .then(
-                                                if (isFirst) {
-                                                    Modifier.padding(top = 12.dp).focusRequester(focusRequester)
-                                                } else {
-                                                    Modifier
-                                                }
-                                            )
-                                    ) {
-                                        Text(
-                                            text = rowTitle,
-                                            style = MaterialTheme.typography.headlineMedium.copy(
-                                                fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
-                                            ),
-                                            modifier = Modifier.padding(bottom = 12.dp, top = if (isFirst) 12.dp else 30.36.dp)
-                                        )
-                                        
-                                        LazyRow(
-                                            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.2f * 1.3f)),
-                                            horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                            flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
-                                            modifier = if (debugOutlinesEnabled) {
-                                                Modifier.border(2.dp, Color.Magenta)
-                                            } else {
-                                                Modifier
-                                            }
-                                        ) {
-                                            items(
-                                                items = libraryShows,
-                                                key = { it.Id },
-                                                contentType = { "collection_item" }
-                                            ) { item ->
-                                                JellyfinHorizontalCard(
-                                                    item = item,
-                                                    apiService = apiService,
-                                                    onClick = { onItemClick(item, 0L) },
-                                                    onFocusChanged = { isFocused ->
-                                                        if (isFocused) {
-                                                            instantHighlightedItem = item
-                                                            originalEpisodeItem = null
-                                                            backgroundChangeJob?.cancel()
-                                                            backgroundChangeJob = scope.launch {
-                                                                delay(1300)
-                                                                highlightedItem = item
-                                                            }
-                                                        }
-                                                    },
-                                                    enableCaching = cacheLibraryImages,
-                                                    reducePosterResolution = reducePosterResolution,
-                                                    unwatchedEpisodeCount = if (item.Type == "Series") item.UserData?.UnplayedItemCount else null,
-                                                    useSimpleCards = useSimpleCards.value,
-                                                    useGoogleTvCards = useGoogleTvCards.value,
-                                                    lowPowerMode = lowPowerMode.value,
-                                                    imageRefreshKey = imageRefreshKey
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Recently Added Episodes rows - one per TV show library
-                        val hasPrecedingRowsForEpisodes = hasPrecedingRowsForShows || tvShowLibraries.any { (recentlyAddedShowsByLibrary[it.Id] ?: emptyList()).isNotEmpty() }
-                        tvShowLibraries.forEachIndexed { libraryIndex, library ->
-                            val libraryEpisodes = recentlyAddedEpisodesByLibrary[library.Id] ?: emptyList()
-                            
-                            if (libraryEpisodes.isNotEmpty()) {
-                                item(key = "recently_added_episodes_${library.Id}", contentType = "media_row") {
-                                    val isFirst = !hasPrecedingRowsForEpisodes && libraryIndex == 0
-                                    val rowTitle = if (libraryIndex == 0) "Recently Added Episodes" else "Recently Added Episodes in ${library.Name}"
-                                    Column(
-                                        modifier = Modifier
-                                            .then(
-                                                if (isFirst) {
-                                                    Modifier.padding(top = 12.dp).focusRequester(focusRequester)
-                                                } else {
-                                                    Modifier
-                                                }
-                                            )
-                                    ) {
-                                        Text(
-                                            text = rowTitle,
-                                            style = MaterialTheme.typography.headlineMedium.copy(
-                                                fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f
-                                            ),
-                                            modifier = Modifier.padding(bottom = 12.dp, top = if (isFirst) 12.dp else 30.36.dp)
-                                        )
-                                        
-                                        LazyRow(
-                                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = (15.87.dp * 1.4553f * 1.4f * 1.3f)),
-                                            horizontalArrangement = Arrangement.spacedBy(20.dp),
-                                            flingBehavior = if (disableUIAnimations.value) noFlingBehavior else ScrollableDefaults.flingBehavior(),
-                                            modifier = if (debugOutlinesEnabled) {
-                                                Modifier.border(2.dp, Color.Magenta)
-                                            } else {
-                                                Modifier
-                                            }
-                                        ) {
-                                            items(
-                                                items = libraryEpisodes,
-                                                key = { it.Id },
-                                                contentType = { "collection_item" }
-                                            ) { item ->
-                                                JellyfinHorizontalCard(
-                                                    item = item,
-                                                    apiService = apiService,
-                                                    onClick = {
-                                                        val resumePositionMs = item.UserData?.PositionTicks?.let { it / 10_000 } ?: 0L
-                                                        onItemClick(item, resumePositionMs)
-                                                    },
-                                                    onFocusChanged = { isFocused ->
-                                                        if (isFocused) {
-                                                            instantHighlightedItem = item
-                                                            originalEpisodeItem = if (item.Type == "Episode") item else null
-                                                            backgroundChangeJob?.cancel()
-                                                            backgroundChangeJob = scope.launch {
-                                                                delay(1300)
-                                                                if (item.Type == "Episode" && item.SeriesId != null) {
-                                                                    val seriesDetails = apiService?.getItemDetails(item.SeriesId)
-                                                                    if (seriesDetails != null) {
-                                                                        highlightedItem = seriesDetails
-                                                                    } else {
-                                                                        highlightedItem = item
-                                                                    }
-                                                                } else {
-                                                                    highlightedItem = item
-                                                                }
-                                                            }
-                                                        }
-                                                    },
-                                                    enableCaching = cacheLibraryImages,
-                                                    reducePosterResolution = reducePosterResolution,
-                                                    useSeriesPosterForEpisodes = true,
-                                                    useSimpleCards = useSimpleCards.value,
-                                                    useGoogleTvCards = useGoogleTvCards.value,
-                                                    lowPowerMode = lowPowerMode.value,
-                                                    imageRefreshKey = imageRefreshKey
-                                                )
-                                            }
-                                        }
-                                    }
                                 }
                             }
                         }
                     }
+                    }
                 }
             }
+                }
+}
         }
-    } // TvBringIntoViewProvider
+} // TvBringIntoViewProvider
     
     // Exit confirmation dialog
     if (showExitConfirmation) {
@@ -2637,15 +2199,9 @@ fun JellyfinCard(
     reducePosterResolution: Boolean = false,
     disableAnimations: Boolean = false
 ) {
-    // Use reduced resolution (300x450) or standard resolution (400x600) based on setting
-    // When animations disabled, force reduced resolution for better performance
-    val effectiveReduceResolution = reducePosterResolution || disableAnimations
-    val imageUrl = if (effectiveReduceResolution) {
-        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 300, maxHeight = 450, quality = 80) ?: ""
-    } else {
-        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 400, maxHeight = 600, quality = 85) ?: ""
-    }
-    
+    val imageUrl = apiService?.getImageUrl(item.Id, "Primary", null,
+        maxWidth = 1080, maxHeight = 1620, quality = 90) ?: ""
+
     StandardCardContainer(
         modifier = Modifier
             .width(268.dp)
@@ -2697,13 +2253,9 @@ fun JellyfinCardWithProgress(
     reducePosterResolution: Boolean = false,
     disableAnimations: Boolean = false
 ) {
-    // Use reduced resolution (300x450) or standard resolution (400x600) based on setting
-    val imageUrl = if (reducePosterResolution) {
-        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 300, maxHeight = 450, quality = 80) ?: ""
-    } else {
-        apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 400, maxHeight = 600, quality = 85) ?: ""
-    }
-    
+    val imageUrl = apiService?.getImageUrl(item.Id, "Primary", null,
+        maxWidth = 1080, maxHeight = 1620, quality = 90) ?: ""
+
     // Calculate progress percentage
     val progress = item.UserData?.PlayedPercentage?.toFloat()?.div(100f) ?: 0f
     
@@ -2786,19 +2338,14 @@ fun JellyfinHorizontalCard(
     externalImageUrl: String? = null // New parameter for external images (e.g., Jellyseerr)
 ) {
     // For episodes, use series poster (Primary) if requested; otherwise use poster (Primary) for movies/shows
-    // When animations disabled, simple cards, or Google TV cards enabled, force reduced resolution for better performance
-    // Low power mode uses even smaller images (300x450) for budget devices
-    val effectiveReduceResolution = reducePosterResolution || disableAnimations || useSimpleCards || useGoogleTvCards
-    val imageUrl = remember(item.Id, item.Type, item.SeriesId, useSeriesPosterForEpisodes, effectiveReduceResolution, lowPowerMode, imageRefreshKey, externalImageUrl) {
-        if (!externalImageUrl.isNullOrBlank()) {
-            return@remember externalImageUrl
-        }
-        
-        // Low power mode: 300x450, Reduced: 300x450, Standard: 400x600
-        val maxWidth = if (lowPowerMode) 300 else if (effectiveReduceResolution) 300 else 400
-        val maxHeight = if (lowPowerMode) 450 else if (effectiveReduceResolution) 450 else 600
-        val quality = if (lowPowerMode) 80 else 85
-        
+    // Request high-resolution sources; AsyncImage decodes to the actual card dimensions.
+    // Animation/card-style preferences should not reduce the source artwork quality.
+    val imageUrl = remember(apiService, item.Id, item.Type, item.SeriesId, useSeriesPosterForEpisodes, imageRefreshKey, externalImageUrl) {
+        if (!externalImageUrl.isNullOrBlank()) return@remember externalImageUrl
+        val maxWidth = 1080
+        val maxHeight = 1620
+        val quality = 90
+
         if (item.Type == "Episode" && useSeriesPosterForEpisodes && item.SeriesId != null) {
             // Use series poster (Primary) for episodes
             apiService?.getImageUrl(item.SeriesId, "Primary", null, maxWidth = maxWidth, maxHeight = maxHeight, quality = quality) ?: ""
@@ -2811,7 +2358,6 @@ fun JellyfinHorizontalCard(
     
     // Use Google TV style card - lightweight with subtle 10% scale animation and glow border
     if (useGoogleTvCards) {
-        var isFocused by remember { mutableStateOf(false) }
         
         // Google TV style: use TV Card with minimal scale for proper D-pad navigation
         Card(
@@ -2819,31 +2365,13 @@ fun JellyfinHorizontalCard(
             modifier = Modifier
                 .width(105.dp)
                 .onFocusChanged { focusState ->
-                    isFocused = focusState.isFocused
                     onFocusChanged?.invoke(focusState.isFocused)
-                }
-                .graphicsLayer {
-                    // Subtle 10% scale on focus (Google TV uses 1.08-1.12x)
-                    scaleX = if (isFocused) 1.10f else 1.0f
-                    scaleY = if (isFocused) 1.10f else 1.0f
-                    // Subtle shadow on focus
-                    shadowElevation = if (isFocused) 16f else 0f
-                }
-                .then(
-                    if (isFocused) {
-                        // Google TV glow border
-                        Modifier.border(
-                            width = 3.dp,
-                            color = Color.White,
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                    } else {
-                        Modifier
-                    }
-                ),
-            scale = CardDefaults.scale(focusedScale = 1.0f), // Disable default scale (we use graphicsLayer)
+                }.homeCardFocus(disableAnimations || lowPowerMode),
+            scale = CardDefaults.scale(focusedScale = 1f),
+            border = CardDefaults.border(focusedBorder = androidx.tv.material3.Border.None),
+
             colors = CardDefaults.colors(containerColor = Color.Transparent),
-            shape = CardDefaults.shape(RoundedCornerShape(12.dp))
+            shape = CardDefaults.shape(HomeStyle.cardShape)
         ) {
             Box(
                 modifier = Modifier
@@ -2851,12 +2379,11 @@ fun JellyfinHorizontalCard(
                     .aspectRatio(2f / 3f)
             ) {
                 if (imageUrl.isNotEmpty() && apiService != null) {
-                    val headerMap = apiService.getImageRequestHeaders()
-                    val imageRequest = remember(item.Id, imageUrl, enableCaching, imageRefreshKey) {
+                    // Request headers are built only when the remembered request changes.
+                    val imageRequest = remember(item.Id, imageUrl, apiService, enableCaching, imageRefreshKey) {
                         ImageRequest.Builder(context)
                             .data(imageUrl)
-                            .headers(headerMap)
-                            .size(300)
+                            .headers(apiService.getImageRequestHeaders())
                             .crossfade(false) // Disable crossfade for Google TV cards (performance)
                             .memoryCachePolicy(CachePolicy.ENABLED) // Always cache for Google TV cards
                             .diskCachePolicy(CachePolicy.ENABLED)
@@ -2885,7 +2412,7 @@ fun JellyfinHorizontalCard(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(6.dp)
-                            .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(4.dp))
+                            .background(HomeStyle.badgeBackground, HomeStyle.badgeShape)
                             .padding(4.dp)
                     ) {
                         Icon(
@@ -2903,7 +2430,7 @@ fun JellyfinHorizontalCard(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(6.dp)
-                            .background(Color.Black, RoundedCornerShape(4.dp))
+                            .background(HomeStyle.badgeBackground, HomeStyle.badgeShape)
                             .padding(horizontal = 6.dp, vertical = 3.dp)
                     ) {
                         Text(
@@ -2917,7 +2444,6 @@ fun JellyfinHorizontalCard(
         }
     } else if (useSimpleCards) {
         // Use simple card without zoom animation for low-spec devices
-        var isFocused by remember { mutableStateOf(false) }
         
         // Simple card using Card without StandardCardContainer (no zoom animation)
         Card(
@@ -2925,27 +2451,21 @@ fun JellyfinHorizontalCard(
             modifier = Modifier
                 .width(105.dp)
                 .onFocusChanged { focusState ->
-                    isFocused = focusState.isFocused
                     onFocusChanged?.invoke(focusState.isFocused)
                 }
-                .then(
-                    if (isFocused) {
-                        Modifier.border(3.dp, Color.White, RoundedCornerShape(8.dp))
-                    } else {
-                        Modifier
-                    }
-                ),
+                .homeCardFocus(true),
+            scale = CardDefaults.scale(focusedScale = 1f),
+                    border = CardDefaults.border(focusedBorder = androidx.tv.material3.Border.None),
             colors = CardDefaults.colors(containerColor = Color.Transparent),
-            shape = CardDefaults.shape(RoundedCornerShape(8.dp))
+            shape = CardDefaults.shape(HomeStyle.cardShape)
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
                 if (imageUrl.isNotEmpty() && apiService != null) {
-                    val headerMap = apiService.getImageRequestHeaders()
-                    val imageRequest = remember(item.Id, imageUrl, enableCaching, imageRefreshKey) {
+                    // Request headers are built only when the remembered request changes.
+                    val imageRequest = remember(item.Id, imageUrl, apiService, enableCaching, imageRefreshKey) {
                         ImageRequest.Builder(context)
                             .data(imageUrl)
-                            .headers(headerMap)
-                            .size(300)
+                            .headers(apiService.getImageRequestHeaders())
                             .crossfade(false) // Disable crossfade for simple cards (performance)
                             .memoryCachePolicy(if (enableCaching) CachePolicy.ENABLED else CachePolicy.DISABLED)
                             .diskCachePolicy(if (enableCaching) CachePolicy.ENABLED else CachePolicy.DISABLED)
@@ -2957,7 +2477,7 @@ fun JellyfinHorizontalCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(2f / 3f)
-                            .clip(RoundedCornerShape(8.dp)),
+                            .clip(HomeStyle.cardShape),
                         contentScale = ContentScale.Crop,
                         placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
                         error = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
@@ -2967,7 +2487,7 @@ fun JellyfinHorizontalCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(2f / 3f)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(HomeStyle.cardShape)
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                     )
                 }
@@ -2979,7 +2499,7 @@ fun JellyfinHorizontalCard(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(6.dp)
-                            .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(4.dp))
+                            .background(HomeStyle.badgeBackground, HomeStyle.badgeShape)
                             .padding(4.dp)
                     ) {
                         Icon(
@@ -2997,7 +2517,7 @@ fun JellyfinHorizontalCard(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(6.dp)
-                            .background(Color.Black, RoundedCornerShape(4.dp))
+                            .background(HomeStyle.badgeBackground, HomeStyle.badgeShape)
                             .padding(horizontal = 6.dp, vertical = 3.dp)
                     ) {
                         Text(
@@ -3022,19 +2542,22 @@ fun JellyfinHorizontalCard(
                 Card(
                     onClick = onClick,
                     interactionSource = it,
+                    modifier = Modifier.homeCardFocus(disableAnimations || lowPowerMode),
+                    scale = CardDefaults.scale(focusedScale = 1f),
+                    border = CardDefaults.border(focusedBorder = androidx.tv.material3.Border.None),
+                    shape = CardDefaults.shape(HomeStyle.cardShape),
                     colors = CardDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
                 ) {
                     if (imageUrl.isNotEmpty() && apiService != null) {
-                        val headerMap = apiService.getImageRequestHeaders()
+                        // Request headers are built only when the remembered request changes.
                         // Use stable ImageRequest based on item ID to ensure proper caching
                         // Coil will cache based on the URL, but using remember ensures we don't recreate the request on recomposition
                         // imageRefreshKey forces cache invalidation when auto-refresh detects new content
-                        val imageRequest = remember(item.Id, imageUrl, enableCaching, imageRefreshKey) {
+                        val imageRequest = remember(item.Id, imageUrl, apiService, enableCaching, imageRefreshKey) {
                             ImageRequest.Builder(context)
                                 .data(imageUrl)
-                                .headers(headerMap)
-                                .size(300) // Hint to Coil about target size for optimization
-                                .crossfade(true) // Smooth fade-in when image loads
+                                .headers(apiService.getImageRequestHeaders())
+                                .crossfade(false) // Reuse cached artwork without an additional image fade
                                 .memoryCachePolicy(if (enableCaching) CachePolicy.ENABLED else CachePolicy.DISABLED)
                                 .diskCachePolicy(if (enableCaching) CachePolicy.ENABLED else CachePolicy.DISABLED)
                                 .networkCachePolicy(CachePolicy.ENABLED) // Allow network caching but Coil will retry on error
@@ -3061,7 +2584,7 @@ fun JellyfinHorizontalCard(
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)
                                         .padding(6.dp)
-                                        .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(4.dp))
+                                        .background(HomeStyle.badgeBackground, HomeStyle.badgeShape)
                                         .padding(4.dp)
                                 ) {
                                     Icon(
@@ -3080,7 +2603,7 @@ fun JellyfinHorizontalCard(
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)
                                         .padding(6.dp)
-                                        .background(Color.Black, RoundedCornerShape(4.dp))
+                                        .background(HomeStyle.badgeBackground, HomeStyle.badgeShape)
                                         .padding(horizontal = 6.dp, vertical = 3.dp)
                                 ) {
                                     Text(
@@ -3210,65 +2733,47 @@ fun JellyfinHorizontalCardWithProgress(
     lowPowerMode: Boolean = false,
     imageRefreshKey: Long = 0L
 ) {
-    // Use reduced resolution for simple/Google TV cards for better performance
-    // Low power mode uses even smaller images (320x180) for budget devices
-    val useReducedResolution = useSimpleCards || useGoogleTvCards
-    val maxImageWidth = if (lowPowerMode) 320 else if (useReducedResolution) 640 else 1920
-    val maxImageHeight = if (lowPowerMode) 180 else if (useReducedResolution) 360 else 1080
-    val imageQuality = if (lowPowerMode) 80 else 90
+    // Full-HD landscape sources, decoded at the displayed card size by AsyncImage.
+    val maxImageWidth = 1920
+    val maxImageHeight = 1080
+    val imageQuality = 90
     
-    // Use thumbnail (Thumb) images for both episodes and movies
-    // For episodes, prioritize series/parent thumb image (like official Jellyfin Android TV app)
-    // For movies, use item's own thumb if available
-    val imageUrl = when {
-        // For episodes, try series thumb first (official app's preferParentThumb behavior)
-        item.Type == "Episode" && item.SeriesId != null -> {
-            // Try to get series thumb image (most common for episodes)
-            val seriesThumb = apiService?.getImageUrl(item.SeriesId, "Thumb", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
-            if (seriesThumb.isNotEmpty()) {
-                seriesThumb
+    // A generated URL is not proof that artwork exists. Try each candidate
+    // once, advancing on a failed image load rather than leaving a blank card.
+    val imageCandidates = remember(item, apiService, maxImageWidth, maxImageHeight, imageQuality, imageRefreshKey) {
+        buildList {
+            fun candidate(id: String, type: String, tag: String? = null) {
+                apiService?.getImageUrl(id, type, tag, maxWidth = maxImageWidth,
+                    maxHeight = maxImageHeight, quality = imageQuality)?.let { add(it) }
+            }
+            if (item.Type == "Episode" && item.SeriesId != null) {
+                candidate(item.SeriesId, "Thumb")
+                candidate(item.Id, "Thumb", item.ImageTags?.get("Thumb"))
+                candidate(item.Id, "Primary", item.ImageTags?.get("Primary"))
+                candidate(item.SeriesId, "Backdrop")
+                candidate(item.SeriesId, "Primary")
             } else {
-                // Fall back to episode's own thumb
-                val episodeThumb = item.ImageTags?.get("Thumb")?.let { thumbTag ->
-                    apiService?.getImageUrl(item.Id, "Thumb", thumbTag, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
-                } ?: ""
-                if (episodeThumb.isNotEmpty()) {
-                    episodeThumb
-                } else {
-                    // Fall back to episode's primary image (preview photo) before backdrops
-                    val episodePrimary = apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
-                    episodePrimary.ifEmpty {
-                        // Last resort: series backdrop, then episode backdrop
-                        val seriesBackdrop = apiService?.getImageUrl(item.SeriesId, "Backdrop", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
-                        seriesBackdrop.ifEmpty {
-                            apiService?.getImageUrl(item.Id, "Backdrop", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
-                        }
-                    }
-                }
+                candidate(item.Id, "Thumb", item.ImageTags?.get("Thumb"))
+                candidate(item.Id, "Backdrop")
+                candidate(item.Id, "Primary", item.ImageTags?.get("Primary"))
             }
-        }
-        // For movies or other items, use item's own thumb if available
-        item.ImageTags?.containsKey("Thumb") == true -> {
-            item.ImageTags?.get("Thumb")?.let { thumbTag ->
-                apiService?.getImageUrl(item.Id, "Thumb", thumbTag, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
-            } ?: ""
-        }
-        // Fallback for movies: backdrop, then primary
-        else -> {
-            val backdrop = apiService?.getImageUrl(item.Id, "Backdrop", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
-            backdrop.ifEmpty {
-                apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = maxImageWidth, maxHeight = maxImageHeight, quality = imageQuality) ?: ""
-            }
+        }.distinct()
+    }
+    var imageCandidateIndex by remember(imageCandidates, imageRefreshKey) { mutableStateOf(0) }
+    val imageUrl = imageCandidates.getOrNull(imageCandidateIndex).orEmpty()
+    val advanceImage: (coil.compose.AsyncImagePainter.State.Error) -> Unit = {
+        if (imageCandidates.getOrNull(imageCandidateIndex) == imageUrl &&
+            imageCandidateIndex < imageCandidates.lastIndex) {
+            imageCandidateIndex++
         }
     }
-    
+
     // Calculate progress percentage
     val progress = item.UserData?.PlayedPercentage?.toFloat()?.div(100f) ?: 0f
     val context = LocalContext.current
     
     // Google TV style card - lightweight with subtle scale animation
     if (useGoogleTvCards) {
-        var isFocused by remember { mutableStateOf(false) }
         
         // Google TV style: use TV Card with minimal scale for proper D-pad navigation
         Card(
@@ -3276,28 +2781,13 @@ fun JellyfinHorizontalCardWithProgress(
             modifier = Modifier
                 .width(161.dp)
                 .onFocusChanged { focusState ->
-                    isFocused = focusState.isFocused
                     onFocusChanged?.invoke(focusState.isFocused)
-                }
-                .graphicsLayer {
-                    scaleX = if (isFocused) 1.10f else 1.0f
-                    scaleY = if (isFocused) 1.10f else 1.0f
-                    shadowElevation = if (isFocused) 16f else 0f
-                }
-                .then(
-                    if (isFocused) {
-                        Modifier.border(
-                            width = 3.dp,
-                            color = Color.White,
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                    } else {
-                        Modifier
-                    }
-                ),
-            scale = CardDefaults.scale(focusedScale = 1.0f), // Disable default scale (we use graphicsLayer)
+                }.homeCardFocus(disableAnimations || lowPowerMode),
+            scale = CardDefaults.scale(focusedScale = 1f),
+            border = CardDefaults.border(focusedBorder = androidx.tv.material3.Border.None),
+
             colors = CardDefaults.colors(containerColor = Color.Transparent),
-            shape = CardDefaults.shape(RoundedCornerShape(12.dp))
+            shape = CardDefaults.shape(HomeStyle.cardShape)
         ) {
             Box(
                 modifier = Modifier
@@ -3305,11 +2795,11 @@ fun JellyfinHorizontalCardWithProgress(
                     .aspectRatio(16f / 9f)
             ) {
                 if (imageUrl.isNotEmpty() && apiService != null) {
-                    val headerMap = apiService.getImageRequestHeaders()
-                    val imageRequest = remember(item.Id, imageUrl, imageRefreshKey) {
+                    // Request headers are built only when the remembered request changes.
+                    val imageRequest = remember(item.Id, imageUrl, apiService, imageRefreshKey) {
                         ImageRequest.Builder(context)
                             .data(imageUrl)
-                            .headers(headerMap)
+                            .headers(apiService.getImageRequestHeaders())
                             .crossfade(false) // Disable crossfade for Google TV cards (performance)
                             .memoryCachePolicy(CachePolicy.ENABLED)
                             .diskCachePolicy(CachePolicy.ENABLED)
@@ -3317,6 +2807,7 @@ fun JellyfinHorizontalCardWithProgress(
                     }
                     AsyncImage(
                         model = imageRequest,
+                        onError = advanceImage,
                         contentDescription = item.Name,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
@@ -3336,14 +2827,16 @@ fun JellyfinHorizontalCardWithProgress(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(4.dp)
+                            .padding(horizontal = 8.dp)
+                            .height(HomeStyle.progressHeight)
                             .align(Alignment.BottomCenter)
+                            .offset(y = (-6).dp)
                             .background(Color.Black.copy(alpha = 0.5f))
                     ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(progress)
-                                .height(4.dp)
+                                .height(HomeStyle.progressHeight)
                                 .background(MaterialTheme.colorScheme.primary)
                         )
                     }
@@ -3352,33 +2845,27 @@ fun JellyfinHorizontalCardWithProgress(
         }
     } else if (useSimpleCards) {
         // Simple card - flat with border highlight on focus
-        var isFocused by remember { mutableStateOf(false) }
         
         Card(
             onClick = onClick,
             modifier = Modifier
                 .width(161.dp)
                 .onFocusChanged { focusState ->
-                    isFocused = focusState.isFocused
                     onFocusChanged?.invoke(focusState.isFocused)
                 }
-                .then(
-                    if (isFocused) {
-                        Modifier.border(3.dp, Color.White, RoundedCornerShape(12.dp))
-                    } else {
-                        Modifier
-                    }
-                ),
+                .homeCardFocus(true),
+            scale = CardDefaults.scale(focusedScale = 1f),
+                    border = CardDefaults.border(focusedBorder = androidx.tv.material3.Border.None),
             colors = CardDefaults.colors(containerColor = Color.Transparent),
-            shape = CardDefaults.shape(RoundedCornerShape(12.dp))
+            shape = CardDefaults.shape(HomeStyle.cardShape)
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
                 if (imageUrl.isNotEmpty() && apiService != null) {
-                    val headerMap = apiService.getImageRequestHeaders()
-                    val imageRequest = remember(item.Id, imageUrl, imageRefreshKey) {
+                    // Request headers are built only when the remembered request changes.
+                    val imageRequest = remember(item.Id, imageUrl, apiService, imageRefreshKey) {
                         ImageRequest.Builder(context)
                             .data(imageUrl)
-                            .headers(headerMap)
+                            .headers(apiService.getImageRequestHeaders())
                             .crossfade(false) // Disable crossfade for simple cards (performance)
                             .memoryCachePolicy(CachePolicy.ENABLED)
                             .diskCachePolicy(CachePolicy.ENABLED)
@@ -3386,11 +2873,12 @@ fun JellyfinHorizontalCardWithProgress(
                     }
                     AsyncImage(
                         model = imageRequest,
+                        onError = advanceImage,
                         contentDescription = item.Name,
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(16f / 9f)
-                            .clip(RoundedCornerShape(12.dp)),
+                            .clip(HomeStyle.cardShape),
                         contentScale = ContentScale.Crop,
                         placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
                         error = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
@@ -3400,7 +2888,7 @@ fun JellyfinHorizontalCardWithProgress(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(16f / 9f)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(HomeStyle.cardShape)
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                     )
                 }
@@ -3410,14 +2898,16 @@ fun JellyfinHorizontalCardWithProgress(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(4.dp)
+                            .padding(horizontal = 8.dp)
+                            .height(HomeStyle.progressHeight)
                             .align(Alignment.BottomCenter)
+                            .offset(y = (-6).dp)
                             .background(Color.Black.copy(alpha = 0.5f))
                     ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(progress)
-                                .height(4.dp)
+                                .height(HomeStyle.progressHeight)
                                 .background(MaterialTheme.colorScheme.primary)
                         )
                     }
@@ -3437,43 +2927,48 @@ fun JellyfinHorizontalCardWithProgress(
                 Card(
                     onClick = onClick,
                     interactionSource = it,
+                    modifier = Modifier.homeCardFocus(disableAnimations || lowPowerMode),
+                    scale = CardDefaults.scale(focusedScale = 1f),
+                    border = CardDefaults.border(focusedBorder = androidx.tv.material3.Border.None),
+                    shape = CardDefaults.shape(HomeStyle.cardShape),
                     colors = CardDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
                 ) {
                     Box(modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))) {
+                        .clip(HomeStyle.cardShape)) {
                         if (imageUrl.isNotEmpty() && apiService != null) {
-                            val headerMap = apiService.getImageRequestHeaders()
-                            val imageRequest = remember(item.Id, imageUrl, imageRefreshKey) {
+                            // Request headers are built only when the remembered request changes.
+                            val imageRequest = remember(item.Id, imageUrl, apiService, imageRefreshKey) {
                                 ImageRequest.Builder(context)
                                     .data(imageUrl)
-                                    .headers(headerMap)
-                                    .crossfade(true)
+                                    .headers(apiService.getImageRequestHeaders())
+                                    .crossfade(false)
                                     .memoryCachePolicy(CachePolicy.ENABLED)
                                     .diskCachePolicy(CachePolicy.ENABLED)
                                     .build()
                             }
                             AsyncImage(
                                 model = imageRequest,
+                        onError = advanceImage,
                                 contentDescription = item.Name,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(16f / 9f) // 16:9 landscape aspect ratio
-                                    .clip(RoundedCornerShape(12.dp)),
+                                    .clip(HomeStyle.cardShape),
                                 contentScale = ContentScale.Crop,
                                 placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
                                 error = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
                             )
                         } else {
                             // Fallback to primary image if no thumbnail/backdrop
-                            val primaryUrl = apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 400, maxHeight = 600, quality = 85) ?: ""
+                            val primaryUrl = apiService?.getImageUrl(item.Id, "Primary", null, maxWidth = 1080, maxHeight = 1620, quality = 90) ?: ""
                             if (primaryUrl.isNotEmpty() && apiService != null) {
-                                val headerMap = apiService.getImageRequestHeaders()
-                                val primaryImageRequest = remember(item.Id, primaryUrl, imageRefreshKey) {
+                                // Request headers are built only when the remembered request changes.
+                                val primaryImageRequest = remember(item.Id, primaryUrl, apiService, imageRefreshKey) {
                                     ImageRequest.Builder(context)
                                         .data(primaryUrl)
-                                        .headers(headerMap)
-                                        .crossfade(true)
+                                        .headers(apiService.getImageRequestHeaders())
+                                        .crossfade(false)
                                         .memoryCachePolicy(CachePolicy.ENABLED)
                                         .diskCachePolicy(CachePolicy.ENABLED)
                                         .build()
@@ -3484,7 +2979,7 @@ fun JellyfinHorizontalCardWithProgress(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .aspectRatio(16f / 9f)
-                                        .clip(RoundedCornerShape(12.dp)),
+                                        .clip(HomeStyle.cardShape),
                                     contentScale = ContentScale.Crop,
                                     placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
                                     error = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
@@ -3494,7 +2989,7 @@ fun JellyfinHorizontalCardWithProgress(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .aspectRatio(16f / 9f)
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .clip(HomeStyle.cardShape)
                                         .background(MaterialTheme.colorScheme.surfaceVariant)
                                 )
                             }
@@ -3505,14 +3000,16 @@ fun JellyfinHorizontalCardWithProgress(
                             androidx.compose.foundation.layout.Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(4.dp)
+                                    .padding(horizontal = 8.dp)
+                                    .height(HomeStyle.progressHeight)
                                     .align(Alignment.BottomCenter)
+                                    .offset(y = (-6).dp)
                                     .background(Color.Black.copy(alpha = 0.5f))
                             ) {
                                 androidx.compose.foundation.layout.Box(
                                     modifier = Modifier
                                         .fillMaxWidth(progress)
-                                        .height(4.dp)
+                                        .height(HomeStyle.progressHeight)
                                         .background(MaterialTheme.colorScheme.primary)
                                 )
                             }
@@ -3570,7 +3067,7 @@ fun Modifier.carouselGradient(): Modifier = composed {
 private fun MetadataBox(text: String) {
     Box(
         modifier = Modifier
-            .background(Color.Black, RoundedCornerShape(4.dp))
+            .background(HomeStyle.badgeBackground, HomeStyle.badgeShape)
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
         Text(
@@ -3594,179 +3091,7 @@ private fun formatResolution(width: Int?, height: Int?): String? {
     }
 }
 
-// Rating display with Rotten Tomatoes icon support - matching MovieDetailsScreen/SeriesDetailsScreen
-@Composable
-private fun RatingDisplay(
-    item: JellyfinItem,
-    communityRating: Float?,
-    criticRating: Float?
-) {
-    // Calculate percentages
-    fun calculatePercentage(rating: Float): Int {
-        return if (rating > 10) {
-            // Already in percentage format (0-100)
-            rating.toInt()
-        } else {
-            // Convert from 0-10 scale to percentage
-            (rating * 10).toInt()
-        }
-    }
-    
-    // Determine critic rating type and display if available
-    val criticRatingType: com.flex.elefin.screens.RatingType? = if (criticRating != null) {
-        // Pass null for communityRating to focus on critic rating
-        determineRatingType(item.ProviderIds, null, criticRating, preferCommunity = false)
-    } else {
-        null
-    }
-    
-    // Determine community rating type and display if available (as audience rating)
-    val communityRatingType: com.flex.elefin.screens.RatingType? = if (communityRating != null) {
-        // Pass null for criticRating to focus on community rating
-        determineRatingType(item.ProviderIds, communityRating, null, preferCommunity = true)
-    } else {
-        null
-    }
-    
-    // Show critic rating (RT Fresh/Rotten or generic)
-    if (criticRating != null) {
-        val percentage = calculatePercentage(criticRating)
-        when (criticRatingType) {
-            com.flex.elefin.screens.RatingType.RottenTomatoesFresh -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = com.flex.elefin.R.drawable.ic_rt_fresh,
-                    label = "RT"
-                )
-            }
-            com.flex.elefin.screens.RatingType.RottenTomatoesRotten -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = com.flex.elefin.R.drawable.ic_rt_rotten,
-                    label = "RT"
-                )
-            }
-            com.flex.elefin.screens.RatingType.IMDb -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = com.flex.elefin.R.drawable.ic_imdb,
-                    label = "IMDb"
-                )
-            }
-            else -> {
-                MetadataBox(text = "${percentage}%")
-            }
-        }
-    }
-    
-    // Show audience rating (RT Popcorn or generic) if available and different from critic
-    if (communityRating != null && (criticRating == null || communityRating != criticRating)) {
-        val percentage = calculatePercentage(communityRating)
-        when (communityRatingType) {
-            com.flex.elefin.screens.RatingType.RottenTomatoesAudience -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = com.flex.elefin.R.drawable.ic_rt_popcorn,
-                    label = "RT"
-                )
-            }
-            com.flex.elefin.screens.RatingType.IMDb -> {
-                // Only show IMDb if we didn't already show it for critic
-                if (criticRatingType != com.flex.elefin.screens.RatingType.IMDb) {
-                    RatingBoxWithIcon(
-                        percentage = percentage,
-                        iconRes = com.flex.elefin.R.drawable.ic_imdb,
-                        label = "IMDb"
-                    )
-                }
-            }
-            else -> {
-                // Show generic community rating only if we didn't show critic rating
-                if (criticRating == null) {
-                    MetadataBox(text = "${percentage}%")
-                }
-            }
-        }
-    }
-}
 
-// Determine rating type from ProviderIds and rating values
-private fun determineRatingType(
-    providerIds: Map<String, String>?,
-    communityRating: Float?,
-    criticRating: Float?,
-    preferCommunity: Boolean
-): com.flex.elefin.screens.RatingType {
-    // Check for Rotten Tomatoes provider IDs first
-    val rtId = providerIds?.get("RottenTomatoes") ?: providerIds?.get("rottentomatoes") ?: 
-               providerIds?.get("Rotten Tomatoes") ?: providerIds?.get("RottenTomatoes.tomato") ?:
-               providerIds?.get("RottenTomatoes.audience")
-    
-    // If preferCommunity is true and CommunityRating exists with RT ID, return Audience
-    if (preferCommunity && rtId != null && communityRating != null) {
-        return com.flex.elefin.screens.RatingType.RottenTomatoesAudience
-    }
-    
-    // If CriticRating exists, it's likely RT Fresh/Rotten rating
-    if (criticRating != null && !preferCommunity) {
-        // RT Fresh = 60%+ (6.0/10), RT Rotten = <60%
-        // Show RT icons even if ProviderIds don't explicitly say RT, as CriticRating is typically RT
-        return if (criticRating >= 6.0f) {
-            com.flex.elefin.screens.RatingType.RottenTomatoesFresh
-        } else {
-            com.flex.elefin.screens.RatingType.RottenTomatoesRotten
-        }
-    }
-    
-    // If we have RT provider ID and CommunityRating, it might be RT Audience
-    if (rtId != null && communityRating != null) {
-        return com.flex.elefin.screens.RatingType.RottenTomatoesAudience
-    }
-    
-    // Check for IMDb
-    if (providerIds != null) {
-        val imdbId = providerIds["Imdb"] ?: providerIds["imdb"] ?: providerIds["IMDb"] ?:
-                     providerIds["imdbid"]
-        if (imdbId != null) {
-            return com.flex.elefin.screens.RatingType.IMDb
-        }
-    }
-    
-    return com.flex.elefin.screens.RatingType.Generic
-}
-
-// Rating box with icon - matching MovieDetailsScreen/SeriesDetailsScreen
-@Composable
-private fun RatingBoxWithIcon(
-    percentage: Int,
-    iconRes: Int,
-    label: String
-) {
-    Box(
-        modifier = Modifier
-            .background(Color.Black, RoundedCornerShape(4.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Icon for rating source - height to match metadata item height, width adjusts to preserve aspect ratio
-            Image(
-                painter = painterResource(iconRes),
-                contentDescription = label,
-                modifier = Modifier.height(12.dp), // Match height of labelSmall text in MetadataBox
-                contentScale = ContentScale.Fit // Preserve aspect ratio, fill height
-            )
-            Text(
-                text = "${percentage}%",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White
-            )
-        }
-    }
-}
 
 // =============================================================================
 // A-Z ALPHABET INDEX BAR (Plex-style jump navigation)
@@ -3960,28 +3285,66 @@ private fun LetterOverlay(
  * Leverages state-read deferral via lambdas to prevent recomposing parent container.
  */
 @Composable
+private fun HomeHero(
+    itemProvider: () -> JellyfinItem?,
+    isScrolling: () -> Boolean,
+    episodeProvider: () -> JellyfinItem?,
+    apiService: JellyfinApiService?,
+    imageRefreshKey: Long,
+    disableAnimations: Boolean
+) {
+    var selected by remember { mutableStateOf<Pair<JellyfinItem?, JellyfinItem?>>(null to null) }
+    var details by remember { mutableStateOf<JellyfinItem?>(null) }
+    val cache = remember(apiService, imageRefreshKey) { android.util.LruCache<String, JellyfinItem>(64) }
+    // Observe focus without subscribing the parent screen to every remote key press.
+    LaunchedEffect(apiService, imageRefreshKey) {
+        snapshotFlow { Triple(itemProvider(), episodeProvider(), isScrolling()) }.collectLatest { focused ->
+            if (focused.third) return@collectLatest
+            val item = focused.first ?: return@collectLatest
+            delay(250)
+            selected = focused.first to focused.second
+            details = cache.get(item.Id) ?: item
+            if (apiService != null && cache.get(item.Id) == null) {
+                try {
+                    details = apiService.getItemDetails(item.Id).also { cache.put(item.Id, it) }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // Basic metadata remains available if the server cannot return details.
+                }
+            }
+        }
+    }
+    MetadataSection({ selected.first }, { details }, { selected.second }, apiService, disableAnimations)
+}
+
+@Composable
 private fun MetadataSection(
     itemProvider: () -> JellyfinItem?,
     detailsProvider: () -> JellyfinItem?,
     originalEpisodeItemProvider: () -> JellyfinItem?,
     apiService: JellyfinApiService?,
+    disableAnimations: Boolean,
 ) {
     val debouncedHighlightedItem = itemProvider()
     val debouncedHighlightedItemDetails = detailsProvider()
     val debouncedOriginalEpisodeItem = originalEpisodeItemProvider()
     
-    // Create a stable key for the current item to trigger crossfade
-    val metadataKey = debouncedHighlightedItem?.Id ?: ""
+    // Retain outgoing content, and never show a previous item's details under the new title.
+    val metadataFrame = Triple(debouncedHighlightedItem,
+        debouncedHighlightedItemDetails?.takeIf { it.Id == debouncedHighlightedItem?.Id },
+        debouncedOriginalEpisodeItem)
     
     Crossfade(
-        targetState = metadataKey,
-        animationSpec = tween(durationMillis = 200),
+        targetState = metadataFrame,
+        animationSpec = tween(durationMillis = if (disableAnimations) 0 else 160),
         label = "metadata_fade"
-    ) { currentKey ->
+    ) { frame ->
         // Only render if we have a valid item
-        val item = debouncedHighlightedItem
-        if (item != null && currentKey == item.Id) {
-            val details = debouncedHighlightedItemDetails ?: item
+        val item = frame.first
+        val debouncedOriginalEpisodeItem = frame.third
+        if (item != null) {
+            val details = frame.second ?: item
             val runtimeText = formatRuntime(details.RunTimeTicks)
             
             // For episodes from Continue Watching, Next Up, or Recently Added Episodes, show air date instead of ProductionYear
@@ -4015,7 +3378,8 @@ private fun MetadataSection(
             Column(
                 modifier = Modifier
                     .padding(start = 54.dp, top = 77.dp, end = 38.dp) // Increased by 10% (70 * 1.1 = 77)
-                    .fillMaxWidth(0.75f) // Increased by 50%: 0.5 * 1.5 = 0.75 (50% wider horizontally)
+                    .fillMaxWidth(0.72f)
+                    .height(170.dp).clip(RoundedCornerShape(0.dp))
             ) {
                 // Title (Series name for episodes, item name for others) or Logo
                 // For episodes, we need to show the series name as the title, not the episode name
@@ -4039,7 +3403,7 @@ private fun MetadataSection(
                     item = titleItem,
                     apiService = apiService,
                     style = MaterialTheme.typography.headlineMedium.copy(
-                        fontSize = MaterialTheme.typography.headlineMedium.fontSize * 0.64f // Reduced by 20% (0.8 * 0.8 = 0.64)
+                        fontSize = 22.sp, fontWeight = FontWeight.SemiBold
                     ),
                     color = Color.White,
                     modifier = Modifier.padding(bottom = 8.dp)
@@ -4052,7 +3416,7 @@ private fun MetadataSection(
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f // Same size as synopsis
                         ),
-                        color = Color.White.copy(alpha = 0.9f),
+                        color = HomeStyle.secondaryText,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
                 }
@@ -4075,7 +3439,7 @@ private fun MetadataSection(
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
                                     ),
-                                    color = Color.White.copy(alpha = 0.9f)
+                                    color = HomeStyle.secondaryText
                                 )
                             }
                             if (yearText.isNotEmpty()) {
@@ -4084,7 +3448,7 @@ private fun MetadataSection(
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
                                     ),
-                                    color = Color.White.copy(alpha = 0.9f)
+                                    color = HomeStyle.secondaryText
                                 )
                             }
                             // Don't show runtime for Series items (shows)
@@ -4094,7 +3458,7 @@ private fun MetadataSection(
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
                                     ),
-                                    color = Color.White.copy(alpha = 0.9f)
+                                    color = HomeStyle.secondaryText
                                 )
                             }
                             if (genreText.isNotEmpty()) {
@@ -4103,7 +3467,7 @@ private fun MetadataSection(
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontSize = MaterialTheme.typography.bodyMedium.fontSize * 0.8f
                                     ),
-                                    color = Color.White.copy(alpha = 0.9f)
+                                    color = HomeStyle.secondaryText
                                 )
                             }
                         }
@@ -4150,10 +3514,10 @@ private fun MetadataSection(
                             text = synopsis,
                             style = MaterialTheme.typography.bodyLarge.copy(
                                 fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f,
-                                lineHeight = MaterialTheme.typography.bodyLarge.fontSize * 0.8f * 1.1f // Reduced line spacing (10% of font size)
+                                lineHeight = 18.sp
                             ),
-                            color = Color.White.copy(alpha = 0.9f),
-                            maxLines = 3,
+                            color = HomeStyle.secondaryText,
+                            maxLines = 2,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
@@ -4162,4 +3526,20 @@ private fun MetadataSection(
             }
         }
     }
+}
+
+@Composable
+private fun TvHomeBackground(
+    itemProvider: () -> JellyfinItem?,
+    isScrolling: () -> Boolean,
+    apiService: JellyfinApiService?,
+    darkModeEnabled: Boolean,
+    lowPowerMode: Boolean,
+    use4KBackgrounds: Boolean,
+    selectedLibraryId: String?,
+    selectedCollectionId: String?,
+    disableAnimations: Boolean
+) {
+    HomeBackdrop(itemProvider(), apiService, darkModeEnabled, lowPowerMode,
+        use4KBackgrounds, disableAnimations, isScrolling)
 }

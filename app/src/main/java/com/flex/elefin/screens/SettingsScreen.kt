@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -20,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.key
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -80,6 +83,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -91,8 +95,13 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -109,6 +118,7 @@ import androidx.core.content.FileProvider
 // Settings categories
 enum class SettingsCategory(val title: String, val icon: ImageVector) {
     PLAYBACK("Playback", Icons.Default.PlayArrow),
+    CINEMA("Elefin Cinema", Icons.Default.Movie),
     VIDEO("Video", Icons.Default.Videocam),
     SUBTITLES("Audio & Subtitles", Icons.Default.Subtitles),
     APPEARANCE("Appearance", Icons.Default.Palette),
@@ -118,11 +128,11 @@ enum class SettingsCategory(val title: String, val icon: ImageVector) {
     UPDATES("Updates", Icons.Default.Update),
     JELLYSEERR("Jellyseerr (Discover Content)", Icons.Default.Videocam),
     TRAILERS("Trailers", Icons.Default.Movie),
-    ACCOUNT("Account", Icons.Default.Person),
+    ACCOUNT("Accounts", Icons.Default.Person),
     COFFEE("Buy Me a Coffee", Icons.Filled.Favorite)
 }
 
-@OptIn(coil.annotation.ExperimentalCoilApi::class)
+@OptIn(coil.annotation.ExperimentalCoilApi::class, ExperimentalLayoutApi::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
@@ -134,9 +144,12 @@ fun SettingsScreen(
     
     // Selected category
     var selectedCategory by remember { mutableStateOf(initialCategory) }
+    val categoryFocusTargets = remember { SettingsCategory.entries.associateWith { FocusRequester() } }
+    val detailFocus = remember(selectedCategory) { FocusRequester() }
+    val appearanceFirstControl = remember { FocusRequester() }
     
     // All settings state
-    var mpvEnabled by remember { mutableStateOf(settings.isMpvEnabled) }
+    var playbackPlayer by remember { mutableStateOf(settings.playbackPlayer) }
     
     // MPV download state
     var isMpvInstalled by remember { mutableStateOf(false) }
@@ -176,6 +189,7 @@ fun SettingsScreen(
     var debugOutlinesEnabled by remember { mutableStateOf(settings.showDebugOutlines) }
     var preloadLibraryImagesEnabled by remember { mutableStateOf(settings.preloadLibraryImages) }
     var cacheLibraryImagesEnabled by remember { mutableStateOf(settings.cacheLibraryImages) }
+    var showMusicLibrariesEnabled by remember { mutableStateOf(settings.showMusicLibraries) }
     var useGlideEnabled by remember { mutableStateOf(settings.useGlide) }
     var reducePosterResolutionEnabled by remember { mutableStateOf(settings.reducePosterResolution) }
     var animatedPlayButtonEnabled by remember { mutableStateOf(settings.useAnimatedPlayButton) }
@@ -184,7 +198,6 @@ fun SettingsScreen(
     var remoteThemingEnabled by remember { mutableStateOf(settings.remoteThemingEnabled) }
     var darkModeEnabled by remember { mutableStateOf(settings.darkModeEnabled) }
     var autoRefreshEnabled by remember { mutableStateOf(settings.autoRefreshEnabled) }
-    var autoRefreshIntervalMinutes by remember { mutableStateOf(settings.autoRefreshIntervalMinutes) }
     var hideShowsWithZeroEpisodesEnabled by remember { mutableStateOf(settings.hideShowsWithZeroEpisodes) }
     var minimalBuffer4KEnabled by remember { mutableStateOf(settings.minimalBuffer4K) }
     var transcodeAacToAc3Enabled by remember { mutableStateOf(settings.transcodeAacToAc3) }
@@ -249,15 +262,20 @@ fun SettingsScreen(
     var jellyseerrEnabled by remember { mutableStateOf(settings.jellyseerrEnabled) }
     var jellyseerrSearchEnabled by remember { mutableStateOf(settings.jellyseerrSearchEnabled) }
     
+    var cinemaSharpen by remember { mutableStateOf(settings.cinemaSharpenUpscale) }
+    var cinemaSubtitleTiming by remember { mutableStateOf(settings.cinemaSubtitleTimingControls) }
+    var cinemaDeband by remember { mutableStateOf(settings.cinemaDeband) }
+    var cinemaPreferShieldAi by remember { mutableStateOf(settings.cinemaPreferShieldAi) }
+    var cinemaMatchRefresh by remember { mutableStateOf(settings.cinemaMatchRefreshRate) }
+    var cinemaSmoothMotion by remember { mutableStateOf(settings.cinemaMotionSmoothing) }
+    var cinemaHdrLike by remember { mutableStateOf(settings.cinemaHdrLike) }
+    var cinemaHdrStrength by remember { mutableStateOf(settings.cinemaHdrLikeStrength) }
+    var cinemaDenoise by remember { mutableStateOf(settings.cinemaDenoise) }
+
     // MPV Shader Profile
     var mpvShaderProfile by remember { mutableStateOf(settings.mpvShaderProfile) }
 
     // OpenSubtitles state variables
-    var openSubtitlesApiKey by remember { mutableStateOf(settings.openSubtitlesApiKey) }
-    var showApiKeyDialog by remember { mutableStateOf(false) }
-    var openSubtitlesUsername by remember { mutableStateOf(settings.openSubtitlesUsername) }
-    var openSubtitlesPassword by remember { mutableStateOf(settings.openSubtitlesPassword) }
-    var showLoginDialog by remember { mutableStateOf(false) }
     var showClearSubtitlesDialog by remember { mutableStateOf(false) }
     var rowCardCount by remember { mutableStateOf(settings.rowCardCount) }
     var downloadedSubtitlesCount by remember { mutableStateOf(0) }
@@ -272,15 +290,75 @@ fun SettingsScreen(
     @Composable
     fun SettingsOptions(category: SettingsCategory) {
         when (category) {
+            SettingsCategory.CINEMA -> {
+                SettingToggle(title = "Subtitle timing controls",
+                    description = "Show minus and plus buttons in Cinema to move subtitles earlier or later in 0.1-second steps. Applies on next playback.",
+                    isEnabled = cinemaSubtitleTiming, onToggle = {
+                        cinemaSubtitleTiming = !cinemaSubtitleTiming
+                        settings.cinemaSubtitleTimingControls = cinemaSubtitleTiming
+                    })
+                val shieldAiSupported = com.flex.elefin.player.cinema.supportsShieldAiUpscaling(
+                    android.os.Build.MANUFACTURER, android.os.Build.DEVICE)
+                if (shieldAiSupported) {
+                    SettingToggle(title = "Prefer Shield AI upscaling",
+                        description = "Use native playback on the next video. Enable AI-enhanced upscaling in Shield settings and use 4K output. Bypasses Cinema's MPV effects and motion smoothing. AI activation depends on the video; check Shield's upscaling status.",
+                        isEnabled = cinemaPreferShieldAi, onToggle = {
+                            cinemaPreferShieldAi = !cinemaPreferShieldAi
+                            settings.cinemaPreferShieldAi = cinemaPreferShieldAi
+                        })
+                }
+
+                SettingToggle(title = "Match display refresh rate",
+                    description = "Match the video's frame rate without changing resolution. May briefly blank the screen. Restores the display preference when leaving playback.",
+                    isEnabled = cinemaMatchRefresh, onToggle = {
+                        cinemaMatchRefresh = !cinemaMatchRefresh; settings.cinemaMatchRefreshRate = cinemaMatchRefresh
+                    })
+                SettingToggle(title = "Motion smoothing",
+                    description = "MPV temporal interpolation reduces cadence judder; may soften motion and increase GPU load. Not AI frame generation. Uses decoded audio rather than passthrough. Applies on next playback; unavailable with native compatibility playback.",
+                    isEnabled = cinemaSmoothMotion, onToggle = {
+                        cinemaSmoothMotion = !cinemaSmoothMotion; settings.cinemaMotionSmoothing = cinemaSmoothMotion
+                    })
+                Text("Video enhancements", style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(16.dp))
+                Text("Applies on the next playback in Elefin Cinema. Unavailable during Dolby Vision or native compatibility playback. Effects may reduce performance on slower devices.",
+                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                SettingToggle(title = "Sharpening / Upscaling",
+                    description = "Mild sharpening and higher-quality scaling for lower-resolution video. Not AI upscaling.",
+                    isEnabled = cinemaSharpen, onToggle = {
+                        cinemaSharpen = !cinemaSharpen; settings.cinemaSharpenUpscale = cinemaSharpen
+                    })
+                SettingToggle(title = "Debanding",
+                    description = "Smooth visible color bands in skies, shadows, and gradients.",
+                    isEnabled = cinemaDeband, onToggle = {
+                        cinemaDeband = !cinemaDeband; settings.cinemaDeband = cinemaDeband
+                    })
+                SettingToggle(title = "HDR-like enhancement",
+                    description = "Brighten highlights and add gentle contrast to SDR video. Stays SDR; not HDR or Dolby Vision. Unknown color formats are left unchanged.",
+                    isEnabled = cinemaHdrLike, onToggle = {
+                        cinemaHdrLike = !cinemaHdrLike; settings.cinemaHdrLike = cinemaHdrLike
+                    })
+                if (cinemaHdrLike) {
+                    SettingSlider(title = "HDR-like strength", description = "$cinemaHdrStrength% · Applies on next playback",
+                        onDecrease = { cinemaHdrStrength = (cinemaHdrStrength - 10).coerceAtLeast(0); settings.cinemaHdrLikeStrength = cinemaHdrStrength },
+                        onIncrease = { cinemaHdrStrength = (cinemaHdrStrength + 10).coerceAtMost(100); settings.cinemaHdrLikeStrength = cinemaHdrStrength },
+                        canDecrease = cinemaHdrStrength > 0, canIncrease = cinemaHdrStrength < 100)
+                }
+                SettingToggle(title = "Denoising",
+                    description = "Light edge-preserving noise reduction. Can soften grain and fine detail.",
+                    isEnabled = cinemaDenoise, onToggle = {
+                        cinemaDenoise = !cinemaDenoise; settings.cinemaDenoise = cinemaDenoise
+                    })
+            }
+
                         SettingsCategory.PLAYBACK -> {
-                            // MPV Player Toggle
-                            SettingToggle(
-                                title = "Use MPV Player",
-                                description = "Use the integrated MPV player for better codec support (AV1, HEVC, HDR).",
-                                isEnabled = mpvEnabled,
-                                onToggle = {
-                                    mpvEnabled = !mpvEnabled
-                                    settings.isMpvEnabled = mpvEnabled
+                            SettingCycle(
+                                title = "Video Player",
+                                description = "Choose ExoPlayer, MPV, or Elefin Cinema with MPV playback and cinema controls.",
+                                currentValue = playbackPlayer.label,
+                                onCycle = {
+                                    val players = com.flex.elefin.jellyfin.PlaybackPlayer.entries
+                                    playbackPlayer = players[(playbackPlayer.ordinal + 1) % players.size]
+                                    settings.playbackPlayer = playbackPlayer
                                 }
                             )
                             
@@ -634,119 +712,11 @@ fun SettingsScreen(
                             
                             Spacer(modifier = Modifier.height(16.dp))
                             
-                            // OpenSubtitles API Key
-                            SettingButton(
-                                title = "OpenSubtitles API Key",
-                                description = if (openSubtitlesApiKey.isNotBlank()) 
-                                    "API key configured ✓" 
-                                else 
-                                    "Required for subtitle downloads. Get free key at opensubtitles.com",
-                                buttonText = if (openSubtitlesApiKey.isNotBlank()) "Change" else "Set Key",
-                                onClick = { showApiKeyDialog = true }
+                            Text(
+                                text = "Subtitle downloads use your Jellyfin server. Install and configure the OpenSubtitles plugin in the server dashboard, and allow your user to manage subtitles. No provider credentials are needed in Elefin.",
+                                style = MaterialTheme.typography.bodyMedium
                             )
-                            
-                            if (showApiKeyDialog) {
-                                var apiKeyInput by remember { mutableStateOf(openSubtitlesApiKey) }
-                                AlertDialog(
-                                    onDismissRequest = { showApiKeyDialog = false },
-                                    title = { Text("OpenSubtitles API Key") },
-                                    text = {
-                                        Column {
-                                            Text(
-                                                "Get your free API key at:\nhttps://www.opensubtitles.com/en/consumers\n\nFree tier: 100 downloads/day",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                modifier = Modifier.padding(bottom = 16.dp)
-                                            )
-                                            OutlinedTextField(
-                                                value = apiKeyInput,
-                                                onValueChange = { apiKeyInput = it },
-                                                label = { Text("API Key") },
-                                                singleLine = true,
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                        }
-                                    },
-                                    confirmButton = {
-                                        TextButton(
-                                            onClick = {
-                                                openSubtitlesApiKey = apiKeyInput
-                                                settings.openSubtitlesApiKey = apiKeyInput
-                                                showApiKeyDialog = false
-                                            }
-                                        ) {
-                                            Text("Save")
-                                        }
-                                    },
-                                    dismissButton = {
-                                        TextButton(onClick = { showApiKeyDialog = false }) {
-                                            Text("Cancel")
-                                        }
-                                    }
-                                )
-                            }
-                            
-                            SettingButton(
-                                title = "OpenSubtitles Login",
-                                description = if (openSubtitlesUsername.isNotBlank()) 
-                                    "Logged in as: $openSubtitlesUsername ✓" 
-                                else 
-                                    "Required for downloading subtitles",
-                                buttonText = if (openSubtitlesUsername.isNotBlank()) "Change" else "Login",
-                                onClick = { showLoginDialog = true }
-                            )
-                            
-                            if (showLoginDialog) {
-                                var usernameInput by remember { mutableStateOf(openSubtitlesUsername) }
-                                var passwordInput by remember { mutableStateOf(openSubtitlesPassword) }
-                                AlertDialog(
-                                    onDismissRequest = { showLoginDialog = false },
-                                    title = { Text("OpenSubtitles Login") },
-                                    text = {
-                                        Column {
-                                            Text(
-                                                "Enter your OpenSubtitles.com account credentials.\nCreate a free account at opensubtitles.com if needed.",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                modifier = Modifier.padding(bottom = 16.dp)
-                                            )
-                                            OutlinedTextField(
-                                                value = usernameInput,
-                                                onValueChange = { usernameInput = it },
-                                                label = { Text("Username") },
-                                                singleLine = true,
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            OutlinedTextField(
-                                                value = passwordInput,
-                                                onValueChange = { passwordInput = it },
-                                                label = { Text("Password") },
-                                                singleLine = true,
-                                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                        }
-                                    },
-                                    confirmButton = {
-                                        TextButton(
-                                            onClick = {
-                                                openSubtitlesUsername = usernameInput
-                                                openSubtitlesPassword = passwordInput
-                                                settings.openSubtitlesUsername = usernameInput
-                                                settings.openSubtitlesPassword = passwordInput
-                                                showLoginDialog = false
-                                            }
-                                        ) {
-                                            Text("Save")
-                                        }
-                                    },
-                                    dismissButton = {
-                                        TextButton(onClick = { showLoginDialog = false }) {
-                                            Text("Cancel")
-                                        }
-                                    }
-                                )
-                            }
-                            
+
                             // Clear Downloaded Subtitles
                             // Count downloaded subtitles on first composition
                             LaunchedEffect(Unit) {
@@ -1727,8 +1697,60 @@ fun SettingsScreen(
 
                         
                         SettingsCategory.APPEARANCE -> {
+                            val appearanceControlModifier = Modifier.onPreviewKeyEvent { event ->
+                                if (isTv && event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) {
+                                    if (event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                                        detailFocus.saveFocusedChild()
+                                        categoryFocusTargets.getValue(SettingsCategory.APPEARANCE).requestFocus()
+                                    }
+                                    true
+                                } else false
+                            }
+                            if (isTv) {
+                                var drawerEnabled by remember { mutableStateOf(settings.modalNavigationDrawerEnabled) }
+                                SettingToggle(
+                                    controlModifier = appearanceControlModifier.focusRequester(appearanceFirstControl),
+                                    title = "Modal Navigation Drawer",
+                                    description = "Replace the Home and library top bars with an expandable side rail",
+                                    isEnabled = drawerEnabled,
+                                    onToggle = {
+                                        drawerEnabled = !drawerEnabled
+                                        settings.modalNavigationDrawerEnabled = drawerEnabled
+                                    }
+                                )
+                            }
+
                             // Dark Mode
+                            if (isTv && com.flex.elefin.discovery.TvHome.supported(context)) {
+                                var tvHomeEnabled by remember { mutableStateOf(settings.tvHomeRecommendations) }
+                                SettingToggle(
+                                    controlModifier = appearanceControlModifier,
+                                    title = "TV Home Recommendations",
+                                    description = "Show Continue Watching and Recently Added from the active account on your TV home screen. Launcher support varies.",
+                                    isEnabled = tvHomeEnabled,
+                                    onToggle = {
+                                        tvHomeEnabled = !tvHomeEnabled
+                                        settings.tvHomeRecommendations = tvHomeEnabled
+                                        com.flex.elefin.discovery.TvHome.schedule(context)
+                                    }
+                                )
+                                if (tvHomeEnabled) SettingButton(
+                                    title = "Recently Added TV Row",
+                                    description = "Ask your TV launcher to show Elefin's Recently Added channel",
+                                    buttonText = "Add row",
+                                    onClick = { scope.launch {
+                                        try {
+                                            val id = com.flex.elefin.discovery.TvHome.addRecent(context)
+                                            context.startActivity(android.content.Intent(androidx.tvprovider.media.tv.TvContractCompat.ACTION_REQUEST_CHANNEL_BROWSABLE)
+                                                .putExtra(androidx.tvprovider.media.tv.TvContractCompat.EXTRA_CHANNEL_ID, id))
+                                        } catch (e: Exception) {
+                                            android.widget.Toast.makeText(context, "This launcher does not support adding TV rows.", android.widget.Toast.LENGTH_LONG).show()
+                                        }
+                                    } }
+                                )
+                            }
                             SettingToggle(
+                                    controlModifier = appearanceControlModifier,
                                 title = "Dark Mode",
                                 description = "Disable background image and use Material dark background",
                                 isEnabled = darkModeEnabled,
@@ -1740,6 +1762,7 @@ fun SettingsScreen(
                             
                             // Use Logo for Title
                             SettingToggle(
+                                    controlModifier = appearanceControlModifier,
                                 title = "Use Logo for Title",
                                 description = "Display logo image instead of title text on media screens",
                                 isEnabled = useLogoForTitleEnabled,
@@ -1751,6 +1774,7 @@ fun SettingsScreen(
                             
                             // Animated Play Button
                             SettingToggle(
+                                    controlModifier = appearanceControlModifier,
                                 title = "Animated Play Button",
                                 description = "Use animated play button with Lottie glow effect",
                                 isEnabled = animatedPlayButtonEnabled,
@@ -1762,6 +1786,7 @@ fun SettingsScreen(
                             
                             // 24-Hour Time Format
                             SettingToggle(
+                                    controlModifier = appearanceControlModifier,
                                 title = "24-Hour Time Format",
                                 description = "Display time in 24-hour format (HH:mm)",
                                 isEnabled = use24HourTimeEnabled,
@@ -1773,6 +1798,7 @@ fun SettingsScreen(
 
                             // 4K Quality Backgrounds
                             SettingToggle(
+                                    controlModifier = appearanceControlModifier,
                                 title = "4K Quality Backgrounds",
                                 description = "Use 4K resolution (3840x2160) for backdrop images. May impact performance.",
                                 isEnabled = use4KBackgrounds,
@@ -1784,6 +1810,7 @@ fun SettingsScreen(
 
                             // Navigation Sounds
                             SettingToggle(
+                                    controlModifier = appearanceControlModifier,
                                 title = "Navigation Sounds",
                                 description = "Enable default system sounds when navigating and clicking in the app",
                                 isEnabled = navigationSoundsEnabled,
@@ -1819,15 +1846,20 @@ fun SettingsScreen(
                                 Pair("Green", "#4CAF50"),
                                 Pair("Red", "#F44336"),
                                 Pair("Purple", "#9C27B0"),
-                                Pair("Orange", "#FF9800")
+                                Pair("Orange", "#FF9800"),
+                                Pair("Matte Black", "#1A1A1A"),
+                                Pair("Teal", "#009688"),
+                                Pair("Pink", "#E91E63"),
+                                Pair("Lavender", "#A084E8"),
+                                Pair("Cyan", "#00BCD4")
                             )
 
-                            Row(
+                            FlowRow(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 16.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 colorPresets.forEach { (name, hex) ->
                                     val color = Color(android.graphics.Color.parseColor(hex))
@@ -1838,6 +1870,7 @@ fun SettingsScreen(
                                         Box(
                                             modifier = Modifier
                                                 .size(44.dp)
+                                                .semantics { contentDescription = "$name accent color" }
                                                 .clip(RoundedCornerShape(50.dp))
                                                 .background(color)
                                                 .border(
@@ -1939,7 +1972,7 @@ fun SettingsScreen(
                                     settings.cacheLibraryImages = cacheLibraryImagesEnabled
                                 }
                             )
-                            
+
                             // Use Glide
                             SettingToggle(
                                 title = "Use Glide for Images",
@@ -1964,36 +1997,27 @@ fun SettingsScreen(
                         }
                         
                         SettingsCategory.LIBRARY -> {
+                            // Show Music Libraries
+                            SettingToggle(
+                                title = "Show Music Libraries",
+                                description = "Detect and display music libraries in the bottom nav",
+                                isEnabled = showMusicLibrariesEnabled,
+                                onToggle = {
+                                    showMusicLibrariesEnabled = !showMusicLibrariesEnabled
+                                    settings.showMusicLibraries = showMusicLibrariesEnabled
+                                }
+                            )
+
                             // Auto-Refresh Media
                             SettingToggle(
                                 title = "Auto-Refresh Media",
-                                description = "Automatically check for new media (every ${autoRefreshIntervalMinutes} min)",
+                                description = "Update rows live when Jellyfin detects media; check every minute as a fallback",
                                 isEnabled = autoRefreshEnabled,
                                 onToggle = {
                                     autoRefreshEnabled = !autoRefreshEnabled
                                     settings.autoRefreshEnabled = autoRefreshEnabled
                                 }
                             )
-                            
-                            // Refresh Interval
-                            if (autoRefreshEnabled) {
-                                SettingCycle(
-                                    title = "Refresh Interval",
-                                    description = "How often to check for new media",
-                                    currentValue = "${autoRefreshIntervalMinutes}m",
-                                    onCycle = {
-                                        autoRefreshIntervalMinutes = when (autoRefreshIntervalMinutes) {
-                                            2 -> 3
-                                            3 -> 5
-                                            5 -> 10
-                                            10 -> 15
-                                            15 -> 2
-                                            else -> 5
-                                        }
-                                        settings.autoRefreshIntervalMinutes = autoRefreshIntervalMinutes
-                                    }
-                                )
-                            }
                             
                             // Hide Shows with Zero Episodes
                             SettingToggle(
@@ -2161,35 +2185,7 @@ fun SettingsScreen(
                         }
                         
                         SettingsCategory.ACCOUNT -> {
-                            // Log Out
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Log Out",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                    Text(
-                                        text = "Sign out and return to login screen",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                        modifier = Modifier.padding(top = 4.dp)
-                                    )
-                                }
-                                
-                                Button(
-                                    onClick = { showLogoutConfirmation = true },
-                                    colors = ButtonDefaults.colors(
-                                        containerColor = MaterialTheme.colorScheme.error
-                                    )
-                                ) {
-                                    Text("Log Out")
-                                }
-                            }
+                            ServerAccountsSection(onSignOut = { showLogoutConfirmation = true })
                         }
 
                         SettingsCategory.COFFEE -> {
@@ -2360,6 +2356,8 @@ fun SettingsScreen(
                             SettingsCategory.entries.forEach { category ->
                                 CategoryItem(
                                     category = category,
+                                    modifier = Modifier.focusRequester(categoryFocusTargets.getValue(category))
+                                        .focusProperties { right = detailFocus },
                                     isSelected = selectedCategory == category,
                                     onClick = { selectedCategory = category },
                                     onFocused = { selectedCategory = category }
@@ -2375,13 +2373,28 @@ fun SettingsScreen(
                                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
                         )
                         
-                        // Right panel: Settings for selected category
+                        // A new category starts at the top; lateral movement within it restores its control.
+                        key(selectedCategory) {
                         Column(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
                                 .padding(start = 32.dp)
-                                .verticalScroll(rememberScrollState()),
+                                .verticalScroll(rememberScrollState())
+                                .focusRequester(detailFocus)
+                                .focusProperties {
+                                    enter = {
+                                        if (detailFocus.restoreFocusedChild()) FocusRequester.Cancel
+                                        else if (selectedCategory == SettingsCategory.APPEARANCE) appearanceFirstControl
+                                        else FocusRequester.Default
+                                    }
+                                    exit = { direction ->
+                                        detailFocus.saveFocusedChild()
+                                        if (direction == FocusDirection.Left) categoryFocusTargets.getValue(selectedCategory)
+                                        else FocusRequester.Default
+                                    }
+                                }
+                                .focusGroup(),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             // Category title
@@ -2394,6 +2407,7 @@ fun SettingsScreen(
                             )
                             
                             SettingsOptions(categoryToRender)
+                        }
                         }
                     }
                 } else {
@@ -2467,6 +2481,7 @@ fun SettingsScreen(
                                         onClick = {
                                             showLogoutConfirmation = false
                                             val config = JellyfinConfig(context)
+                                            com.flex.elefin.jellyfin.ServerAccounts(context).forgetActive()
                                             config.clearAuth()
                                             val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
                                             intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
@@ -2495,6 +2510,7 @@ fun SettingsScreen(
                                         onClick = {
                                             showLogoutConfirmation = false
                                             val config = JellyfinConfig(context)
+                                            com.flex.elefin.jellyfin.ServerAccounts(context).forgetActive()
                                             config.clearAuth()
                                             val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
                                             intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
@@ -2588,6 +2604,7 @@ fun SettingsScreen(
 @Composable
 private fun CategoryItem(
     category: SettingsCategory,
+    modifier: Modifier = Modifier,
     isSelected: Boolean,
     onClick: () -> Unit,
     onFocused: () -> Unit
@@ -2602,7 +2619,7 @@ private fun CategoryItem(
     
     Button(
         onClick = onClick,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .onFocusChanged { 
                 isFocused = it.isFocused 
@@ -2647,7 +2664,8 @@ private fun SettingToggle(
     isEnabled: Boolean,
     onToggle: () -> Unit,
     enabledText: String = "ON",
-    disabledText: String = "OFF"
+    disabledText: String = "OFF",
+    controlModifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { com.flex.elefin.ui.DeviceUtils.isTvDevice(context) }
@@ -2677,8 +2695,10 @@ private fun SettingToggle(
         if (isTv) {
             Button(
                 onClick = onToggle,
+                modifier = controlModifier,
                 colors = ButtonDefaults.colors(
-                    containerColor = if (isEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                    containerColor = if (isEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (isEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             ) {
                 Text(if (isEnabled) enabledText else disabledText)
@@ -2796,7 +2816,10 @@ private fun SettingCycle(
         if (isTv) {
             Button(
                 onClick = onCycle,
-                colors = ButtonDefaults.colors(containerColor = MaterialTheme.colorScheme.primary)
+                colors = ButtonDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
             ) {
                 Text(currentValue)
             }
@@ -2849,7 +2872,10 @@ private fun SettingButton(
             Button(
                 onClick = onClick,
                 enabled = enabled,
-                colors = ButtonDefaults.colors(containerColor = MaterialTheme.colorScheme.primary)
+                colors = ButtonDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
             ) {
                 Text(buttonText)
             }

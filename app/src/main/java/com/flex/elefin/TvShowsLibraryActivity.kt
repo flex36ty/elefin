@@ -22,6 +22,9 @@ class TvShowsLibraryActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         
         val libraryId = intent.getStringExtra(EXTRA_LIBRARY_ID) ?: ""
+        if (libraryId.isNotEmpty()) com.flex.elefin.jellyfin.LibraryNewContent.account(this)?.let {
+            com.flex.elefin.jellyfin.LibraryNewContent.opened(this, it, libraryId)
+        }
         val libraryName = intent.getStringExtra(EXTRA_LIBRARY_NAME) ?: "TV Shows"
 
         setContent {

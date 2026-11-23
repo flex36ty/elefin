@@ -65,6 +65,10 @@ import com.flex.elefin.jellyfin.JellyfinConfig
 import com.flex.elefin.jellyfin.QuickConnectError
 import com.flex.elefin.jellyfin.QuickConnectService
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.ensureActive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
 
 enum class LoginMethod {
     CREDENTIALS,
@@ -78,10 +82,12 @@ fun JellyfinLoginScreen(
     onLoginSuccess: () -> Unit,
     onCancel: (() -> Unit)? = null,
     forcedUsername: String? = null,
-    skipQuickConnect: Boolean = false
+    skipQuickConnect: Boolean = false,
+    sessionConfig: JellyfinConfig? = null
 ) {
     val context = LocalContext.current
-    val config = remember { JellyfinConfig(context) }
+    val config = sessionConfig ?: remember { JellyfinConfig(context) }
+    val loginScope = rememberCoroutineScope()
 
     var loginMethod by remember { mutableStateOf<LoginMethod>(
         if (skipQuickConnect) LoginMethod.CREDENTIALS else LoginMethod.QUICKCONNECT
@@ -152,6 +158,7 @@ fun JellyfinLoginScreen(
                             errorMessage = null
                             isAuthenticating = true
                             performCredentialsLogin(
+                                scope = loginScope,
                                 serverUrl = serverUrl,
                                 username = username,
                                 password = password,
@@ -170,6 +177,7 @@ fun JellyfinLoginScreen(
                     )
                     LoginMethod.QUICKCONNECT -> {
                         QuickConnectLoginContent(
+                            config = config,
                             serverUrl = serverUrl,
                             errorMessage = errorMessage,
                             isAuthenticating = isAuthenticating,
@@ -501,6 +509,7 @@ private fun CredentialsLoginContent(
 
 @Composable
 private fun QuickConnectLoginContent(
+    config: JellyfinConfig,
     serverUrl: String,
     errorMessage: String?,
     isAuthenticating: Boolean,
@@ -518,7 +527,6 @@ private fun QuickConnectLoginContent(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val authScope = rememberCoroutineScope() // Separate scope for authentication to avoid cancellation
-    val config = remember { JellyfinConfig(context) }
     var quickConnectSecret by remember { mutableStateOf<String?>(null) }
 
     // Initiate QuickConnect when composable is first shown
@@ -613,13 +621,15 @@ private fun QuickConnectLoginContent(
                             try {
                                 // Call authenticateWithQuickConnect to get the access token
                                 val authResult = quickConnectService.authenticateWithQuickConnect(quickConnectSecret!!)
+                                kotlinx.coroutines.currentCoroutineContext().ensureActive()
                                 
                                 if (authResult != null) {
-                                    android.util.Log.d("QuickConnectLogin", "✅ QuickConnect authentication successful! AccessToken: ${authResult.AccessToken.take(20)}..., UserId: ${authResult.User.Id}, UserName: ${authResult.User.Name}")
+                                    android.util.Log.d("QuickConnectLogin", "✅ QuickConnect authentication successful! UserId: ${authResult.User.Id}, UserName: ${authResult.User.Name}")
                                     
                                     config.serverUrl = normalizedUrl
                                     config.accessToken = authResult.AccessToken
                                     config.userId = authResult.User.Id
+                                    config.username = authResult.User.Name
                                     
                                     // Store device ID
                                     val deviceId = try {
@@ -631,6 +641,12 @@ private fun QuickConnectLoginContent(
                                         "56be65b97eb43eca"
                                     }
                                     config.deviceId = deviceId
+                                    
+                                    // Fetch and store server name in background
+                                    authScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                        val name = fetchServerName(normalizedUrl)
+                                        config.serverName = name
+                                    }
                                     
                                     android.util.Log.d("QuickConnectLogin", "✅ Configuration saved: serverUrl=${config.serverUrl}, userId=${config.userId}, deviceId=$deviceId")
                                     
@@ -820,6 +836,7 @@ private fun normalizeServerUrl(url: String): String {
 }
 
 private fun performCredentialsLogin(
+    scope: kotlinx.coroutines.CoroutineScope,
     serverUrl: String,
     username: String,
     password: String,
@@ -828,7 +845,6 @@ private fun performCredentialsLogin(
     onSuccess: () -> Unit,
     onError: (String) -> Unit
 ) {
-    val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main)
     scope.launch {
         try {
             if (serverUrl.isBlank() || username.isBlank() || password.isBlank()) {
@@ -839,6 +855,7 @@ private fun performCredentialsLogin(
             val trimmedUrl = serverUrl.trim().removeSuffix("/")
             val authService = JellyfinAuthService(trimmedUrl, context)
             val authResponse = authService.authenticate(username.trim(), password.trim())
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
 
             if (authResponse != null) {
                 config.serverUrl = trimmedUrl
@@ -856,6 +873,13 @@ private fun performCredentialsLogin(
                     "56be65b97eb43eca"
                 }
                 config.deviceId = deviceId
+                
+                // Fetch and store server name in background
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    val name = fetchServerName(trimmedUrl)
+                    config.serverName = name
+                }
+                
                 onSuccess()
             } else {
                 onError("Authentication failed. Please check your credentials.")
@@ -865,3 +889,35 @@ private fun performCredentialsLogin(
         }
     }
 }
+
+private suspend fun fetchServerName(serverUrl: String): String {
+    return try {
+        val client = okhttp3.OkHttpClient()
+        val request = okhttp3.Request.Builder()
+            .url("${serverUrl.trim().removeSuffix("/")}/System/Info/Public")
+            .get()
+            .header("Accept", "application/json")
+            .build()
+        
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body?.string()
+                    if (body != null) {
+                        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                        val obj = json.parseToJsonElement(body).jsonObject
+                        obj["ServerName"]?.jsonPrimitive?.content ?: "Jellyfin Server"
+                    } else {
+                        "Jellyfin Server"
+                    }
+                } else {
+                    "Jellyfin Server"
+                }
+            }
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("JellyfinLogin", "Error fetching server name", e)
+        "Jellyfin Server"
+    }
+}
+

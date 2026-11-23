@@ -1,6 +1,7 @@
 package com.flex.elefin.screens
 
 import com.flex.elefin.jellyfin.JellyfinRepository
+import com.flex.elefin.components.RatingDisplay
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
+import com.flex.elefin.ui.expandingActionButton
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.lazy.LazyColumn
@@ -235,6 +237,9 @@ fun MovieDetailsScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .graphicsLayer {
+                    compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
+                }
                 .align(Alignment.Center)
         ) {
             // Get backdrop URL or fallback to primary
@@ -263,16 +268,18 @@ fun MovieDetailsScreen(
                     label = "background_fade"
                 ) { currentUrl ->
                     if (currentUrl.isNotEmpty() && apiService != null) {
-                        val headerMap = apiService.getImageRequestHeaders()
-                        AsyncImage(
-                            model = ImageRequest.Builder(context)
+                        val backdropRequest = remember(context, currentUrl, apiService) {
+                            ImageRequest.Builder(context)
                                 .data(currentUrl)
-                                .headers(headerMap)
+                                .headers(apiService.getImageRequestHeaders())
                                 .memoryCachePolicy(CachePolicy.ENABLED)
                                 .diskCachePolicy(CachePolicy.ENABLED)
-                                .crossfade(300) // Smooth 300ms crossfade when loading
-                                .allowHardware(true) // Use GPU memory for faster rendering
-                                .build(),
+                                .crossfade(false)
+                                .allowHardware(true)
+                                .build()
+                        }
+                        AsyncImage(
+                            model = backdropRequest,
                             contentDescription = displayItem.Name,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.FillBounds,
@@ -528,6 +535,7 @@ fun TopContainer(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun BottomContainer(
     item: JellyfinItem,
@@ -585,6 +593,17 @@ fun BottomContainer(
     // Scrollable container with cast and movie rows
     val scrollState = rememberLazyListState()
     
+    val horizontalScrollSpec = remember { com.flex.elefin.ui.TvBringIntoViewSpec(vertical = false) }
+    val focusTolerance = with(androidx.compose.ui.platform.LocalDensity.current) { 8.dp.toPx() }
+    val rowEdgeInset = with(androidx.compose.ui.platform.LocalDensity.current) { 24.dp.toPx() }
+    val verticalScrollSpec = remember(focusTolerance, rowEdgeInset) {
+        com.flex.elefin.ui.TvBringIntoViewSpec(
+            vertical = true, edgeInset = rowEdgeInset, focusTolerance = focusTolerance
+        )
+    }
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides verticalScrollSpec
+    ) {
     LazyColumn(
         state = scrollState,
         modifier = Modifier
@@ -602,7 +621,7 @@ fun BottomContainer(
     ) {
         // Cast row - now focusable so selector can navigate to it
         if (castMembers.isNotEmpty()) {
-            item {
+            item(key = "cast") {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -612,7 +631,11 @@ fun BottomContainer(
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides horizontalScrollSpec
+                    ) {
                     LazyRow(
+                        state = rememberLazyListState(),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp), // Extra padding for focus scale animation
                         modifier = Modifier.graphicsLayer { clip = false } // Prevent clipping of scaled cards
@@ -624,6 +647,7 @@ fun BottomContainer(
                             )
                         }
                     }
+                    }
                 }
             }
         }
@@ -631,7 +655,7 @@ fun BottomContainer(
         // Chapters row
         val chapters = item.Chapters ?: emptyList()
         if (chapters.isNotEmpty()) {
-            item {
+            item(key = "chapters") {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -641,7 +665,11 @@ fun BottomContainer(
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides horizontalScrollSpec
+                    ) {
                     LazyRow(
+                        state = rememberLazyListState(),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp),
                         modifier = Modifier.graphicsLayer { clip = false }
@@ -661,7 +689,7 @@ fun BottomContainer(
                                     // Calculate defaults
                                     val streams = item.MediaSources?.firstOrNull()?.MediaStreams
                                     val defaultSub = null
-                                    val defaultAudio = streams?.firstOrNull { it.Type == "Audio" && it.IsDefault == true }?.Index
+                                    val defaultAudio = streams?.let { com.flex.elefin.player.preferredAudioIndex(it) }
 
                                     // Launch video player at chapter start position
                                     val intent = JellyfinVideoPlayerActivity.createIntent(
@@ -677,13 +705,14 @@ fun BottomContainer(
                             )
                         }
                     }
+                    }
                 }
             }
         }
         
         // Movies similar to row
         if (firstGenre != null && (!isLoadingSimilar && similarMovies.isNotEmpty())) {
-            item {
+            item(key = "similar_movies") {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -693,12 +722,16 @@ fun BottomContainer(
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides horizontalScrollSpec
+                    ) {
                     LazyRow(
+                        state = rememberLazyListState(),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp), // Extra padding for focus scale animation
                         modifier = Modifier.graphicsLayer { clip = false } // Prevent clipping of scaled cards
                     ) {
-                        items(similarMovies) { movie ->
+                        items(similarMovies, key = { it.Id }) { movie ->
                             JellyfinHorizontalCard(
                                 item = movie,
                                 apiService = apiService,
@@ -712,13 +745,14 @@ fun BottomContainer(
                             )
                         }
                     }
+                    }
                 }
             }
         }
         
         // More movies with [cast member] row
         if (firstCastMember != null && (!isLoadingCastMovies && moviesWithCast.isNotEmpty())) {
-            item {
+            item(key = "cast_movies") {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -728,12 +762,16 @@ fun BottomContainer(
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides horizontalScrollSpec
+                    ) {
                     LazyRow(
+                        state = rememberLazyListState(),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp), // Extra padding for focus scale animation
                         modifier = Modifier.graphicsLayer { clip = false } // Prevent clipping of scaled cards
                     ) {
-                        items(moviesWithCast) { movie ->
+                        items(moviesWithCast, key = { it.Id }) { movie ->
                             JellyfinHorizontalCard(
                                 item = movie,
                                 apiService = apiService,
@@ -747,9 +785,11 @@ fun BottomContainer(
                             )
                         }
                     }
+                    }
                 }
             }
         }
+    }
     }
 }
 
@@ -757,7 +797,8 @@ fun BottomContainer(
 fun CastMemberCard(
     person: com.flex.elefin.jellyfin.Person,
     apiService: JellyfinApiService?,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    cardSize: androidx.compose.ui.unit.Dp = 67.dp
 ) {
     val context = LocalContext.current
     val imageUrl = person.Id?.let { personId ->
@@ -766,76 +807,71 @@ fun CastMemberCard(
         }
     } ?: ""
     
-    // Card size - 30% smaller (96.dp * 0.7 = 67.2.dp)
-    val cardSize = 67.dp
-    
     Column(
         modifier = Modifier
             .width(cardSize),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Use StandardCardContainer for proper TV focus styling
-        StandardCardContainer(
-            modifier = Modifier.size(cardSize),
-            imageCard = { interactionSource ->
-                Card(
-                    onClick = {
-                        // Navigate to cast info screen if person has an ID
-                        if (person.Id != null && onClick != null) {
-                            onClick()
-                        } else if (person.Id != null) {
-                            // Default behavior: open CastInfoActivity
-                            val intent = com.flex.elefin.CastInfoActivity.createIntent(
-                                context,
-                                person.Id,
-                                person.Name,
-                                person.Type // Pass the type (Actor, Director, Writer, etc.)
-                            )
-                            context.startActivity(intent)
-                        }
-                    },
-                    interactionSource = interactionSource,
-                    colors = CardDefaults.colors(containerColor = Color.Transparent)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
-                        if (imageUrl.isNotEmpty() && apiService != null) {
-                            val headerMap = apiService.getImageRequestHeaders()
-                            AsyncImage(
-                                model = ImageRequest.Builder(context)
-                                    .data(imageUrl)
-                                    .headers(headerMap)
-                                    .build(),
-                                contentDescription = person.Name,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(CircleShape),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            // Placeholder
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(40.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                )
-                            }
-                        }
-                    }
+        // Apply the circle to the focusable TV Card itself so its focus shape
+        // follows the portrait instead of retaining a square container.
+        Card(
+            onClick = {
+                if (person.Id != null && onClick != null) {
+                    onClick()
+                } else if (person.Id != null) {
+                    val intent = com.flex.elefin.CastInfoActivity.createIntent(
+                        context,
+                        person.Id,
+                        person.Name,
+                        person.Type
+                    )
+                    context.startActivity(intent)
                 }
             },
-            title = { }
-        )
+            modifier = Modifier.size(cardSize),
+            shape = CardDefaults.shape(shape = CircleShape, focusedShape = CircleShape, pressedShape = CircleShape),
+            border = CardDefaults.border(
+                focusedBorder = androidx.tv.material3.Border(
+                    border = androidx.compose.foundation.BorderStroke(2.dp, Color.White),
+                    shape = CircleShape
+                )
+            ),
+            colors = CardDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (imageUrl.isNotEmpty() && apiService != null) {
+                    val castImageRequest = remember(context, imageUrl, apiService) {
+                        ImageRequest.Builder(context)
+                            .data(imageUrl)
+                            .headers(apiService.getImageRequestHeaders())
+                            .crossfade(false)
+                            .build()
+                    }
+                    AsyncImage(
+                        model = castImageRequest,
+                        contentDescription = person.Name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            modifier = Modifier.size(40.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                    }
+                }
+            }
+        }
         
         // Cast member name below the card
         Text(
@@ -986,22 +1022,9 @@ fun SubtitleSelectionDialog(
     var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     var isLoadingSubtitles by remember { mutableStateOf(true) }
     
-    // OpenSubtitles download state
-    var showLanguageDialog by remember { mutableStateOf(false) }
-    var showApiKeyRequiredDialog by remember { mutableStateOf(false) }
-    var showSearchResults by remember { mutableStateOf(false) }
-    var isSearching by remember { mutableStateOf(false) }
-    var isDownloading by remember { mutableStateOf(false) }
-    var downloadingSubtitleName by remember { mutableStateOf("") }
-    var searchResults by remember { mutableStateOf<List<com.flex.elefin.subtitles.SubtitleResult>>(emptyList()) }
+    var showServerSubtitleSearch by remember { mutableStateOf(false) }
     var downloadedSubtitles by remember { mutableStateOf<List<com.flex.elefin.subtitles.DownloadedSubtitle>>(emptyList()) }
-    
-    // Get OpenSubtitles settings
-    val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
-    val openSubtitlesApiKey = remember { settings.openSubtitlesApiKey }
-    val openSubtitlesUsername = remember { settings.openSubtitlesUsername }
-    val openSubtitlesPassword = remember { settings.openSubtitlesPassword }
-    
+
     // Load downloaded subtitles
     LaunchedEffect(item.Id) {
         downloadedSubtitles = com.flex.elefin.subtitles.OpenSubtitlesApi.getDownloadedSubtitles(context, item.Id)
@@ -1119,6 +1142,7 @@ fun SubtitleSelectionDialog(
                                 ListItem(
                                     selected = false,
                                     onClick = {
+                                        apiService?.let { com.flex.elefin.subtitles.clearLocalProviderSubtitle(context, it, item.Id) }
                                         onSubtitleSelected(null)
                                         onDismiss()
                                     },
@@ -1156,6 +1180,7 @@ fun SubtitleSelectionDialog(
                                     selected = false,
                                     onClick = {
                                         stream.Index?.let { index ->
+                                            apiService?.let { com.flex.elefin.subtitles.clearLocalProviderSubtitle(context, it, item.Id) }
                                             onSubtitleSelected(index)
                                             onDismiss()
                                         }
@@ -1217,6 +1242,8 @@ fun SubtitleSelectionDialog(
                                     ListItem(
                                         selected = false,
                                         onClick = {
+                                            apiService?.let { com.flex.elefin.subtitles.selectLocalProviderSubtitle(context, it, item.Id, downloadedSub.filePath) }
+                                            onSubtitleSelected(null)
                                             onDownloadedSubtitleSelected?.invoke(downloadedSub.filePath)
                                             onDismiss()
                                         },
@@ -1256,18 +1283,8 @@ fun SubtitleSelectionDialog(
                             item {
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Button(
-                                    onClick = { 
-                                        // Check if API key and credentials are configured
-                                        if (openSubtitlesApiKey.isNotBlank() && 
-                                            openSubtitlesUsername.isNotBlank() && 
-                                            openSubtitlesPassword.isNotBlank()) {
-                                            com.flex.elefin.subtitles.OpenSubtitlesApi.setApiKey(openSubtitlesApiKey)
-                                            com.flex.elefin.subtitles.OpenSubtitlesApi.setCredentials(openSubtitlesUsername, openSubtitlesPassword)
-                                            showLanguageDialog = true
-                                        } else {
-                                            showApiKeyRequiredDialog = true
-                                        }
-                                    },
+                                    onClick = { showServerSubtitleSearch = true },
+                                    enabled = apiService != null,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 8.dp)
@@ -1293,98 +1310,19 @@ fun SubtitleSelectionDialog(
         }
     }
     
-    // Language selection dialog
-    if (showLanguageDialog) {
-        com.flex.elefin.subtitles.SubtitleLanguageDialog(
-            onSelect = { language ->
-                showLanguageDialog = false
-                isSearching = true
-                showSearchResults = true
-                
-                // Search OpenSubtitles
-                scope.launch {
-                    try {
-                        val imdbId = item.ProviderIds?.get("Imdb")
-                        val tmdbId = item.ProviderIds?.get("Tmdb")
-                        
-                        searchResults = com.flex.elefin.subtitles.OpenSubtitlesApi.searchSubtitles(
-                            imdbId = imdbId,
-                            tmdbId = tmdbId,
-                            query = if (imdbId == null && tmdbId == null) item.Name else null,
-                            language = language
-                        )
-                    } catch (e: Exception) {
-                        Log.e("SubtitleDialog", "Error searching subtitles", e)
-                        searchResults = emptyList()
-                    } finally {
-                        isSearching = false
-                    }
-                }
+    if (showServerSubtitleSearch && apiService != null) {
+        com.flex.elefin.subtitles.ServerSubtitleSearchDialog(
+            itemId = item.Id,
+            api = apiService,
+            onDownloaded = { selection ->
+                itemDetails = selection.item
+                if (selection.localPath == null) com.flex.elefin.player.SubtitleDownloader.downloadSubtitle(
+                    context, apiService, item.Id, selection.sourceId, selection.stream
+                )
+                onSubtitleSelected(selection.stream.Index)
+                onDismiss()
             },
-            onDismiss = { showLanguageDialog = false }
-        )
-    }
-    
-    // API key required dialog
-    if (showApiKeyRequiredDialog) {
-        com.flex.elefin.subtitles.ApiKeyRequiredDialog(
-            onGoToSettings = {
-                showApiKeyRequiredDialog = false
-                onDismiss() // Close the subtitle dialog and go back
-                // User needs to go to Settings manually
-            },
-            onDismiss = { showApiKeyRequiredDialog = false }
-        )
-    }
-    
-    // Search results dialog
-    if (showSearchResults) {
-        com.flex.elefin.subtitles.SubtitleResultsDialog(
-            results = searchResults,
-            isLoading = isSearching,
-            onSelect = { subtitle ->
-                showSearchResults = false
-                isDownloading = true
-                downloadingSubtitleName = subtitle.attributes.release ?: "Subtitle"
-                
-                // Download the subtitle
-                scope.launch {
-                    try {
-                        val filePath = com.flex.elefin.subtitles.OpenSubtitlesApi.downloadAndSaveSubtitle(
-                            context = context,
-                            itemId = item.Id,
-                            subtitle = subtitle
-                        )
-                        
-                        if (filePath != null) {
-                            // Refresh downloaded subtitles list
-                            downloadedSubtitles = com.flex.elefin.subtitles.OpenSubtitlesApi.getDownloadedSubtitles(context, item.Id)
-                            
-                            // Optionally auto-select the downloaded subtitle
-                            onDownloadedSubtitleSelected?.invoke(filePath)
-                            onDismiss()
-                        } else {
-                            // Show error toast
-                            val errorMsg = com.flex.elefin.subtitles.OpenSubtitlesApi.lastError 
-                                ?: "Download failed"
-                            android.widget.Toast.makeText(context, errorMsg, android.widget.Toast.LENGTH_LONG).show()
-                        }
-                    } catch (e: Exception) {
-                        Log.e("SubtitleDialog", "Error downloading subtitle", e)
-                        android.widget.Toast.makeText(context, "Download failed: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-                    } finally {
-                        isDownloading = false
-                    }
-                }
-            },
-            onDismiss = { showSearchResults = false }
-        )
-    }
-    
-    // Downloading dialog
-    if (isDownloading) {
-        com.flex.elefin.subtitles.SubtitleDownloadingDialog(
-            subtitleName = downloadingSubtitleName
+            onDismiss = { showServerSubtitleSearch = false }
         )
     }
 }
@@ -1704,7 +1642,7 @@ fun ActionButtonsRow(
     
     val defaultAudioIndex = remember(displayItem.MediaSources) {
         displayItem.MediaSources?.firstOrNull()?.MediaStreams?.let { streams ->
-             streams.firstOrNull { it.Type == "Audio" && it.IsDefault == true }?.Index
+             com.flex.elefin.player.preferredAudioIndex(streams)
         }
     }
     
@@ -1776,27 +1714,12 @@ fun ActionButtonsRow(
                     },
                     modifier = Modifier
                         .focusRequester(resumeFocusRequester)
-                        .then(
-                            if (resumeFocused) {
-                                Modifier
-                                    .wrapContentWidth()
-                                    .height(28.dp)
-                            } else {
-                                Modifier.size(28.dp)
-                            }
-                        )
-                        .animateContentSize(
-                            animationSpec = tween(
-                                durationMillis = 300,
-                                easing = FastOutSlowInEasing
-                            )
-                        )
-                        .onFocusChanged { resumeFocused = it.isFocused }
-                        .clip(CircleShape),
+                        .expandingActionButton(focused = resumeFocused)
+                    .onFocusChanged { resumeFocused = it.isFocused },
                     colors = ButtonDefaults.colors(
-                        containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                        containerColor = androidx.compose.ui.graphics.Color.Transparent,
                         contentColor = androidx.compose.ui.graphics.Color.White,
-                        focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                        focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                         focusedContentColor = androidx.compose.ui.graphics.Color.Black
                     ),
                     shape = ButtonDefaults.shape(CircleShape),
@@ -1858,27 +1781,12 @@ fun ActionButtonsRow(
                     // Don't finish - let back button return to movie details screen
                 },
                 modifier = Modifier
-                    .then(
-                        if (playFocused) {
-                            Modifier
-                                .wrapContentWidth()
-                                .height(28.dp)
-                        } else {
-                            Modifier.size(28.dp)
-                        }
-                    )
-                    .animateContentSize(
-                        animationSpec = tween(
-                            durationMillis = 300,
-                            easing = FastOutSlowInEasing
-                        )
-                    )
-                    .onFocusChanged { playFocused = it.isFocused }
-                    .clip(CircleShape),
+                    .expandingActionButton(focused = playFocused)
+                    .onFocusChanged { playFocused = it.isFocused },
                 colors = ButtonDefaults.colors(
-                    containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
                     contentColor = androidx.compose.ui.graphics.Color.White,
-                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                     focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
                     shape = ButtonDefaults.shape(CircleShape),
@@ -1914,6 +1822,7 @@ fun ActionButtonsRow(
         
 
 
+
         // Audio track button (only show if media has multiple audio tracks)
         if (hasMultiAudio) {
         var audioFocused by remember { mutableStateOf(false) }
@@ -1923,39 +1832,18 @@ fun ActionButtonsRow(
                 showAudioDialog = true
             },
             modifier = Modifier
-                .then(
-                    if (audioFocused) {
-                        Modifier
-                            .wrapContentWidth()
-                            .height(28.dp)
-                    } else {
-                        Modifier.size(28.dp)
-                    }
-                )
-                .animateContentSize(
-                    animationSpec = tween(
-                        durationMillis = 300,
-                        easing = FastOutSlowInEasing
-                    )
-                )
-                .onFocusChanged { audioFocused = it.isFocused }
-                .clip(CircleShape),
+                .expandingActionButton(focused = audioFocused, expandLeft = true)
+                    .onFocusChanged { audioFocused = it.isFocused },
                 colors = ButtonDefaults.colors(
-                    containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
                     contentColor = androidx.compose.ui.graphics.Color.White,
-                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                     focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
                 shape = ButtonDefaults.shape(CircleShape),
                 contentPadding = PaddingValues(8.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.VolumeUp,
-                contentDescription = "Audio Track",
-                modifier = Modifier.size(14.3.dp)
-            )
             if (audioFocused) {
-                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = "Audio",
                     style = MaterialTheme.typography.labelLarge.copy(
@@ -1963,7 +1851,13 @@ fun ActionButtonsRow(
                     ),
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
-                }
+                    Spacer(modifier = Modifier.width(6.dp))
+            }
+            Icon(
+                imageVector = Icons.Default.VolumeUp,
+                contentDescription = "Audio Track",
+                modifier = Modifier.size(14.3.dp)
+            )
             }
         }
         
@@ -1975,39 +1869,18 @@ fun ActionButtonsRow(
                 showSubtitleDialog = true
             },
             modifier = Modifier
-                .then(
-                    if (subtitleFocused) {
-                        Modifier
-                            .wrapContentWidth()
-                            .height(28.dp)
-                    } else {
-                        Modifier.size(28.dp)
-                    }
-                )
-                .animateContentSize(
-                    animationSpec = tween(
-                        durationMillis = 300,
-                        easing = FastOutSlowInEasing
-                    )
-                )
-                .onFocusChanged { subtitleFocused = it.isFocused }
-                .clip(CircleShape),
+                .expandingActionButton(focused = subtitleFocused, expandLeft = true)
+                    .onFocusChanged { subtitleFocused = it.isFocused },
             colors = ButtonDefaults.colors(
-                containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                containerColor = androidx.compose.ui.graphics.Color.Transparent,
                 contentColor = androidx.compose.ui.graphics.Color.White,
-                focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                 focusedContentColor = androidx.compose.ui.graphics.Color.Black
             ),
             shape = ButtonDefaults.shape(CircleShape),
             contentPadding = PaddingValues(8.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Language,
-                contentDescription = "Subtitles",
-                modifier = Modifier.size(14.3.dp)
-            )
             if (subtitleFocused) {
-                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = "Subtitles",
                     style = MaterialTheme.typography.labelLarge.copy(
@@ -2015,7 +1888,13 @@ fun ActionButtonsRow(
                     ),
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
+                Spacer(modifier = Modifier.width(6.dp))
             }
+            Icon(
+                imageVector = Icons.Default.Language,
+                contentDescription = "Subtitles",
+                modifier = Modifier.size(14.3.dp)
+            )
         }
         
         // Trailer button - always shows
@@ -2023,54 +1902,23 @@ fun ActionButtonsRow(
         
         Button(
             onClick = {
-                if (trailerKey != null) {
-                    trailerKey?.let { key ->
-                        TrailerLauncher.launchTmdbTrailer(context, key, displayItem.Name ?: "")
-                    }
-                } else {
-                    // Prompt user to enter TMDB key
-                    android.widget.Toast.makeText(
-                        context,
-                        "Please enter your TMDB API key in settings to enable trailers",
-                        android.widget.Toast.LENGTH_LONG
-                    ).show()
-                    onShowSettings()
-                }
+                TrailerLauncher.launchTrailer(
+                    context, apiService, displayItem.Id, displayItem.Name ?: "", trailerKey, scope
+                )
             },
             modifier = Modifier
-                .then(
-                    if (trailerFocused) {
-                        Modifier
-                            .wrapContentWidth()
-                            .height(28.dp)
-                    } else {
-                        Modifier.size(28.dp)
-                    }
-                )
-                .animateContentSize(
-                    animationSpec = tween(
-                        durationMillis = 300,
-                        easing = FastOutSlowInEasing
-                    )
-                )
-                .onFocusChanged { trailerFocused = it.isFocused }
-                .clip(CircleShape),
+                .expandingActionButton(focused = trailerFocused, expandLeft = true)
+                    .onFocusChanged { trailerFocused = it.isFocused },
             colors = ButtonDefaults.colors(
-                containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                containerColor = androidx.compose.ui.graphics.Color.Transparent,
                 contentColor = androidx.compose.ui.graphics.Color.White,
-                focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                 focusedContentColor = androidx.compose.ui.graphics.Color.Black
             ),
             shape = ButtonDefaults.shape(CircleShape),
             contentPadding = PaddingValues(8.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Movie,
-                contentDescription = "Watch Trailer",
-                modifier = Modifier.size(14.3.dp)
-            )
             if (trailerFocused) {
-                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = "Watch Trailer",
                     style = MaterialTheme.typography.labelLarge.copy(
@@ -2078,7 +1926,13 @@ fun ActionButtonsRow(
                     ),
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
+                Spacer(modifier = Modifier.width(6.dp))
             }
+            Icon(
+                imageVector = Icons.Default.Movie,
+                contentDescription = "Watch Trailer",
+                modifier = Modifier.size(14.3.dp)
+            )
         }
 
         // Mark as Watched/Unwatched button
@@ -2124,46 +1978,31 @@ fun ActionButtonsRow(
                 }
             },
             modifier = Modifier
-                .then(
-                    if (watchedFocused) {
-                        Modifier
-                            .wrapContentWidth()
-                            .height(28.dp)
-                    } else {
-                        Modifier.size(28.dp)
-                    }
-                )
-                .animateContentSize(
-                    animationSpec = tween(
-                        durationMillis = 300,
-                        easing = FastOutSlowInEasing
-                    )
-                )
-                .onFocusChanged { watchedFocused = it.isFocused }
-                .clip(CircleShape),
+                .expandingActionButton(focused = watchedFocused, expandLeft = true)
+                    .onFocusChanged { watchedFocused = it.isFocused },
             colors = ButtonDefaults.colors(
-                containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                containerColor = androidx.compose.ui.graphics.Color.Transparent,
                 contentColor = androidx.compose.ui.graphics.Color.White,
-                focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                 focusedContentColor = androidx.compose.ui.graphics.Color.Black
             ),
             shape = ButtonDefaults.shape(CircleShape),
             contentPadding = PaddingValues(8.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Check,
-                contentDescription = if (isAlreadyWatched) "Mark As Unwatched" else "Mark As Watched",
-                modifier = Modifier.size(14.3.dp)
-            )
             if (watchedFocused) {
-                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = if (isAlreadyWatched) "Mark As Unwatched" else "Mark As Watched",
                     style = MaterialTheme.typography.labelLarge.copy(
                         fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
                     )
                 )
+                Spacer(modifier = Modifier.width(6.dp))
             }
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = if (isAlreadyWatched) "Mark As Unwatched" else "Mark As Watched",
+                modifier = Modifier.size(14.3.dp)
+            )
         }
         
         // Right side: Spacer to push audio/subtitle display to the right
@@ -2294,231 +2133,33 @@ private fun MetadataBox(
     }
 }
 
-// Rating display with Rotten Tomatoes icon support
-@Composable
-private fun RatingDisplay(
-    item: JellyfinItem,
-    communityRating: Float?,
-    criticRating: Float?
-) {
-    // Calculate percentages
-    fun calculatePercentage(rating: Float): Int {
-        return if (rating > 10) {
-            // Already in percentage format (0-100)
-            rating.toInt()
-        } else {
-            // Convert from 0-10 scale to percentage
-            (rating * 10).toInt()
-        }
-    }
-    
-    // Determine critic rating type and display if available
-    val criticRatingType = if (criticRating != null) {
-        // Pass null for communityRating to focus on critic rating
-        determineRatingType(item.ProviderIds, null, criticRating, preferCommunity = false)
-    } else {
-        null
-    }
-    
-    // Determine community rating type and display if available (as audience rating)
-    val communityRatingType = if (communityRating != null) {
-        // Pass null for criticRating to focus on community rating
-        determineRatingType(item.ProviderIds, communityRating, null, preferCommunity = true)
-    } else {
-        null
-    }
-    
-    // Show critic rating (RT Fresh/Rotten or generic)
-    if (criticRating != null) {
-        val percentage = calculatePercentage(criticRating)
-        when (criticRatingType) {
-            RatingType.RottenTomatoesFresh -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = R.drawable.ic_rt_fresh,
-                    label = "RT"
-                )
-            }
-            RatingType.RottenTomatoesRotten -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = R.drawable.ic_rt_rotten,
-                    label = "RT"
-                )
-            }
-            RatingType.IMDb -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = R.drawable.ic_imdb,
-                    label = "IMDb"
-                )
-            }
-            else -> {
-                MetadataBox(text = "${percentage}%")
-            }
-        }
-    }
-    
-    // Show audience rating (RT Popcorn or generic) if available and different from critic
-    if (communityRating != null && (criticRating == null || communityRating != criticRating)) {
-        val percentage = calculatePercentage(communityRating)
-        when (communityRatingType) {
-            RatingType.RottenTomatoesAudience -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = R.drawable.ic_rt_popcorn,
-                    label = "RT"
-                )
-            }
-            RatingType.IMDb -> {
-                // Only show IMDb if we didn't already show it for critic
-                if (criticRatingType != RatingType.IMDb) {
-                    RatingBoxWithIcon(
-                        percentage = percentage,
-                        iconRes = R.drawable.ic_imdb,
-                        label = "IMDb"
-                    )
-                }
-            }
-            else -> {
-                // Show generic community rating only if we didn't show critic rating
-                if (criticRating == null) {
-                    MetadataBox(text = "${percentage}%")
-                }
-            }
-        }
-    }
-}
 
-// Rating type enum
-internal enum class RatingType {
-    RottenTomatoesFresh,
-    RottenTomatoesRotten,
-    RottenTomatoesAudience,
-    IMDb,
-    Generic
-}
 
-// Determine rating type from ProviderIds and rating values
-// Overloaded versions to handle critic-only or community-only scenarios
-private fun determineRatingType(
-    providerIds: Map<String, String>?,
-    communityRating: Float?,
-    criticRating: Float?
-): RatingType {
-    return determineRatingType(providerIds, communityRating, criticRating, false)
-}
-
-private fun determineRatingType(
-    providerIds: Map<String, String>?,
-    communityRating: Float?,
-    criticRating: Float?,
-    preferCommunity: Boolean
-): RatingType {
-    // Check for Rotten Tomatoes provider IDs first
-    val rtId = providerIds?.get("RottenTomatoes") ?: providerIds?.get("rottentomatoes") ?: 
-               providerIds?.get("Rotten Tomatoes") ?: providerIds?.get("RottenTomatoes.tomato") ?:
-               providerIds?.get("RottenTomatoes.audience")
-    
-    // If preferCommunity is true and CommunityRating exists with RT ID, return Audience
-    if (preferCommunity && rtId != null && communityRating != null) {
-        return RatingType.RottenTomatoesAudience
-    }
-    
-    // If CriticRating exists, it's likely RT Fresh/Rotten rating
-    if (criticRating != null && !preferCommunity) {
-        // RT Fresh = 60%+ (6.0/10), RT Rotten = <60%
-        // Show RT icons even if ProviderIds don't explicitly say RT, as CriticRating is typically RT
-        return if (criticRating >= 6.0f) {
-            RatingType.RottenTomatoesFresh
-        } else {
-            RatingType.RottenTomatoesRotten
-        }
-    }
-    
-    // If we have RT provider ID and CommunityRating, it might be RT Audience
-    if (rtId != null && communityRating != null) {
-        return RatingType.RottenTomatoesAudience
-    }
-    
-    // Check for IMDb
-    if (providerIds != null) {
-        val imdbId = providerIds["Imdb"] ?: providerIds["imdb"] ?: providerIds["IMDb"] ?:
-                     providerIds["imdbid"]
-        if (imdbId != null) {
-            return RatingType.IMDb
-        }
-    }
-    
-    return RatingType.Generic
-}
-
-// Rating box with icon
-@Composable
-private fun RatingBoxWithIcon(
-    percentage: Int,
-    iconRes: Int,
-    label: String
-) {
-    Box(
-        modifier = Modifier
-            .background(Color.Black, RoundedCornerShape(4.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Icon for rating source - height to match metadata item height, width adjusts to preserve aspect ratio
-            Image(
-                painter = painterResource(iconRes),
-                contentDescription = label,
-                modifier = Modifier.height(12.dp), // Match height of labelSmall text in MetadataBox
-                contentScale = ContentScale.Fit // Preserve aspect ratio, fill height
-            )
-            Text(
-                text = "${percentage}%",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White
-            )
-        }
-    }
-}
-
-// Time remaining indicator with circular progress bar
 @Composable
 private fun TimeRemainingIndicator(item: JellyfinItem) {
-    // Get runtime and current position
     val runtimeTicks = item.RunTimeTicks ?: return
     val positionTicks = item.UserData?.PositionTicks ?: 0L
     
-    // Don't show if not started or runtime is invalid
     if (runtimeTicks <= 0 || positionTicks <= 0) return
     
-    // Calculate time remaining (10,000,000 ticks = 1 second)
     val remainingTicks = runtimeTicks - positionTicks
-    if (remainingTicks <= 0) return // Don't show if completed
+    if (remainingTicks <= 0) return
     
-    // Convert ticks to milliseconds for accurate calculation
     val runtimeMs = runtimeTicks / 10_000
     val positionMs = positionTicks / 10_000
     val remainingMs = remainingTicks / 10_000
     
-    // Calculate progress percentage (0.0 to 1.0)
     val progress = if (runtimeMs > 0) {
         min(1.0f, positionMs.toFloat() / runtimeMs.toFloat())
     } else {
         0.0f
     }
     
-    // Convert remaining time to hours, minutes, and seconds
     val totalSeconds = (remainingMs / 1000).toInt()
     val hours = totalSeconds / 3600
     val minutes = (totalSeconds % 3600) / 60
     val seconds = totalSeconds % 60
     
-    // Format time remaining text with better precision
     val timeText = when {
         hours > 0 -> {
             if (minutes > 0) {
@@ -2531,15 +2172,13 @@ private fun TimeRemainingIndicator(item: JellyfinItem) {
             if (minutes >= 5) {
                 "${minutes}m left"
             } else {
-                // Show seconds for less than 5 minutes
                 "${minutes}m ${seconds}s left"
             }
         }
         seconds > 0 -> "${seconds}s left"
-        else -> return // Don't show if less than a second
+        else -> return
     }
     
-    // Circular progress bar dimensions - match metadata item height
     val progressSize = 14.dp
     val strokeWidth = 1.5.dp
     
@@ -2553,7 +2192,6 @@ private fun TimeRemainingIndicator(item: JellyfinItem) {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Circular progress bar
             Box(
                 modifier = Modifier.size(progressSize),
                 contentAlignment = Alignment.Center
@@ -2564,7 +2202,6 @@ private fun TimeRemainingIndicator(item: JellyfinItem) {
                     val center = Offset(size.width / 2, size.height / 2)
                     val radius2 = radius * 2
                     
-                    // Background circle (semi-transparent white)
                     drawCircle(
                         color = Color.White.copy(alpha = 0.25f),
                         radius = radius,
@@ -2572,12 +2209,11 @@ private fun TimeRemainingIndicator(item: JellyfinItem) {
                         style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
                     )
                     
-                    // Progress arc (white) - shows how much has been watched
                     if (progress > 0f && progress < 1f) {
                         val sweepAngle = 360f * progress
                         drawArc(
                             color = Color.White,
-                            startAngle = -90f, // Start from top (12 o'clock)
+                            startAngle = -90f,
                             sweepAngle = sweepAngle,
                             useCenter = false,
                             topLeft = Offset(center.x - radius, center.y - radius),
@@ -2585,7 +2221,6 @@ private fun TimeRemainingIndicator(item: JellyfinItem) {
                             style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
                         )
                     } else if (progress >= 1f) {
-                        // Fully watched - draw complete circle
                         drawCircle(
                             color = Color.White,
                             radius = radius,
@@ -2596,7 +2231,6 @@ private fun TimeRemainingIndicator(item: JellyfinItem) {
                 }
             }
             
-            // Time remaining text
             Text(
                 text = timeText,
                 style = MaterialTheme.typography.labelSmall.copy(
@@ -2608,10 +2242,8 @@ private fun TimeRemainingIndicator(item: JellyfinItem) {
     }
 }
 
-// Helper function to format runtime
 private fun getRuntime(item: JellyfinItem): String? {
     val runtimeTicks = item.RunTimeTicks ?: return null
-    // Convert ticks to minutes (10,000,000 ticks = 1 second)
     val totalSeconds = runtimeTicks / 10_000_000
     val hours = totalSeconds / 3600
     val minutes = (totalSeconds % 3600) / 60
@@ -2622,4 +2254,3 @@ private fun getRuntime(item: JellyfinItem): String? {
         else -> null
     }
 }
-

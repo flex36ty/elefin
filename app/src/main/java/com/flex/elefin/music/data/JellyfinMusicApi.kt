@@ -107,7 +107,7 @@ class JellyfinMusicApi(
             Log.d(TAG, "Fetching artists (via Items): $url")
 
             val response: MusicItemsResponse = client.get(url) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             response.Items.map { item ->
@@ -143,7 +143,7 @@ class JellyfinMusicApi(
             Log.d(TAG, "Fetching albums for artist $artistId: $url")
 
             val response: MusicItemsResponse = client.get(url) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             response.Items.map { item ->
@@ -183,7 +183,7 @@ class JellyfinMusicApi(
             Log.d(TAG, "Fetching all albums: $url")
 
             val response: MusicItemsResponse = client.get(url) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             response.Items.map { item ->
@@ -206,6 +206,59 @@ class JellyfinMusicApi(
     }
 
     /**
+     * Get all songs from the music library
+     */
+    suspend fun getAllTracks(limit: Int = 500, startIndex: Int = 0): List<Track> {
+        return try {
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("IncludeItemTypes", "Audio")
+                parameters.append("Recursive", "true")
+                parameters.append("SortBy", "SortName")
+                parameters.append("SortOrder", "Ascending")
+                parameters.append("Limit", limit.toString())
+                parameters.append("StartIndex", startIndex.toString())
+                parameters.append("Fields", "MediaSources,MediaStreams")
+            }.buildString()
+
+            Log.d(TAG, "Fetching all tracks: $url")
+
+            val response: MusicItemsResponse = client.get(url) {
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
+            }.body()
+
+            response.Items.map { item ->
+                val audioStream = item.MediaSources?.firstOrNull()?.MediaStreams
+                    ?.firstOrNull { it.Type == "Audio" }
+
+                Track(
+                    id = item.Id,
+                    name = item.Name,
+                    album = item.Album ?: "Unknown Album",
+                    albumId = item.AlbumId,
+                    artist = item.AlbumArtist ?: item.Artists?.firstOrNull() ?: "Unknown Artist",
+                    artistId = item.AlbumArtists?.firstOrNull()?.Id ?: item.ArtistItems?.firstOrNull()?.Id,
+                    trackNumber = item.IndexNumber ?: 0,
+                    discNumber = item.ParentIndexNumber ?: 1,
+                    durationMs = (item.RunTimeTicks ?: 0) / 10000,
+                    imageUrl = if (item.ImageTags?.containsKey("Primary") == true) {
+                        imageUrl(item.Id)
+                    } else if (item.AlbumId != null) {
+                        imageUrl(item.AlbumId)
+                    } else null,
+                    streamUrl = "${base}Audio/${item.Id}/universal?UserId=$userId&Container=opus,webm|opus,mp3,aac,m4a|aac,m4b|aac,flac,webma,webm|webma,wav,ogg&TranscodingContainer=ts&TranscodingProtocol=hls&AudioCodec=aac&api_key=$accessToken",
+                    codec = audioStream?.Codec,
+                    bitrate = audioStream?.BitRate ?: item.MediaSources?.firstOrNull()?.Bitrate,
+                    sampleRate = audioStream?.SampleRate,
+                    channels = audioStream?.Channels
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching all tracks", e)
+            emptyList()
+        }
+    }
+
+    /**
      * Get recently added albums
      */
     suspend fun getRecentlyAddedAlbums(limit: Int = 20): List<Album> {
@@ -222,7 +275,7 @@ class JellyfinMusicApi(
             Log.d(TAG, "Fetching recently added albums: $url")
 
             val response: MusicItemsResponse = client.get(url) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             response.Items.map { item ->
@@ -260,7 +313,7 @@ class JellyfinMusicApi(
             Log.d(TAG, "Fetching tracks for album $albumId: $url")
 
             val response: MusicItemsResponse = client.get(url) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             response.Items.map { item ->
@@ -313,7 +366,7 @@ class JellyfinMusicApi(
             Log.d(TAG, "Fetching tracks for artist $artistId: $url")
 
             val response: MusicItemsResponse = client.get(url) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             response.Items.map { item ->
@@ -365,7 +418,7 @@ class JellyfinMusicApi(
             }.buildString()
 
             val artistsResponse: MusicItemsResponse = client.get(artistsUrl) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             val artists = artistsResponse.Items.map { item ->
@@ -387,7 +440,7 @@ class JellyfinMusicApi(
             }.buildString()
 
             val albumsResponse: MusicItemsResponse = client.get(albumsUrl) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             val albums = albumsResponse.Items.map { item ->
@@ -412,7 +465,7 @@ class JellyfinMusicApi(
             }.buildString()
 
             val tracksResponse: MusicItemsResponse = client.get(tracksUrl) {
-                header("X-Emby-Token", accessToken)
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
             }.body()
 
             val tracks = tracksResponse.Items.map { item ->
@@ -436,6 +489,57 @@ class JellyfinMusicApi(
         } catch (e: Exception) {
             Log.e(TAG, "Error searching music", e)
             Triple(emptyList(), emptyList(), emptyList())
+        }
+    }
+
+    /**
+     * Get recommended random tracks from the music library
+     */
+    suspend fun getRecommendedTracks(limit: Int = 50): List<Track> {
+        return try {
+            val url = URLBuilder().takeFrom("${base}Users/$userId/Items").apply {
+                parameters.append("IncludeItemTypes", "Audio")
+                parameters.append("Recursive", "true")
+                parameters.append("SortBy", "Random")
+                parameters.append("Limit", limit.toString())
+                parameters.append("Fields", "MediaSources,MediaStreams")
+            }.buildString()
+
+            Log.d(TAG, "Fetching recommended tracks: $url")
+
+            val response: MusicItemsResponse = client.get(url) {
+                header("Authorization", com.flex.elefin.jellyfin.jellyfinAuthorization(accessToken))
+            }.body()
+
+            response.Items.map { item ->
+                val audioStream = item.MediaSources?.firstOrNull()?.MediaStreams
+                    ?.firstOrNull { it.Type == "Audio" }
+
+                Track(
+                    id = item.Id,
+                    name = item.Name,
+                    album = item.Album ?: "Unknown Album",
+                    albumId = item.AlbumId,
+                    artist = item.AlbumArtist ?: item.Artists?.firstOrNull() ?: "Unknown Artist",
+                    artistId = item.AlbumArtists?.firstOrNull()?.Id ?: item.ArtistItems?.firstOrNull()?.Id,
+                    trackNumber = item.IndexNumber ?: 0,
+                    discNumber = item.ParentIndexNumber ?: 1,
+                    durationMs = (item.RunTimeTicks ?: 0) / 10000,
+                    imageUrl = if (item.ImageTags?.containsKey("Primary") == true) {
+                        imageUrl(item.Id)
+                    } else if (item.AlbumId != null) {
+                        imageUrl(item.AlbumId)
+                    } else null,
+                    streamUrl = "${base}Audio/${item.Id}/universal?UserId=$userId&Container=opus,webm|opus,mp3,aac,m4a|aac,m4b|aac,flac,webma,webm|webma,wav,ogg&TranscodingContainer=ts&TranscodingProtocol=hls&AudioCodec=aac&api_key=$accessToken",
+                    codec = audioStream?.Codec,
+                    bitrate = audioStream?.BitRate ?: item.MediaSources?.firstOrNull()?.Bitrate,
+                    sampleRate = audioStream?.SampleRate,
+                    channels = audioStream?.Channels
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching recommended tracks", e)
+            emptyList()
         }
     }
 }

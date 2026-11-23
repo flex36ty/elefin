@@ -219,7 +219,10 @@ fun JellyfinVideoPlayerScreen(
         if (jellyfinConfig.isConfigured()) {
             // Try to get cached subtitle if one was selected
             val subtitlePath = subtitleStreamIndex?.let { streamIndex ->
-                com.flex.elefin.player.SubtitleDownloader.getCachedSubtitle(item.Id, streamIndex)
+                com.flex.elefin.player.SubtitleDownloader.getCachedSubtitle(
+                    apiService.serverBaseUrl, item.Id,
+                    itemDetails?.MediaSources?.firstOrNull()?.Id ?: item.Id, streamIndex
+                )
             }
             if (subtitlePath != null) {
                 Log.d("JellyfinPlayer", "🎬 Found cached subtitle for MPV: $subtitlePath")
@@ -3241,7 +3244,7 @@ fun JellyfinVideoPlayerScreen(
                         val displayName = itemDetails?.Name ?: item.Name
                         val isEpisode = itemDetails?.Type == "Episode"
                         // Show title when: initial overlay is visible OR custom controls are showing
-                        val showTitle = (titleOverlayVisible || showControls) && (displayName.isNotEmpty() || (isEpisode && seriesName != null))
+                        val showTitle = !isMobile && (titleOverlayVisible || showControls) && (displayName.isNotEmpty() || (isEpisode && seriesName != null))
                         
                         if (showTitle) {
                             androidx.tv.material3.Surface(
@@ -3974,6 +3977,12 @@ fun JellyfinVideoPlayerScreen(
                 },
                 player = player,
                 jellyfinSubtitleStreams = jellyfinSubtitleStreams, // Pass for composite key registration
+                onServerSubtitleSelected = { selection ->
+                    itemDetails = selection.item
+                    jellyfinSubtitleStreams = selection.item.MediaSources?.firstOrNull { it.Id == selection.sourceId }
+                        ?.MediaStreams.orEmpty().filter { it.Type == "Subtitle" }
+                    currentSubtitleIndex = selection.stream.Index
+                },
                 downloadedSubtitles = downloadedSubtitles, // Downloaded OpenSubtitles
                 initialMenuLevel = settingsMenuInitialLevel, // Open to subtitles if CC button was pressed
                 isMobile = isMobile,
@@ -4263,8 +4272,11 @@ fun ExoPlayerSettingsMenu(
     downloadedSubtitles: List<com.flex.elefin.subtitles.DownloadedSubtitle> = emptyList(), // Downloaded OpenSubtitles
     onDownloadedSubtitleSelected: ((String) -> Unit)? = null, // Callback for selecting downloaded subtitle by file path
     initialMenuLevel: String = "main", // "main", "subtitles", "audio", "speed" - allows opening directly to a submenu
+    onServerSubtitleSelected: (com.flex.elefin.subtitles.ServerSubtitleSelection) -> Unit = {},
     isMobile: Boolean = false
 ) {
+    val subtitleContext = androidx.compose.ui.platform.LocalContext.current
+    var showServerSearch by remember { mutableStateOf(false) }
     var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     var isLoadingSubtitles by remember { mutableStateOf(true) }
     var currentTracks by remember { mutableStateOf<Tracks?>(null) }
@@ -4713,6 +4725,10 @@ fun ExoPlayerSettingsMenu(
                             contentPadding = PaddingValues(vertical = 8.dp),
                             modifier = Modifier.weight(1f)
                         ) {
+                            item {
+                                ListItem(selected = false, headlineContent = { Text("Find subtitles") },
+                                    onClick = { showServerSearch = true }, colors = listItemColors)
+                            }
                             // "None" option to disable subtitles
                             item {
                                 ListItem(
@@ -4918,12 +4934,23 @@ fun ExoPlayerSettingsMenu(
             }
         }
     }
+    if (showServerSearch && player != null) {
+        com.flex.elefin.subtitles.ServerSubtitleSearchDialog(item.Id, apiService,
+            onDownloaded = { selection ->
+                itemDetails = selection.item
+                com.flex.elefin.subtitles.attachServerSubtitle(subtitleContext, apiService, player, selection)
+                onServerSubtitleSelected(selection)
+                onDismiss()
+            }, onDismiss = { showServerSearch = false })
+    }
+
 }
 
 @Composable
 fun NextUpOverlay(
     nextEpisode: JellyfinItem,
     countdown: Int,
+    actionHint: String? = null,
     onCancel: () -> Unit
 ) {
     Box(
@@ -4993,6 +5020,9 @@ fun NextUpOverlay(
                     color = Color.White.copy(alpha = 0.7f),
                     modifier = Modifier.padding(top = 8.dp)
                 )
+                actionHint?.let {
+                    Text(it, color = Color.White, style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
     }
@@ -5554,7 +5584,7 @@ fun SkipButton(
 
 // YouTube TV-style player control button — now supports custom size for mobile
 @Composable
-private fun PlayerControlButton(
+internal fun PlayerControlButton(
     icon: ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
@@ -5580,6 +5610,19 @@ private fun PlayerControlButton(
                 shape = RoundedCornerShape(50)
             )
             .onFocusChanged { isFocused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                if (isFocused && event.type == KeyEventType.KeyDown) {
+                    when (event.key) {
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                            onClick()
+                            true
+                        }
+                        else -> false
+                    }
+                } else {
+                    false
+                }
+            }
             .focusable()
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
@@ -5610,7 +5653,7 @@ private fun formatTime(ms: Long): String {
 
 // Seekbar that supports D-pad (TV) and touch drag (mobile)
 @Composable
-private fun PlayerSeekBar(
+internal fun PlayerSeekBar(
     currentPosition: Long,
     duration: Long,
     onSeek: (Long) -> Unit,
@@ -5758,7 +5801,7 @@ private fun PlayerSeekBar(
 
 // Picture Mode / Aspect Ratio button
 @Composable
-private fun AspectModeButton(
+internal fun AspectModeButton(
     currentMode: AspectMode,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -5781,6 +5824,19 @@ private fun AspectModeButton(
                 shape = RoundedCornerShape(50)
             )
             .onFocusChanged { isFocused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                if (isFocused && event.type == KeyEventType.KeyDown) {
+                    when (event.key) {
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                            onClick()
+                            true
+                        }
+                        else -> false
+                    }
+                } else {
+                    false
+                }
+            }
             .focusable()
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
@@ -5804,5 +5860,4 @@ private fun AspectModeButton(
         }
     }
 }
-
 

@@ -196,11 +196,27 @@ public final class YoutubeStreamHelper {
                                                   @Nonnull final String cpn,
                                                   @Nullable final PoTokenResult iosPoTokenResult)
             throws IOException, ExtractionException {
-        final InnertubeClientRequestInfo innertubeClientRequestInfo =
-                InnertubeClientRequestInfo.ofIosClient();
+        return getApplePlayerResponse(contentCountry, localization, videoId, cpn, iosPoTokenResult, false);
+    }
 
+    public static JsonObject getVisionosPlayerResponse(final ContentCountry contentCountry,
+            final Localization localization, final String videoId, final String cpn)
+            throws IOException, ExtractionException {
+        return getApplePlayerResponse(contentCountry, localization, videoId, cpn, null, true);
+    }
+
+    private static JsonObject getApplePlayerResponse(final ContentCountry contentCountry,
+            final Localization localization, final String videoId, final String cpn,
+            final PoTokenResult iosPoTokenResult, final boolean visionos)
+            throws IOException, ExtractionException {
+        final InnertubeClientRequestInfo innertubeClientRequestInfo =
+                visionos ? InnertubeClientRequestInfo.ofVisionosClient() : InnertubeClientRequestInfo.ofIosClient();
+
+        final String userAgent = visionos
+                ? "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
+                : getIosUserAgent(localization);
         final Map<String, List<String>> headers =
-                getMobileClientHeaders(getIosUserAgent(localization));
+                getMobileClientHeaders(userAgent);
 
         // We must always pass a valid visitorData to get valid player responses, which needs to be
         // got from YouTube

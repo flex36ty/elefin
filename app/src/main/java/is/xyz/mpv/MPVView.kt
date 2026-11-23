@@ -22,6 +22,8 @@ import java.io.File
 class MPVView(context: Context, attrs: AttributeSet? = null) : SurfaceView(context, attrs), SurfaceHolder.Callback {
     
     companion object {
+        private val engineLock = Any()
+        private var engineOwner: MPVView? = null
         private const val TAG = "MPVView"
         private const val HWDECS = "mediacodec,mediacodec-copy"
     }
@@ -30,6 +32,29 @@ class MPVView(context: Context, attrs: AttributeSet? = null) : SurfaceView(conte
     private var voInUse: String = "gpu"
     private var httpHeaders: String? = null
     private var isInitialized = false
+    private var pendingAudioFile: String? = null
+    private val audioHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val audioObserver = object : MPVLib.EventObserver {
+        override fun eventProperty(property: String) = Unit
+        override fun eventProperty(property: String, value: Long) = Unit
+        override fun eventProperty(property: String, value: Boolean) = Unit
+        override fun eventProperty(property: String, value: String) = Unit
+        override fun eventProperty(property: String, value: Double) = Unit
+        override fun event(eventId: Int) {
+            if (eventId == MPVLib.MpvEvent.MPV_EVENT_FILE_LOADED) {
+                // Leave the native event callback before issuing another player command.
+                audioHandler.post {
+                    if (isInitialized) {
+                        pendingAudioFile?.let { audio ->
+                            pendingAudioFile = null
+                            MPVLib.command(arrayOf("audio-add", audio, "select"))
+                            Log.d(TAG, "Attached and selected external audio after video loaded")
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     constructor(context: Context) : this(context, null)
 
@@ -44,65 +69,81 @@ class MPVView(context: Context, attrs: AttributeSet? = null) : SurfaceView(conte
     /**
      * Initialize MPV. Call this once before the view is shown.
      */
-    fun initialize(configDir: String, cacheDir: String) {
+    fun initialize(configDir: String, cacheDir: String) = synchronized(engineLock) {
         if (isInitialized) {
             Log.w(TAG, "MPV already initialized")
-            return
+            return@synchronized
         }
         
-        // Copy bundled fonts from assets to internal storage for libass
-        val fontsDir = File(context.filesDir, "fonts")
-        copyFontsFromAssets(fontsDir)
+        check(engineOwner == null) { "Another MPV player is still active. Close it before starting playback." }
+        engineOwner = this
+        var nativeCreated = false
+        try {
+            // Copy bundled fonts from assets to internal storage for libass
+            val fontsDir = File(context.filesDir, "fonts")
+            copyFontsFromAssets(fontsDir)
 
-        MPVLib.create(context)
+            MPVLib.create(context)
+            nativeCreated = true
 
-        // Set config options
-        MPVLib.setOptionString("config", "yes")
-        MPVLib.setOptionString("config-dir", configDir)
+            // Set config options
+            MPVLib.setOptionString("config", "yes")
+            MPVLib.setOptionString("config-dir", configDir)
         
-        // Cache directories
-        for (opt in arrayOf("gpu-shader-cache-dir", "icc-cache-dir"))
-            MPVLib.setOptionString(opt, cacheDir)
+            // Cache directories
+            for (opt in arrayOf("gpu-shader-cache-dir", "icc-cache-dir"))
+                MPVLib.setOptionString(opt, cacheDir)
         
-        // Font directory for libass - CRITICAL for text subtitle rendering
-        MPVLib.setOptionString("sub-fonts-dir", fontsDir.absolutePath)
-        MPVLib.setOptionString("osd-fonts-dir", fontsDir.absolutePath)
+            // Font directory for libass - CRITICAL for text subtitle rendering
+            MPVLib.setOptionString("sub-fonts-dir", fontsDir.absolutePath)
+            MPVLib.setOptionString("osd-fonts-dir", fontsDir.absolutePath)
 
-        // Initialize options before MPVLib.init()
-        initOptions()
+            // Initialize options before MPVLib.init()
+            initOptions()
 
-        // Set HTTP headers if provided (must be before init)
-        httpHeaders?.let { headers ->
-            if (headers.isNotEmpty()) {
-                MPVLib.setOptionString("http-header-fields", headers)
-                Log.d(TAG, "HTTP headers set")
+            // Set HTTP headers if provided (must be before init)
+            httpHeaders?.let { headers ->
+                if (headers.isNotEmpty()) {
+                    MPVLib.setOptionString("http-header-fields", encodeMpvHttpHeaders(headers))
+                    Log.d(TAG, "HTTP headers set")
+                }
             }
+
+            // Disable ytdl to prevent interference with direct URLs
+            MPVLib.setOptionString("ytdl", "no")
+            MPVLib.setOptionString("load-scripts", "no")
+
+            MPVLib.init()
+
+            // Post-init options
+            postInitOptions()
+
+            // Surface management options - keep window alive for subtitle rendering
+            MPVLib.setOptionString("force-window", "yes")  // Keep window even without surface
+            MPVLib.setOptionString("keep-open", "yes")  // Keep player open after playback ends
+            MPVLib.setOptionString("idle", "yes")  // Stay idle instead of exiting
+
+            holder.addCallback(this)
+            MPVLib.addObserver(audioObserver)
+            observeProperties()
+        
+            isInitialized = true
+            Log.d(TAG, "MPV initialized successfully")
+        
+            // Log subtitle-related properties for debugging
+            val subVis = MPVLib.getPropertyBoolean("sub-visibility")
+            val sid = MPVLib.getPropertyString("sid")
+            Log.d(TAG, "Initial subtitle state: sub-visibility=$subVis, sid=$sid")
+        } catch (failure: Throwable) {
+            holder.removeCallback(this)
+            MPVLib.removeObserver(audioObserver)
+            audioHandler.removeCallbacksAndMessages(null)
+            if (nativeCreated) runCatching { MPVLib.destroy() }
+            isInitialized = false
+            engineOwner = null
+            throw failure
         }
 
-        // Disable ytdl to prevent interference with direct URLs
-        MPVLib.setOptionString("ytdl", "no")
-        MPVLib.setOptionString("load-scripts", "no")
-
-        MPVLib.init()
-
-        // Post-init options
-        postInitOptions()
-
-        // Surface management options - keep window alive for subtitle rendering
-        MPVLib.setOptionString("force-window", "yes")  // Keep window even without surface
-        MPVLib.setOptionString("keep-open", "yes")  // Keep player open after playback ends
-        MPVLib.setOptionString("idle", "yes")  // Stay idle instead of exiting
-
-        holder.addCallback(this)
-        observeProperties()
-        
-        isInitialized = true
-        Log.d(TAG, "MPV initialized successfully")
-        
-        // Log subtitle-related properties for debugging
-        val subVis = MPVLib.getPropertyBoolean("sub-visibility")
-        val sid = MPVLib.getPropertyString("sid")
-        Log.d(TAG, "Initial subtitle state: sub-visibility=$subVis, sid=$sid")
     }
 
     private fun initOptions() {
@@ -214,20 +255,27 @@ class MPVView(context: Context, attrs: AttributeSet? = null) : SurfaceView(conte
     /**
      * Destroy MPV. Call this when done with playback.
      */
-    fun destroy() {
-        if (!isInitialized) return
-        
+    fun destroy() = synchronized(engineLock) {
+        if (!isInitialized || engineOwner !== this) return@synchronized
         holder.removeCallback(this)
-        MPVLib.destroy()
-        isInitialized = false
+        MPVLib.removeObserver(audioObserver)
+        audioHandler.removeCallbacksAndMessages(null)
+        pendingAudioFile = null
+        try {
+            MPVLib.destroy()
+        } finally {
+            isInitialized = false
+            engineOwner = null
+        }
         Log.d(TAG, "MPV destroyed")
     }
 
     /**
      * Load and play a file.
      */
-    fun playFile(filePath: String) {
+    fun playFile(filePath: String, externalAudioFile: String? = null) {
         this.filePath = filePath
+        pendingAudioFile = externalAudioFile
     }
 
     /**
@@ -302,8 +350,8 @@ class MPVView(context: Context, attrs: AttributeSet? = null) : SurfaceView(conte
 
     fun cyclePause() = MPVLib.command(arrayOf("cycle", "pause"))
     
-    fun pause() {
-        paused = true
+    fun pause() = synchronized(engineLock) {
+        if (isInitialized && engineOwner === this) paused = true
     }
     
     fun play() {
@@ -392,16 +440,10 @@ class MPVView(context: Context, attrs: AttributeSet? = null) : SurfaceView(conte
             
             for (fontFile in fontFiles) {
                 val destFile = File(fontsDir, fontFile)
-                if (!destFile.exists()) {
-                    Log.d(TAG, "Copying font: $fontFile to ${destFile.absolutePath}")
-                    assetManager.open("fonts/$fontFile").use { input ->
-                        destFile.outputStream().use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                    Log.d(TAG, "Font copied successfully: $fontFile")
-                } else {
-                    Log.d(TAG, "Font already exists: $fontFile")
+                val bundled = assetManager.open("fonts/$fontFile").use { it.readBytes() }
+                if (!destFile.exists() || !destFile.readBytes().contentEquals(bundled)) {
+                    destFile.writeBytes(bundled)
+                    Log.d(TAG, "Installed current bundled font: $fontFile")
                 }
             }
         } catch (e: Exception) {

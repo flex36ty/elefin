@@ -3,11 +3,9 @@ package com.flex.elefin.jellyfin
 import android.content.Context
 import android.content.SharedPreferences
 
-class JellyfinConfig(context: Context) {
-    private val prefs: SharedPreferences = context.getSharedPreferences(
-        "jellyfin_config",
-        Context.MODE_PRIVATE
-    )
+class JellyfinConfig internal constructor(private val prefs: SharedPreferences) {
+    constructor(context: Context, preferenceName: String = "jellyfin_config") :
+        this(context.getSharedPreferences(preferenceName, Context.MODE_PRIVATE))
 
     var serverUrl: String
         get() = prefs.getString("server_url", "") ?: ""
@@ -38,6 +36,11 @@ class JellyfinConfig(context: Context) {
         get() = prefs.getString("device_id", "") ?: ""
         set(value) = prefs.edit().putString("device_id", value).apply()
 
+    var serverName: String
+        get() = prefs.getString("server_name", "Jellyfin Server") ?: "Jellyfin Server"
+        set(value) = prefs.edit().putString("server_name", value).apply()
+
+
     fun isConfigured(): Boolean {
         val url = serverUrl
         // Validate that server URL is properly formatted
@@ -50,10 +53,18 @@ class JellyfinConfig(context: Context) {
         return serverUrl.isNotEmpty() && username.isNotEmpty() && password.isNotEmpty()
     }
 
+    internal fun snapshot(): Map<String, String> =
+        prefs.all.mapNotNull { (key, value) -> (value as? String)?.let { key to it } }.toMap()
+
+    internal fun replace(values: Map<String, String>) {
+        prefs.edit().clear().apply { values.forEach { (key, value) -> putString(key, value) } }.commit()
+    }
+
     fun clearAuth(): Unit {
         prefs.edit().apply {
             remove("access_token")
             remove("user_id")
+            remove("password")
             apply()
         }
     }

@@ -26,19 +26,12 @@ import com.flex.elefin.updater.UpdateService
  * Main entry point that loads the Jellyfin home screen.
  */
 class MainActivity : ComponentActivity() {
+    override fun onResume() {
+        super.onResume()
+        com.flex.elefin.discovery.TvHome.schedule(this)
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // Check if this is the first launch - if not, remove splash screen background
-        val settings = AppSettings(this)
-        val isFirstLaunch = settings.isFirstLaunch
-        if (!isFirstLaunch) {
-            // Remove splash screen background for subsequent launches
-            window.setBackgroundDrawableResource(android.R.color.transparent)
-        } else {
-            // Mark that we've launched at least once
-            settings.isFirstLaunch = false
-        }
         
         val appSettings = AppSettings(this)
         
@@ -52,6 +45,7 @@ class MainActivity : ComponentActivity() {
         
         setContent {
             JellyfinAppTheme {
+                LaunchSplash(enabled = savedInstanceState == null) {
                 // Update checker (only if auto-update is enabled)
                 val settings = AppSettings(this)
                 if (settings.autoUpdateEnabled) {
@@ -153,6 +147,7 @@ class MainActivity : ComponentActivity() {
                         cacheLibraryImages = appSettings.cacheLibraryImages,
                         reducePosterResolution = appSettings.reducePosterResolution
                     )
+                }
                 }
             }
         }

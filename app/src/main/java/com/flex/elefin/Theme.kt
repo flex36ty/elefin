@@ -15,6 +15,8 @@ import androidx.tv.material3.Shapes
 import androidx.tv.material3.darkColorScheme
 import com.flex.elefin.jellyfin.AppSettings
 import com.flex.elefin.jellyfin.JellyfinConfig
+import androidx.compose.ui.graphics.toArgb
+import androidx.core.graphics.ColorUtils
 import com.flex.elefin.theme.ThemeConfig
 import com.flex.elefin.theme.ThemeLoader
 import androidx.compose.runtime.CompositionLocalProvider
@@ -47,13 +49,33 @@ fun JellyfinAppTheme(
     LaunchedEffect(settings.navigationSoundsEnabled) {
         view.isSoundEffectsEnabled = settings.navigationSoundsEnabled
     }
+
+    // Initialize the global primary color state from settings on start
+    LaunchedEffect(settings.themeColorHex) {
+        val hex = settings.themeColorHex
+        try {
+            com.flex.elefin.theme.JetcasterPrimaryColorState = Color(android.graphics.Color.parseColor(hex))
+        } catch (e: Exception) {
+            com.flex.elefin.theme.JetcasterPrimaryColorState = Color(0xFFECC564)
+        }
+    }
+
+    val selectedThemeColor = com.flex.elefin.theme.JetcasterPrimaryColorState
+
+    val onPrimaryColor = remember(selectedThemeColor) {
+        if (ColorUtils.calculateLuminance(selectedThemeColor.toArgb()) < 0.45) {
+            Color.White
+        } else {
+            Color(0xFF2E2200)
+        }
+    }
     
-    // Default theme values (Cohesive Premium Dark & Gold Theme)
+    // Default theme values (Cohesive Premium Dark & Color Theme)
     val defaultDarkColorScheme = darkColorScheme(
-        primary = Color(0xFFECC564),
+        primary = selectedThemeColor,
         background = Color(0xFF09090B),
         surface = Color(0xFF18181B),
-        onPrimary = Color(0xFF2E2200),
+        onPrimary = onPrimaryColor,
         onBackground = Color(0xFFECEFF1),
         onSurface = Color(0xFFF8F9FA)
     )

@@ -22,6 +22,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.flex.elefin.music.ui.apple.AppleBlurBackground
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,7 +84,7 @@ fun MusicHomeScreen(
     }
 
     // State
-    var selectedTab by remember { mutableStateOf(MusicTab.HOME) }
+    var selectedTab by rememberSaveable { mutableStateOf(MusicTab.HOME) }
     var recentAlbums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var artists by remember { mutableStateOf<List<Artist>>(emptyList()) }
     var allAlbums by remember { mutableStateOf<List<Album>>(emptyList()) }
@@ -137,7 +139,8 @@ fun MusicHomeScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        AppleBlurBackground(imageUrl = recentAlbums.firstOrNull()?.imageUrl, darken = 0.85f)
+        Column(modifier = Modifier.fillMaxSize().padding(bottom = if (currentTrack != null) 88.dp else 0.dp)) {
             // Header with tabs
             MusicHeader(
                 selectedTab = selectedTab,
@@ -232,7 +235,7 @@ private fun MusicHeader(
             Icon(
                 imageVector = Icons.Default.MusicNote,
                 contentDescription = null,
-                tint = Color(0xFF1DB954), // Spotify green accent
+                tint = MaterialTheme.colorScheme.primary, // Elefin accent
                 modifier = Modifier.size(22.dp) // Reduced from 32 to 22
             )
             Spacer(modifier = Modifier.width(12.dp))
@@ -313,7 +316,7 @@ private fun MusicHomeContent(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            CircularProgressIndicator(color = Color(0xFF1DB954))
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
         }
     } else {
         LazyColumn(
@@ -321,6 +324,13 @@ private fun MusicHomeContent(
             contentPadding = PaddingValues(bottom = 100.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+            if (recentAlbums.isNotEmpty()) {
+                item(key = "featured") {
+                    FeaturedMusicAlbum(recentAlbums.first(), onAlbumClick, onPlayAlbum)
+                }
+            } else if (artists.isEmpty()) {
+                item { Text("Your music will appear here when albums are added to Jellyfin.", modifier = Modifier.padding(48.dp), color = Color.White.copy(alpha = 0.7f)) }
+            }
             // Recently Added Albums
             if (recentAlbums.isNotEmpty()) {
                 item {
@@ -332,7 +342,7 @@ private fun MusicHomeContent(
                             contentPadding = PaddingValues(horizontal = 48.dp),
                             horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            items(recentAlbums) { album ->
+                            items(recentAlbums, key = { it.id }) { album ->
                                 AlbumCard(
                                     album = album,
                                     onClick = { onAlbumClick(album.id) },
@@ -355,7 +365,7 @@ private fun MusicHomeContent(
                             contentPadding = PaddingValues(horizontal = 48.dp),
                             horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            items(artists.take(10)) { artist ->
+                            items(artists.take(10), key = { it.id }) { artist ->
                                 ArtistCard(
                                     artist = artist,
                                     onClick = { onArtistClick(artist.id) }
@@ -412,7 +422,7 @@ private fun AlbumCard(
     onPlay: () -> Unit = {}
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (isFocused) 1.08f else 1f, label = "scale")
+    val scale by animateFloatAsState(if (isFocused) 1.04f else 1f, label = "scale")
 
     Column(
         modifier = Modifier
@@ -464,13 +474,13 @@ private fun AlbumCard(
                         Box(
                             modifier = Modifier
                                 .size(48.dp)
-                                .background(Color(0xFF1DB954), CircleShape),
+                                .background(MaterialTheme.colorScheme.primary, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.PlayArrow,
-                                contentDescription = "Play",
-                                tint = Color.Black,
+                                imageVector = Icons.Default.Album,
+                                contentDescription = "View album",
+                                tint = MaterialTheme.colorScheme.onPrimary,
                                 modifier = Modifier.size(32.dp)
                             )
                         }
@@ -505,7 +515,7 @@ private fun ArtistCard(
     onClick: () -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (isFocused) 1.08f else 1f, label = "scale")
+    val scale by animateFloatAsState(if (isFocused) 1.04f else 1f, label = "scale")
 
     Column(
         modifier = Modifier
@@ -600,7 +610,7 @@ private fun ArtistListContent(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            CircularProgressIndicator(color = Color(0xFF1DB954))
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
         }
     } else {
         if (artists.isEmpty()) {
@@ -619,7 +629,7 @@ private fun ArtistListContent(
                 horizontalArrangement = Arrangement.spacedBy(24.dp),
                 verticalArrangement = Arrangement.spacedBy(32.dp)
             ) {
-                items(artists) { artist ->
+                items(artists, key = { it.id }) { artist ->
                     ArtistCard(
                         artist = artist,
                         onClick = { onArtistClick(artist.id) }
@@ -641,7 +651,7 @@ private fun AlbumGridContent(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            CircularProgressIndicator(color = Color(0xFF1DB954))
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
         }
     } else {
         if (albums.isEmpty()) {
@@ -659,7 +669,7 @@ private fun AlbumGridContent(
                 horizontalArrangement = Arrangement.spacedBy(24.dp),
                 verticalArrangement = Arrangement.spacedBy(32.dp)
             ) {
-                items(albums) { album ->
+                items(albums, key = { it.id }) { album ->
                     AlbumCard(
                         album = album,
                         onClick = { onAlbumClick(album.id) }
@@ -685,11 +695,12 @@ private fun MiniPlayer(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .height(72.dp),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(0.dp)),
+            .padding(horizontal = 36.dp, vertical = 10.dp)
+            .height(68.dp),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color(0xFF282828),
-            focusedContainerColor = Color(0xFF383838)
+            containerColor = Color(0xFF202127),
+            focusedContainerColor = Color(0xFF343640)
         )
     ) {
         Row(
@@ -768,4 +779,34 @@ private fun startPlayback(context: Context, tracks: List<Track>, startIndex: Int
     // Connect and play
     PlayerConnection.connect(context)
     PlayerConnection.playTracks(tracks, startIndex)
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun FeaturedMusicAlbum(album: Album, onAlbumClick: (String) -> Unit, onPlayAlbum: (Album) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(28.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AsyncImage(
+            model = album.imageUrl, contentDescription = album.name,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.size(176.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xFF25262D))
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("FROM YOUR LIBRARY", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.65f))
+            Text(album.name, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold,
+                color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(album.artist, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.75f), maxLines = 1)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = { onPlayAlbum(album) }) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Play album")
+                }
+                Button(onClick = { onAlbumClick(album.id) }) { Text("View tracks") }
+            }
+        }
+    }
 }

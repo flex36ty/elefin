@@ -37,9 +37,8 @@ data class ThemeTypography(
 )
 
 data class ThemeFocus(
-    val scale: Float = 1.10f,
+    val scale: Float = 1.045f,
     val borderColor: Color = Color(0xFF4C9BE8),
-    val borderWidth: Dp = 3.dp
+    val borderWidth: Dp = 2.dp
 )
-
 

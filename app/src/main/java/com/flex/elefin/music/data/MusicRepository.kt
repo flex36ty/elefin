@@ -13,6 +13,9 @@ class MusicRepository(private val api: JellyfinMusicApi) {
     suspend fun getAllAlbums(limit: Int = 100, startIndex: Int = 0): List<Album> =
         api.getAllAlbums(limit, startIndex)
 
+    suspend fun getAllTracks(limit: Int = 500, startIndex: Int = 0): List<Track> =
+        api.getAllTracks(limit, startIndex)
+
     suspend fun getRecentlyAddedAlbums(limit: Int = 20): List<Album> =
         api.getRecentlyAddedAlbums(limit)
 
@@ -24,5 +27,8 @@ class MusicRepository(private val api: JellyfinMusicApi) {
 
     suspend fun searchMusic(query: String, limit: Int = 50): Triple<List<Artist>, List<Album>, List<Track>> =
         api.searchMusic(query, limit)
+
+    suspend fun getRecommendedTracks(limit: Int = 50): List<Track> =
+        api.getRecommendedTracks(limit)
 }
 

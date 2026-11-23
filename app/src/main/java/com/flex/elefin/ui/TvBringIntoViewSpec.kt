@@ -19,11 +19,18 @@ import androidx.compose.runtime.remember
  *   the start or end of the row.
  */
 @OptIn(ExperimentalFoundationApi::class)
-class TvBringIntoViewSpec : BringIntoViewSpec {
+class TvBringIntoViewSpec(
+    // Nested rows can specify the axis instead of guessing from viewport dimensions.
+    private val vertical: Boolean? = null,
+    private val edgeInset: Float = 0f,
+    private val focusTolerance: Float = 5f,
+    private val verticalAnchor: Float = 120f,
+    private val horizontalPivotEnabled: () -> Boolean = { true }
+) : BringIntoViewSpec {
     
     // Target position from top where the focused card should be placed (for vertical scrolling)
     // This leaves room above for the row title to be visible
-    private val verticalTargetPosition = 120f
+    private val verticalTargetPosition = verticalAnchor
     
     // Horizontal pivot position - where the focused card should be positioned
     // This is approximately the 3rd card position (accounting for padding and card width)
@@ -52,16 +59,28 @@ class TvBringIntoViewSpec : BringIntoViewSpec {
         val itemEnd = offset + size
         
         // Heuristic: If containerSize is less than 1000, it's likely the vertical viewport
-        val isLikelyVerticalScrolling = containerSize < 1000f
+        val isLikelyVerticalScrolling = vertical ?: (containerSize < 1000f)
         
         if (isLikelyVerticalScrolling) {
             // VERTICAL SCROLLING: Position the row at the target position
-            val scrollNeeded = offset - verticalTargetPosition
-            return if (kotlin.math.abs(scrollNeeded) > 5f) scrollNeeded else 0f
+            // Use the same anchor in both directions, with enough room for the full card.
+            val target = if (edgeInset > 0f) {
+                verticalTargetPosition.coerceAtMost((containerSize - size - edgeInset).coerceAtLeast(0f))
+            } else verticalTargetPosition
+            val scrollNeeded = offset - target
+            return if (kotlin.math.abs(scrollNeeded) > focusTolerance) scrollNeeded else 0f
         } else {
             // HORIZONTAL SCROLLING: Pivot-style - keep focused card at fixed position
             // The card should stay at the pivot position while the row scrolls underneath
             
+            // Entering a shelf vertically should reveal its saved focus without re-centering it.
+            if (!horizontalPivotEnabled()) {
+                return when {
+                    itemStart < 0f -> itemStart
+                    itemEnd > containerSize -> itemEnd - containerSize
+                    else -> 0f
+                }
+            }
             val targetPosition = horizontalPivotPosition
             
             // Calculate how much we need to scroll to bring the card to the pivot position
@@ -69,7 +88,7 @@ class TvBringIntoViewSpec : BringIntoViewSpec {
             
             // Always try to position the card at the pivot
             // The scroll will naturally stop at the row edges
-            return if (kotlin.math.abs(scrollNeeded) > 5f) {
+            return if (kotlin.math.abs(scrollNeeded) > focusTolerance) {
                 scrollNeeded
             } else {
                 0f

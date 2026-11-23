@@ -1,6 +1,7 @@
 package com.flex.elefin.screens
 
 import com.flex.elefin.jellyfin.JellyfinRepository
+import com.flex.elefin.components.RatingDisplay
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.wrapContentWidth
+import com.flex.elefin.ui.expandingActionButton
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
@@ -172,7 +174,11 @@ fun SeriesDetailsScreen(
     var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     var seasons by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
     var episodes by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
-    var selectedSeasonIndex by remember { mutableStateOf(0) }
+    var selectedSeasonId by androidx.compose.runtime.saveable.rememberSaveable(item.Id) {
+        mutableStateOf<String?>(null)
+    }
+    val selectedSeasonIndex = seasons.indexOfFirst { it.Id == selectedSeasonId }.coerceAtLeast(0)
+    val activeSeasonId = seasons.getOrNull(selectedSeasonIndex)?.Id
     var focusedEpisode by remember { mutableStateOf<JellyfinItem?>(null) }
     var focusedSeason by remember { mutableStateOf<JellyfinItem?>(null) }
     var isLoadingSeasons by remember { mutableStateOf(true) }
@@ -215,15 +221,14 @@ fun SeriesDetailsScreen(
                     itemDetails = details
                     
                     val seriesSeasons = seasonsDeferred.await()
+                    if (seriesSeasons.none { it.Id == selectedSeasonId }) {
+                        selectedSeasonId = seriesSeasons.firstOrNull()?.Id
+                    }
                     seasons = seriesSeasons
                     isLoadingSeasons = false
                     
-                    // Load first season's episodes (already started loading while we awaited seasons)
-                    if (seriesSeasons.isNotEmpty()) {
-                        val seasonEpisodes = apiService.getEpisodes(item.Id, seriesSeasons[0].Id)
-                        episodes = seasonEpisodes
-                        isLoadingEpisodes = false
-                    }
+                    // Episode loading belongs exclusively to the selected-season effect below.
+                    // A resume refresh must not overwrite it with the first season's episodes.
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     // Ignore cancellation exceptions - they're expected when composition changes
                     throw e // Re-throw to properly handle cancellation
@@ -239,28 +244,30 @@ fun SeriesDetailsScreen(
         }
     }
     
-    // Fetch episodes when selected season changes
-    LaunchedEffect(selectedSeasonIndex, seasons, apiService, refreshTrigger) {
-        if (apiService != null && seasons.isNotEmpty() && selectedSeasonIndex < seasons.size) {
-            withContext(Dispatchers.IO) {
-                try {
-                    isLoadingEpisodes = true
-                    val seasonEpisodes = apiService.getEpisodes(item.Id, seasons[selectedSeasonIndex].Id)
-                    episodes = seasonEpisodes
-                    isLoadingEpisodes = false
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    // Ignore cancellation exceptions - they're expected when composition changes
-                    throw e // Re-throw to properly handle cancellation
-                } catch (e: Exception) {
-                    Log.e("SeriesDetailsScreen", "Error fetching episodes", e)
-                    isLoadingEpisodes = false
+    // One loader owns the episode list. Capture the season ID for this request and
+    // commit on the main thread only after the cancellable fetch completes.
+    LaunchedEffect(item.Id, activeSeasonId, apiService, refreshTrigger, isLoadingSeasons) {
+        if (apiService != null && activeSeasonId != null) {
+            isLoadingEpisodes = true
+            try {
+                val seasonEpisodes = withContext(Dispatchers.IO) {
+                    apiService.getEpisodes(item.Id, activeSeasonId)
                 }
+                episodes = seasonEpisodes
+                isLoadingEpisodes = false
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                Log.e("SeriesDetailsScreen", "Error fetching episodes for $activeSeasonId", e)
+                isLoadingEpisodes = false
             }
+        } else if (!isLoadingSeasons) {
+            episodes = emptyList()
+            isLoadingEpisodes = false
         }
     }
-    
     // Track if we've already done the initial focus to prevent refocusing when seasons change
-    var hasPerformedInitialFocus by remember { mutableStateOf(false) }
+    var hasPerformedInitialFocus by androidx.compose.runtime.saveable.rememberSaveable(item.Id) { mutableStateOf(false) }
 
     // Sync focusedEpisode with updated episodes list (to get fresh UserData/streams after refresh)
     LaunchedEffect(episodes) {
@@ -301,11 +308,11 @@ fun SeriesDetailsScreen(
                                 // Found the episode in this season - switch to it
                                 Log.d("SeriesDetailsScreen", "✅ Found episode in season ${season.IndexNumber ?: index}: ${episodeInSeason.Name}")
                                 withContext(Dispatchers.Main) {
-                                    selectedSeasonIndex = index
-                                    episodes = seasonEpisodes
+                                    selectedSeasonId = season.Id
+                                    // The selected-season loader publishes episodes.
                                     focusedEpisode = episodeInSeason
                                     Log.d("SeriesDetailsScreen", "Switched to season index=$index with ${seasonEpisodes.size} episodes, SeriesBottomContainer will handle focus")
-                                    // Don't set hasPerformedInitialFocus here - let SeriesBottomContainer handle focus
+                                    hasPerformedInitialFocus = true
                                 }
                                 found = true
                                 break
@@ -346,55 +353,14 @@ fun SeriesDetailsScreen(
     // State to trigger episodes refresh after marking as watched
     var refreshEpisodesAfterWatched by remember { mutableStateOf(false) }
     
-    // Refresh episodes list when an episode is marked as watched
-    LaunchedEffect(refreshEpisodesAfterWatched, apiService, seasons.size, selectedSeasonIndex, item.Id) {
-        if (refreshEpisodesAfterWatched && apiService != null && seasons.isNotEmpty() && selectedSeasonIndex < seasons.size) {
-            val currentApiService = apiService
-            val currentSeasons = seasons
-            val currentSeasonIndex = selectedSeasonIndex
-            val currentItemId = item.Id
-            
-            withContext(Dispatchers.IO) {
-                try {
-                    // Add a small delay to ensure server has processed the watched status
-                    delay(300)
-                    val season = currentSeasons[currentSeasonIndex]
-                    val refreshedEpisodes = currentApiService.getEpisodes(currentItemId, season.Id)
-                    Log.d("SeriesDetails", "Refreshed ${refreshedEpisodes.size} episodes after marking as watched")
-                    // Log the watched status of episodes
-                    refreshedEpisodes.forEach { ep ->
-                        Log.d("SeriesDetails", "Episode ${ep.Name}: PlayedPercentage=${ep.UserData?.PlayedPercentage}")
-                    }
-                    withContext(Dispatchers.Main) {
-                        // Store the currently focused episode ID before refreshing
-                        val currentFocusedEpisodeId = focusedEpisode?.Id
-                        
-                        // Create a new list to ensure Compose detects the change
-                        episodes = refreshedEpisodes.toList()
-                        Log.d("SeriesDetails", "Episodes list updated with ${episodes.size} episodes, triggering recomposition")
-                        
-                        // Log watched status of episodes for debugging
-                        refreshedEpisodes.forEach { ep ->
-                            Log.d("SeriesDetails", "Episode ${ep.Name} (${ep.Id}): PlayedPercentage=${ep.UserData?.PlayedPercentage}")
-                        }
-                        
-                        // Update focusedEpisode to point to the refreshed episode if it exists
-                        if (currentFocusedEpisodeId != null) {
-                            val refreshedFocusedEpisode = refreshedEpisodes.find { it.Id == currentFocusedEpisodeId }
-                            if (refreshedFocusedEpisode != null) {
-                                focusedEpisode = refreshedFocusedEpisode
-                                Log.d("SeriesDetails", "Updated focusedEpisode with refreshed data: PlayedPercentage=${refreshedFocusedEpisode.UserData?.PlayedPercentage}")
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e("SeriesDetails", "Error refreshing episodes after marking as watched", e)
-                }
-            }
-            refreshEpisodesAfterWatched = false // Reset flag
+    // Route watched-state refreshes through the same loader instead of racing it.
+    LaunchedEffect(refreshEpisodesAfterWatched) {
+        if (refreshEpisodesAfterWatched) {
+            delay(300)
+            refreshTrigger++
+            refreshEpisodesAfterWatched = false
         }
     }
-
     val displayItem = itemDetails ?: item
     val selectedSeason = if (seasons.isNotEmpty() && selectedSeasonIndex < seasons.size) {
         seasons[selectedSeasonIndex]
@@ -404,31 +370,33 @@ fun SeriesDetailsScreen(
     // We prefer the focused season, then the selected season, then the series details
     // BUT only if they actually have a Backdrop image tag to avoid showing a blank background
     val backgroundItem = remember(focusedSeason, selectedSeason, itemDetails, item) {
-        val focusedWithBackdrop = focusedSeason?.takeIf { it.ImageTags?.containsKey("Backdrop") == true }
-        val selectedWithBackdrop = selectedSeason?.takeIf { it.ImageTags?.containsKey("Backdrop") == true }
-        val detailsWithBackdrop = itemDetails?.takeIf { it.ImageTags?.containsKey("Backdrop") == true }
+        val focusedWithBackdrop = focusedSeason?.takeIf { !it.BackdropImageTags.isNullOrEmpty() || it.ImageTags?.containsKey("Backdrop") == true }
+        val selectedWithBackdrop = selectedSeason?.takeIf { !it.BackdropImageTags.isNullOrEmpty() || it.ImageTags?.containsKey("Backdrop") == true }
+        val detailsWithBackdrop = itemDetails?.takeIf { !it.BackdropImageTags.isNullOrEmpty() || it.ImageTags?.containsKey("Backdrop") == true }
         
         focusedWithBackdrop ?: selectedWithBackdrop ?: detailsWithBackdrop ?: item
     }
 
-    val backdropUrl = remember(backgroundItem) {
-        apiService?.getImageUrl(backgroundItem.Id, "Backdrop", null, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
+    val backdropUrls = remember(backgroundItem.Id, displayItem.Id, apiService) {
+        listOf(backgroundItem.Id, displayItem.Id).distinct().flatMap { id ->
+            listOf("Backdrop", "Thumb", "Primary").mapNotNull { type ->
+                apiService?.getImageUrl(id, type, null, maxWidth = 1920, maxHeight = 1080, quality = 90)
+            }
+        }
     }
-
+    var backdropIndex by remember(backdropUrls) { mutableStateOf(0) }
     Box(modifier = Modifier.fillMaxSize()) {
         // Backdrop background - absolutely positioned to fill entire screen
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .graphicsLayer {
+                    compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
+                }
                 .align(Alignment.Center)
         ) {
-            val imageUrl = if (backdropUrl.isNotEmpty()) {
-                backdropUrl
-            } else {
-                // Fallback to primary image with 1080p resolution
-                apiService?.getImageUrl(displayItem.Id, "Primary", null, maxWidth = 1920, maxHeight = 1080, quality = 90) ?: ""
-            }
-            
+            val imageUrl = backdropUrls.getOrNull(backdropIndex).orEmpty()
+
             // In dark mode, don't show background image - use Material dark background instead
             if (!darkModeEnabled) {
                 Crossfade(
@@ -437,16 +405,21 @@ fun SeriesDetailsScreen(
                     label = "background_fade"
                 ) { currentUrl ->
                     if (currentUrl.isNotEmpty() && apiService != null) {
-                        val headerMap = apiService.getImageRequestHeaders()
-                        AsyncImage(
-                            model = ImageRequest.Builder(context)
+                        val backdropRequest = remember(context, currentUrl, apiService) {
+                            ImageRequest.Builder(context)
                                 .data(currentUrl)
-                                .headers(headerMap)
+                                .headers(apiService.getImageRequestHeaders())
                                 .memoryCachePolicy(CachePolicy.ENABLED)
                                 .diskCachePolicy(CachePolicy.ENABLED)
-                                .crossfade(300) // Smooth 300ms crossfade when loading
-                                .allowHardware(true) // Use GPU memory for faster rendering
-                                .build(),
+                                .crossfade(false)
+                                .allowHardware(true)
+                                .build()
+                        }
+                        AsyncImage(
+                            model = backdropRequest,
+                            onError = {
+                                if (currentUrl == backdropUrls.getOrNull(backdropIndex) && backdropIndex < backdropUrls.lastIndex) backdropIndex++
+                            },
                             contentDescription = displayItem.Name,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.FillBounds,
@@ -490,7 +463,7 @@ fun SeriesDetailsScreen(
         val useLogo = settings.useLogoForTitle
         // Increase container height when logo is used to prevent synopsis cropping
         val topContainerHeight = if (useLogo) 0.30f else 0.2581875f
-        
+
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
@@ -522,7 +495,7 @@ fun SeriesDetailsScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f) // Fill remaining space between top and bottom
+                    .weight(1f)
                     .then(
                         if (showDebugOutlines) {
                             Modifier.border(4.dp, Color.Blue)
@@ -551,59 +524,20 @@ fun SeriesDetailsScreen(
                     seasons = seasons,
                     selectedSeasonIndex = selectedSeasonIndex,
                     onSeasonSelected = { index ->
-                        selectedSeasonIndex = index
+                        val nextSeason = seasons.getOrNull(index)?.Id
+                        if (nextSeason != null && nextSeason != activeSeasonId) {
+                            hasPerformedInitialFocus = true
+                            episodes = emptyList()
+                            focusedEpisode = null
+                            isLoadingEpisodes = true
+                            selectedSeasonId = nextSeason
+                        }
                     },
                     firstSeasonFocusRequester = firstSeasonFocusRequester,
                     onShowSettings = { showSettings = true }
                 )
             }
 
-            // Bottom container - scrollable with Cast
-            val castMembers = displayItem.People?.filter { it.Type == "Actor" } ?: emptyList()
-            val bottomListState = rememberLazyListState()
-            
-            LazyColumn(
-                state = bottomListState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.35f) // Slightly larger to accommodate scrolling
-                    .then(
-                        if (showDebugOutlines) {
-                            Modifier.border(4.dp, Color.Green)
-                        } else {
-                            Modifier
-                        }
-                    ),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(start = 33.6.dp, end = 33.6.dp, top = 0.dp, bottom = 24.dp)
-            ) {
-                // Cast row
-                if (castMembers.isNotEmpty()) {
-                    item {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Text(
-                                text = "Cast",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp) // Add padding for focus scale
-                            ) {
-                                items(castMembers) { person ->
-                                    CastMemberCard(
-                                        person = person,
-                                        apiService = apiService
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -644,7 +578,6 @@ fun SeriesTopContainer(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(start = 30.24.dp, end = 30.24.dp, top = 18.dp, bottom = 16.2.dp) // Reduced all padding by 10%
-                .verticalScroll(rememberScrollState()) // Allow scrolling if synopsis is too long
                 .then(
                     if (showDebugOutlines) {
                         Modifier.border(2.dp, Color.Magenta)
@@ -863,28 +796,68 @@ fun SeriesTopContainer(
                 // Synopsis (from series)
                 displayItem.Overview?.let { synopsis ->
                     if (synopsis.isNotEmpty()) {
-                        Box(
+                        var showSeriesSynopsisDialog by remember { mutableStateOf(false) }
+                        
+                        Text(
+                            text = synopsis,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f,
+                                lineHeight = MaterialTheme.typography.bodyLarge.fontSize * 0.8f * 1.25f
+                            ),
+                            color = Color.White.copy(alpha = 0.9f),
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier
-                                .heightIn(min = 180.dp) // Increased height to allow more synopsis text to be visible
-                                .then(
-                                    if (showDebugOutlines) {
-                                        Modifier.border(1.dp, Color.Magenta)
-                                    } else {
-                                        Modifier
+                                .clickable { showSeriesSynopsisDialog = true }
+                        )
+                        
+                        if (showSeriesSynopsisDialog) {
+                            Dialog(
+                                onDismissRequest = { showSeriesSynopsisDialog = false },
+                                properties = DialogProperties(usePlatformDefaultWidth = false)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.85f))
+                                        .clickable { showSeriesSynopsisDialog = false },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth(0.7f)
+                                            .fillMaxHeight(0.6f),
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = androidx.tv.material3.SurfaceDefaults.colors(
+                                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+                                        )
+                                    ) {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(32.dp)
+                                                .verticalScroll(rememberScrollState())
+                                        ) {
+                                            Text(
+                                                text = "Series Synopsis",
+                                                style = MaterialTheme.typography.headlineMedium,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.padding(bottom = 16.dp)
+                                            )
+                                            Text(
+                                                text = synopsis,
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+                                                lineHeight = MaterialTheme.typography.bodyLarge.fontSize * 1.5f
+                                            )
+                                        }
                                     }
-                                )
-                        ) {
-                            Text(
-                                text = synopsis,
-                                style = MaterialTheme.typography.bodyLarge.copy(
-                                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * 0.8f,
-                                    lineHeight = MaterialTheme.typography.bodyLarge.fontSize * 0.8f * 1.1f // Reduced line spacing (10% of font size)
-                                ),
-                                color = Color.White.copy(alpha = 0.9f),
-                                maxLines = Int.MAX_VALUE,
-                                modifier = Modifier
-                                    .padding(bottom = 24.dp) // Extra padding to prevent last line from being cropped
-                            )
+                                }
+                                
+                                BackHandler(enabled = showSeriesSynopsisDialog) {
+                                    showSeriesSynopsisDialog = false
+                                }
+                            }
                         }
                     }
                 }
@@ -1027,8 +1000,9 @@ fun SeriesBottomContainer(
     val context = LocalContext.current
     val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
     var showResumeDialog by remember { mutableStateOf<JellyfinItem?>(null) }
-    var focusedEpisode by remember { mutableStateOf<JellyfinItem?>(null) }
-    var lastFocusedEpisode by remember { mutableStateOf<JellyfinItem?>(null) } // Track last focused episode for buttons
+    val episodeSeasonKey = seasons.getOrNull(selectedSeasonIndex)?.Id
+    var focusedEpisode by remember(episodeSeasonKey) { mutableStateOf<JellyfinItem?>(null) }
+    var lastFocusedEpisode by remember(episodeSeasonKey) { mutableStateOf<JellyfinItem?>(null) } // Track last focused episode for buttons
     var showLongPressMenu by remember { mutableStateOf<JellyfinItem?>(null) }
     
     
@@ -1036,7 +1010,7 @@ fun SeriesBottomContainer(
     val lastFocusedEpisodeRequester = episodeFocusRequesters ?: remember { mutableMapOf<String, FocusRequester>() }
     
     // LazyListState for episodes row - needed to scroll to target episode before focusing
-    val episodesLazyListState = rememberLazyListState()
+    val episodesLazyListState = remember(episodeSeasonKey) { androidx.compose.foundation.lazy.LazyListState() }
     
     // Track if we've already done the initial focus to prevent refocusing when episodes change
     var hasPerformedInitialFocus by remember { mutableStateOf(false) }
@@ -1102,27 +1076,35 @@ fun SeriesBottomContainer(
         }
     }
     
-    // Initialize lastFocusedEpisode to first episode when episodes are loaded
-    LaunchedEffect(episodes.isNotEmpty(), isLoadingEpisodes) {
-        if (episodes.isNotEmpty() && !isLoadingEpisodes && lastFocusedEpisode == null && initialEpisodeId == null) {
-            lastFocusedEpisode = episodes.first()
-        }
-    }
-    
-    // Update lastFocusedEpisode when episodes list refreshes (to get updated UserData)
-    LaunchedEffect(episodes) {
-        if (lastFocusedEpisode != null && episodes.isNotEmpty()) {
-            // Find the refreshed version of the currently focused episode
-            val refreshedEpisode = episodes.find { it.Id == lastFocusedEpisode!!.Id }
-            if (refreshedEpisode != null) {
-                lastFocusedEpisode = refreshedEpisode
-                // Also update focusedEpisode if it matches
-                if (focusedEpisode != null && focusedEpisode!!.Id == refreshedEpisode.Id) {
-                    focusedEpisode = refreshedEpisode
-                    onEpisodeFocused(refreshedEpisode)
-                    Log.d("SeriesBottomContainer", "Updated focusedEpisode with refreshed data: PlayedPercentage=${refreshedEpisode.UserData?.PlayedPercentage}")
+    // Update lastFocusedEpisode and scroll position when episodes list changes or season changes
+    LaunchedEffect(episodes, isLoadingEpisodes) {
+        if (episodes.isNotEmpty() && !isLoadingEpisodes) {
+            if (lastFocusedEpisode != null) {
+                // Find the refreshed version of the currently focused episode
+                val refreshedEpisode = episodes.find { it.Id == lastFocusedEpisode!!.Id }
+                if (refreshedEpisode != null) {
+                    lastFocusedEpisode = refreshedEpisode
+                    // Also update focusedEpisode if it matches
+                    if (focusedEpisode != null && focusedEpisode!!.Id == refreshedEpisode.Id) {
+                        focusedEpisode = refreshedEpisode
+                        onEpisodeFocused(refreshedEpisode)
+                        Log.d("SeriesBottomContainer", "Updated focusedEpisode with refreshed data: PlayedPercentage=${refreshedEpisode.UserData?.PlayedPercentage}")
+                    }
+                    Log.d("SeriesBottomContainer", "Updated lastFocusedEpisode with refreshed data: PlayedPercentage=${refreshedEpisode.UserData?.PlayedPercentage}")
+                } else if (initialEpisodeId == null || hasPerformedInitialFocus) {
+                    // Season changed (previous focused episode not in new episodes list)
+                    val firstEp = episodes.first()
+                    lastFocusedEpisode = firstEp
+                    focusedEpisode = null
+                    episodesLazyListState.scrollToItem(0)
+                    Log.d("SeriesBottomContainer", "Season changed: reset focus to first episode (${firstEp.Name}) and scrolled to start")
                 }
-                Log.d("SeriesBottomContainer", "Updated lastFocusedEpisode with refreshed data: PlayedPercentage=${refreshedEpisode.UserData?.PlayedPercentage}")
+            } else if (initialEpisodeId == null || hasPerformedInitialFocus) {
+                // Initial load
+                val firstEp = episodes.first()
+                lastFocusedEpisode = firstEp
+                episodesLazyListState.scrollToItem(0)
+                Log.d("SeriesBottomContainer", "Initial load: set lastFocusedEpisode to first episode (${firstEp.Name})")
             }
         }
     }
@@ -1138,7 +1120,10 @@ fun SeriesBottomContainer(
                 }
             )
     ) {
-        LazyColumn(
+        // Keep seasons, episodes, actions, and cast fixed within the lower panel.
+        // Scrolling this column caused D-pad focus on the actions to push the
+        // Seasons heading underneath the static series header.
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 33.6.dp, vertical = 8.dp) // Reduced from 16dp to move content up
@@ -1153,145 +1138,80 @@ fun SeriesBottomContainer(
         ) {
             // Season selector row
             if (seasons.isNotEmpty()) {
-            item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp)
-                            .then(
-                                if (showDebugOutlines) {
-                                    Modifier.border(2.dp, Color(0xFFFFA500)) // Orange color
-                                } else {
-                                    Modifier
-                                }
+                TabRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    selectedTabIndex = selectedSeasonIndex,
+                    separator = { Spacer(modifier = Modifier.width(11.dp)) },
+                    indicator = { tabPositions, doesTabRowHaveFocus ->
+                        if (selectedSeasonIndex in tabPositions.indices) {
+                            TabRowDefaults.UnderlinedIndicator(
+                                currentTabPosition = tabPositions[selectedSeasonIndex],
+                                doesTabRowHaveFocus = doesTabRowHaveFocus
                             )
-                    ) {
-                        // "Seasons" title
-                        Text(
-                            text = "Seasons",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        )
-                        
-                        // Season buttons - left aligned
-                        // The selected season always shows full "Season X" text so users know which season they're browsing
-                        val seasonRowState = rememberLazyListState()
-                        
-                        // Scroll to the selected season when it changes
-                        LaunchedEffect(selectedSeasonIndex) {
-                            if (selectedSeasonIndex >= 0 && seasons.isNotEmpty()) {
-                                seasonRowState.animateScrollToItem(selectedSeasonIndex)
-                            }
                         }
-                        
-                        LazyRow(
-                            state = seasonRowState,
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp) // Add padding for focus scale
-                        ) {
-                            items(seasons.size) { index ->
-                                val season = seasons[index]
-                                var isFocused by remember { mutableStateOf(false) }
-                                val isSelected = index == selectedSeasonIndex
-                                // Use the actual season number from API, fallback to index+1 if not available
-                                val seasonNumber = season.IndexNumber ?: (index + 1)
-                                
-                                // Show expanded button if focused OR if this is the selected season
-                                val showExpanded = isFocused || isSelected
-                                
-                                Button(
-                                    onClick = { onSeasonSelected(index) },
-                                    modifier = Modifier
-                                        .then(
-                                            // Add focus requester for first season button
-                                            if (index == 0 && firstSeasonFocusRequester != null) {
-                                                Modifier.focusRequester(firstSeasonFocusRequester)
-                                            } else {
-                                                Modifier
-                                            }
-                                        )
-                                        .then(
-                                            if (showExpanded) {
-                                                Modifier
-                                                    .wrapContentWidth()
-                                                    .height(28.dp)
-                                            } else {
-                                                Modifier.size(28.dp)
-                                            }
-                                        )
-                                        .animateContentSize(
-                                            animationSpec = tween(
-                                                durationMillis = 300,
-                                                easing = FastOutSlowInEasing
-                                            )
-                                        )
-                                        .onFocusChanged { focusState ->
-                                            isFocused = focusState.isFocused
-                                            if (focusState.isFocused) {
-                                                onSeasonFocused(season)
-                                            } else {
-                                                onSeasonFocused(null)
-                                            }
-                                        }
-                                        .onKeyEvent { keyEvent ->
-                                            // When pressing down from season buttons, restore focus to last focused episode
-                                            if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionDown) {
-                                                val episodeToFocus = lastFocusedEpisode ?: episodes.firstOrNull()
-                                                if (episodeToFocus != null) {
-                                                    try {
-                                                        lastFocusedEpisodeRequester[episodeToFocus.Id]?.requestFocus()
-                                                        true
-                                                    } catch (e: Exception) {
-                                                        Log.w("SeriesBottomContainer", "Failed to restore focus to episode: ${e.message}")
-                                                        false
-                                                    }
-                                                } else {
-                                                    false
-                                                }
-                                            } else {
+                    }
+                ) {
+                    seasons.forEachIndexed { index, season ->
+                        var isFocused by remember { mutableStateOf(false) }
+                        val seasonNumber = season.IndexNumber ?: (index + 1)
+
+                        Tab(
+                            selected = index == selectedSeasonIndex,
+                            onFocus = { },
+                            onClick = {
+                                if (index != selectedSeasonIndex) hasPerformedInitialFocus = true
+                                onSeasonSelected(index)
+                            },
+                            colors = TabDefaults.underlinedIndicatorTabColors(),
+                            modifier = Modifier
+                                .then(
+                                    if (index == 0 && firstSeasonFocusRequester != null) {
+                                        Modifier.focusRequester(firstSeasonFocusRequester)
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                                .onFocusChanged { focusState ->
+                                    isFocused = focusState.isFocused || focusState.hasFocus
+                                    if (isFocused) onSeasonFocused(season) else onSeasonFocused(null)
+                                }
+                                .onKeyEvent { keyEvent ->
+                                    if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionDown) {
+                                        val episodeToFocus = lastFocusedEpisode ?: episodes.firstOrNull()
+                                        if (episodeToFocus != null) {
+                                            try {
+                                                lastFocusedEpisodeRequester[episodeToFocus.Id]?.requestFocus()
+                                                true
+                                            } catch (e: Exception) {
+                                                Log.w("SeriesBottomContainer", "Failed to restore focus to episode: ${e.message}")
                                                 false
                                             }
-                                        }
-                                        .clip(CircleShape),
-                                    colors = ButtonDefaults.colors(
-                                        containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
-                                        contentColor = androidx.compose.ui.graphics.Color.White,
-                                        focusedContainerColor = androidx.compose.ui.graphics.Color.White,
-                                        focusedContentColor = androidx.compose.ui.graphics.Color.Black
-                                    ),
-                                    contentPadding = PaddingValues(8.dp)
-                                ) {
-                                    if (!showExpanded) {
-                                        // Show just the number when unfocused and not selected
-                                        Text(
-                                            text = seasonNumber.toString(),
-                                            style = MaterialTheme.typography.labelLarge.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                                            )
-                                        )
-                                    } else {
-                                        // Show "Season X" when focused or selected
-                                        Text(
-                                            text = "Season $seasonNumber",
-                                            style = MaterialTheme.typography.labelLarge.copy(
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
-                                            ),
-                                            modifier = Modifier.padding(horizontal = 12.dp)
-                                        )
-                                    }
+                                        } else false
+                                    } else false
                                 }
-                            }
+                                .then(
+                                    if (isFocused) {
+                                        Modifier.background(Color.White, RoundedCornerShape(4.dp))
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                        ) {
+                            Text(
+                                text = "Season $seasonNumber",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.90f
+                                ),
+                                color = if (isFocused) Color.Black else Color.White,
+                                modifier = Modifier.padding(horizontal = 13.44.dp, vertical = 6.dp)
+                            )
                         }
                     }
                 }
             }
             
-            // Episodes row and Play buttons combined in one item to prevent scrolling between them
-            item {
+            // Episodes row and Play buttons remain together in the static layout.
                 Column(
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -1433,6 +1353,35 @@ fun SeriesBottomContainer(
                         )
                         }
                     }
+            }
+
+            // Cast follows the episode actions in the same bounded scroll area, so
+            // the action row is never clipped by a competing fixed-height section.
+            val castMembers = item.People?.filter { it.Type == "Actor" } ?: emptyList()
+            if (castMembers.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Cast",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        items(castMembers) { person ->
+                            CastMemberCard(
+                                person = person,
+                                apiService = apiService,
+                                cardSize = 54.dp
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1503,14 +1452,23 @@ fun EpisodeCard(
     val longPressDuration = remember(settings.longPressDurationSeconds) {
         settings.longPressDurationSeconds * 1000L // Convert seconds to milliseconds
     }
-    val imageUrl = remember(episode) {
-        val hasThumb = episode.ImageTags?.containsKey("Thumb") == true
-        if (hasThumb) {
-            apiService?.getImageUrl(episode.Id, "Thumb", episode.ImageTags?.get("Thumb"))
-        } else {
-            apiService?.getImageUrl(episode.Id, "Primary", episode.ImageTags?.get("Primary"))
-        } ?: ""
+    val imageCandidates = remember(episode, apiService) {
+        buildList {
+            fun candidate(id: String, type: String, tag: String? = null) {
+                apiService?.getImageUrl(id, type, tag, maxWidth = 640, maxHeight = 360)?.let { add(it) }
+            }
+            // Tags can be omitted from episode lists; try the endpoints as well as tagged artwork.
+            candidate(episode.Id, "Thumb", episode.ImageTags?.get("Thumb"))
+            candidate(episode.Id, "Primary", episode.ImageTags?.get("Primary"))
+            episode.SeriesId?.let { seriesId ->
+                candidate(seriesId, "Thumb")
+                candidate(seriesId, "Backdrop")
+                candidate(seriesId, "Primary")
+            }
+        }.distinct()
     }
+    var imageCandidateIndex by remember(imageCandidates) { mutableStateOf(0) }
+    val imageUrl = imageCandidates.getOrNull(imageCandidateIndex).orEmpty()
     
     StandardCardContainer(
         modifier = Modifier
@@ -1572,12 +1530,23 @@ fun EpisodeCard(
             ) {
                 Box(modifier = Modifier.aspectRatio(16f / 9f)) {
                     if (imageUrl.isNotEmpty() && apiService != null) {
-                            val headerMap = apiService.getImageRequestHeaders()
-                            AsyncImage(
-                                model = ImageRequest.Builder(LocalContext.current)
+                            val imageContext = LocalContext.current
+                            val episodeImageRequest = remember(imageContext, imageUrl, apiService) {
+                                ImageRequest.Builder(imageContext)
                                     .data(imageUrl)
-                                    .headers(headerMap)
-                                    .build(),
+                                    .headers(apiService.getImageRequestHeaders())
+                                    .crossfade(false)
+                                    .build()
+                            }
+                            AsyncImage(
+                                model = episodeImageRequest,
+                                onError = {
+                                    if (imageCandidates.getOrNull(imageCandidateIndex) == imageUrl && imageCandidateIndex < imageCandidates.lastIndex) {
+                                        imageCandidateIndex++
+                                    }
+                                },
+                                placeholder = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
+                                error = androidx.compose.ui.graphics.painter.ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
                                 contentDescription = episode.Name,
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1970,7 +1939,7 @@ fun EpisodeActionButtonsRow(
     
     val defaultAudioIndex = remember(episodeDetails?.MediaSources) {
         episodeDetails?.MediaSources?.firstOrNull()?.MediaStreams?.let { streams ->
-             streams.firstOrNull { it.Type == "Audio" && it.IsDefault == true }?.Index
+             com.flex.elefin.player.preferredAudioIndex(streams)
         }
     }
 
@@ -2080,20 +2049,12 @@ fun EpisodeActionButtonsRow(
                             context.startActivity(intent)
                         },
                         modifier = Modifier
-                            .then(
-                                if (resumeFocused) {
-                                    Modifier.wrapContentWidth().height(28.dp)
-                                } else {
-                                    Modifier.size(28.dp)
-                                }
-                            )
-                            .animateContentSize()
-                            .onFocusChanged { resumeFocused = it.isFocused }
-                            .clip(CircleShape),
+                            .expandingActionButton(focused = resumeFocused)
+                    .onFocusChanged { resumeFocused = it.isFocused },
                         colors = ButtonDefaults.colors(
-                            containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                            containerColor = androidx.compose.ui.graphics.Color.Transparent,
                             contentColor = androidx.compose.ui.graphics.Color.White,
-                            focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                            focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                             focusedContentColor = androidx.compose.ui.graphics.Color.Black
                         ),
                         shape = ButtonDefaults.shape(CircleShape),
@@ -2139,20 +2100,12 @@ fun EpisodeActionButtonsRow(
                         context.startActivity(intent)
                     },
                     modifier = Modifier
-                        .then(
-                            if (playFocused) {
-                                Modifier.wrapContentWidth().height(28.dp)
-                            } else {
-                                Modifier.size(28.dp)
-                            }
-                        )
-                        .animateContentSize()
-                        .onFocusChanged { playFocused = it.isFocused }
-                        .clip(CircleShape),
+                        .expandingActionButton(focused = playFocused)
+                    .onFocusChanged { playFocused = it.isFocused },
                     colors = ButtonDefaults.colors(
-                        containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                        containerColor = androidx.compose.ui.graphics.Color.Transparent,
                         contentColor = androidx.compose.ui.graphics.Color.White,
-                        focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                        focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                         focusedContentColor = androidx.compose.ui.graphics.Color.Black
                     ),
                     shape = ButtonDefaults.shape(CircleShape),
@@ -2167,7 +2120,8 @@ fun EpisodeActionButtonsRow(
             }
         }
             
-            // Audio track button (only show if media has multiple audio tracks)
+
+        // Audio track button (only show if media has multiple audio tracks)
             if (hasMultiAudio) {
             var audioFocused by remember { mutableStateOf(false) }
             
@@ -2176,39 +2130,18 @@ fun EpisodeActionButtonsRow(
                     showAudioDialog = true
                 },
                 modifier = Modifier
-                    .then(
-                        if (audioFocused) {
-                            Modifier
-                                .wrapContentWidth()
-                                .height(28.dp)
-                        } else {
-                            Modifier.size(28.dp)
-                        }
-                    )
-                    .animateContentSize(
-                        animationSpec = tween(
-                            durationMillis = 300,
-                            easing = FastOutSlowInEasing
-                        )
-                    )
-                    .onFocusChanged { audioFocused = it.isFocused }
-                    .clip(CircleShape),
+                    .expandingActionButton(focused = audioFocused, expandLeft = true)
+                    .onFocusChanged { audioFocused = it.isFocused },
                 colors = ButtonDefaults.colors(
-                    containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
                     contentColor = androidx.compose.ui.graphics.Color.White,
-                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                     focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
                 shape = ButtonDefaults.shape(CircleShape),
                 contentPadding = PaddingValues(8.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.VolumeUp,
-                    contentDescription = "Audio Track",
-                    modifier = Modifier.size(14.3.dp)
-                )
                 if (audioFocused) {
-                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "Audio",
                         style = MaterialTheme.typography.labelLarge.copy(
@@ -2216,7 +2149,13 @@ fun EpisodeActionButtonsRow(
                         ),
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )
-                    }
+                        Spacer(modifier = Modifier.width(6.dp))
+            }
+            Icon(
+                    imageVector = Icons.Default.VolumeUp,
+                    contentDescription = "Audio Track",
+                    modifier = Modifier.size(14.3.dp)
+                )
                 }
             }
             
@@ -2228,39 +2167,18 @@ fun EpisodeActionButtonsRow(
                     showSubtitleDialog = true
                 },
                 modifier = Modifier
-                    .then(
-                        if (subtitleFocused) {
-                            Modifier
-                                .wrapContentWidth()
-                                .height(28.dp)
-                        } else {
-                            Modifier.size(28.dp)
-                        }
-                    )
-                    .animateContentSize(
-                        animationSpec = tween(
-                            durationMillis = 300,
-                            easing = FastOutSlowInEasing
-                        )
-                    )
-                    .onFocusChanged { subtitleFocused = it.isFocused }
-                    .clip(CircleShape),
+                    .expandingActionButton(focused = subtitleFocused, expandLeft = true)
+                    .onFocusChanged { subtitleFocused = it.isFocused },
                 colors = ButtonDefaults.colors(
-                    containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
                     contentColor = androidx.compose.ui.graphics.Color.White,
-                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                     focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
                 shape = ButtonDefaults.shape(CircleShape),
                 contentPadding = PaddingValues(8.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Language,
-                    contentDescription = "Subtitles",
-                    modifier = Modifier.size(14.3.dp)
-                )
                 if (subtitleFocused) {
-                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "Subtitles",
                         style = MaterialTheme.typography.labelLarge.copy(
@@ -2268,7 +2186,13 @@ fun EpisodeActionButtonsRow(
                         ),
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )
-                }
+                    Spacer(modifier = Modifier.width(6.dp))
+            }
+            Icon(
+                    imageVector = Icons.Default.Language,
+                    contentDescription = "Subtitles",
+                    modifier = Modifier.size(14.3.dp)
+                )
             }
             
             // Trailer button - always shows
@@ -2276,54 +2200,23 @@ fun EpisodeActionButtonsRow(
             
             Button(
                 onClick = {
-                    if (trailerKey != null) {
-                        trailerKey?.let { key ->
-                            TrailerLauncher.launchTmdbTrailer(context, key, seriesItem.Name ?: "")
-                        }
-                    } else {
-                        // Prompt user to enter TMDB key
-                        android.widget.Toast.makeText(
-                            context,
-                            "Please enter your TMDB API key in settings to enable trailers",
-                            android.widget.Toast.LENGTH_LONG
-                        ).show()
-                        onShowSettings()
-                    }
+                    TrailerLauncher.launchTrailer(
+                        context, apiService, seriesItem.Id, seriesItem.Name ?: "", trailerKey, scope
+                    )
                 },
                 modifier = Modifier
-                    .then(
-                        if (trailerFocused) {
-                            Modifier
-                                .wrapContentWidth()
-                                .height(28.dp)
-                        } else {
-                            Modifier.size(28.dp)
-                        }
-                    )
-                    .animateContentSize(
-                        animationSpec = tween(
-                            durationMillis = 300,
-                            easing = FastOutSlowInEasing
-                        )
-                    )
-                    .onFocusChanged { trailerFocused = it.isFocused }
-                    .clip(CircleShape),
+                    .expandingActionButton(focused = trailerFocused, expandLeft = true)
+                    .onFocusChanged { trailerFocused = it.isFocused },
                 colors = ButtonDefaults.colors(
-                    containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
                     contentColor = androidx.compose.ui.graphics.Color.White,
-                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                     focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
                 shape = ButtonDefaults.shape(CircleShape),
                 contentPadding = PaddingValues(8.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Movie,
-                    contentDescription = "Watch Trailer",
-                    modifier = Modifier.size(14.3.dp)
-                )
                 if (trailerFocused) {
-                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "Watch Trailer",
                         style = MaterialTheme.typography.labelLarge.copy(
@@ -2331,7 +2224,13 @@ fun EpisodeActionButtonsRow(
                         ),
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )
-                }
+                    Spacer(modifier = Modifier.width(6.dp))
+            }
+            Icon(
+                    imageVector = Icons.Default.Movie,
+                    contentDescription = "Watch Trailer",
+                    modifier = Modifier.size(14.3.dp)
+                )
             }
 
             // Mark as Watched/Unwatched button
@@ -2388,46 +2287,31 @@ fun EpisodeActionButtonsRow(
                     }
                 },
                 modifier = Modifier
-                    .then(
-                        if (watchedFocused) {
-                            Modifier
-                                .wrapContentWidth()
-                                .height(28.dp)
-                        } else {
-                            Modifier.size(28.dp)
-                        }
-                    )
-                    .animateContentSize(
-                        animationSpec = tween(
-                            durationMillis = 300,
-                            easing = FastOutSlowInEasing
-                        )
-                    )
-                    .onFocusChanged { watchedFocused = it.isFocused }
-                    .clip(CircleShape),
+                    .expandingActionButton(focused = watchedFocused, expandLeft = true)
+                    .onFocusChanged { watchedFocused = it.isFocused },
                 colors = ButtonDefaults.colors(
-                    containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f),
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
                     contentColor = androidx.compose.ui.graphics.Color.White,
-                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
                     focusedContentColor = androidx.compose.ui.graphics.Color.Black
                 ),
                 shape = ButtonDefaults.shape(CircleShape),
                 contentPadding = PaddingValues(8.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = if (isAlreadyWatched) "Mark As Unwatched" else "Mark As Watched",
-                    modifier = Modifier.size(14.3.dp)
-                )
                 if (watchedFocused) {
-                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = if (isAlreadyWatched) "Mark As Unwatched" else "Mark As Watched",
                         style = MaterialTheme.typography.labelLarge.copy(
                             fontSize = MaterialTheme.typography.labelLarge.fontSize * 0.7f
                         )
                     )
-                }
+                    Spacer(modifier = Modifier.width(6.dp))
+            }
+            Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = if (isAlreadyWatched) "Mark As Unwatched" else "Mark As Watched",
+                    modifier = Modifier.size(14.3.dp)
+                )
             }
             
             // Right side: Selected subtitle and Watched indicator
@@ -2506,189 +2390,7 @@ fun EpisodeActionButtonsRow(
     }
 }
 
-// Rating display with Rotten Tomatoes icon support
-@Composable
-private fun RatingDisplay(
-    item: JellyfinItem,
-    communityRating: Float?,
-    criticRating: Float?
-) {
-    // Calculate percentages
-    fun calculatePercentage(rating: Float): Int {
-        return if (rating > 10) {
-            // Already in percentage format (0-100)
-            rating.toInt()
-        } else {
-            // Convert from 0-10 scale to percentage
-            (rating * 10).toInt()
-        }
-    }
-    
-    // Determine critic rating type and display if available
-    val criticRatingType = if (criticRating != null) {
-        // Pass null for communityRating to focus on critic rating
-        determineRatingType(item.ProviderIds, null, criticRating, preferCommunity = false)
-    } else {
-        null
-    }
-    
-    // Determine community rating type and display if available (as audience rating)
-    val communityRatingType = if (communityRating != null) {
-        // Pass null for criticRating to focus on community rating
-        determineRatingType(item.ProviderIds, communityRating, null, preferCommunity = true)
-    } else {
-        null
-    }
-    
-    // Show critic rating (RT Fresh/Rotten or generic)
-    if (criticRating != null) {
-        val percentage = calculatePercentage(criticRating)
-        when (criticRatingType) {
-            RatingType.RottenTomatoesFresh -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = R.drawable.ic_rt_fresh,
-                    label = "RT"
-                )
-            }
-            RatingType.RottenTomatoesRotten -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = R.drawable.ic_rt_rotten,
-                    label = "RT"
-                )
-            }
-            RatingType.IMDb -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = R.drawable.ic_imdb,
-                    label = "IMDb"
-                )
-            }
-            else -> {
-                MetadataBox(text = "${percentage}%")
-            }
-        }
-    }
-    
-    // Show audience rating (RT Popcorn or generic) if available and different from critic
-    if (communityRating != null && (criticRating == null || communityRating != criticRating)) {
-        val percentage = calculatePercentage(communityRating)
-        when (communityRatingType) {
-            RatingType.RottenTomatoesAudience -> {
-                RatingBoxWithIcon(
-                    percentage = percentage,
-                    iconRes = R.drawable.ic_rt_popcorn,
-                    label = "RT"
-                )
-            }
-            RatingType.IMDb -> {
-                // Only show IMDb if we didn't already show it for critic
-                if (criticRatingType != RatingType.IMDb) {
-                    RatingBoxWithIcon(
-                        percentage = percentage,
-                        iconRes = R.drawable.ic_imdb,
-                        label = "IMDb"
-                    )
-                }
-            }
-            else -> {
-                // Show generic community rating only if we didn't show critic rating
-                if (criticRating == null) {
-                    MetadataBox(text = "${percentage}%")
-                }
-            }
-        }
-    }
-}
 
-// Determine rating type from ProviderIds and rating values
-// Note: RatingType enum is defined in MovieDetailsScreen.kt (same package, internal visibility)
-// Overloaded versions to handle critic-only or community-only scenarios
-private fun determineRatingType(
-    providerIds: Map<String, String>?,
-    communityRating: Float?,
-    criticRating: Float?
-): RatingType {
-    return determineRatingType(providerIds, communityRating, criticRating, false)
-}
-
-private fun determineRatingType(
-    providerIds: Map<String, String>?,
-    communityRating: Float?,
-    criticRating: Float?,
-    preferCommunity: Boolean
-): RatingType {
-    // Check for Rotten Tomatoes provider IDs first
-    val rtId = providerIds?.get("RottenTomatoes") ?: providerIds?.get("rottentomatoes") ?: 
-               providerIds?.get("Rotten Tomatoes") ?: providerIds?.get("RottenTomatoes.tomato") ?:
-               providerIds?.get("RottenTomatoes.audience")
-    
-    // If preferCommunity is true and CommunityRating exists with RT ID, return Audience
-    if (preferCommunity && rtId != null && communityRating != null) {
-        return RatingType.RottenTomatoesAudience
-    }
-    
-    // If CriticRating exists, it's likely RT Fresh/Rotten rating
-    if (criticRating != null && !preferCommunity) {
-        // RT Fresh = 60%+ (6.0/10), RT Rotten = <60%
-        // Show RT icons even if ProviderIds don't explicitly say RT, as CriticRating is typically RT
-        return if (criticRating >= 6.0f) {
-            RatingType.RottenTomatoesFresh
-        } else {
-            RatingType.RottenTomatoesRotten
-        }
-    }
-    
-    // If we have RT provider ID and CommunityRating, it might be RT Audience
-    if (rtId != null && communityRating != null) {
-        return RatingType.RottenTomatoesAudience
-    }
-    
-    // Check for IMDb
-    if (providerIds != null) {
-        val imdbId = providerIds["Imdb"] ?: providerIds["imdb"] ?: providerIds["IMDb"] ?:
-                     providerIds["imdbid"]
-        if (imdbId != null) {
-            return RatingType.IMDb
-        }
-    }
-    
-    return RatingType.Generic
-}
-
-// Rating box with icon
-@Composable
-private fun RatingBoxWithIcon(
-    percentage: Int,
-    iconRes: Int,
-    label: String
-) {
-    Box(
-        modifier = Modifier
-            .background(Color.Black, RoundedCornerShape(4.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Icon for rating source - height to match metadata item height, width adjusts to preserve aspect ratio
-            Image(
-                painter = painterResource(iconRes),
-                contentDescription = label,
-                modifier = Modifier.height(12.dp), // Match height of labelSmall text in MetadataBox
-                contentScale = ContentScale.Fit // Preserve aspect ratio, fill height
-            )
-            Text(
-                text = "${percentage}%",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White
-            )
-        }
-    }
-}
 
 // Metadata box component
 @Composable
@@ -2858,22 +2560,9 @@ fun EpisodeSubtitleSelectionDialog(
     var itemDetails by remember { mutableStateOf<JellyfinItem?>(null) }
     var isLoadingSubtitles by remember { mutableStateOf(true) }
     
-    // OpenSubtitles download state
-    var showLanguageDialog by remember { mutableStateOf(false) }
-    var showApiKeyRequiredDialog by remember { mutableStateOf(false) }
-    var showSearchResults by remember { mutableStateOf(false) }
-    var isSearching by remember { mutableStateOf(false) }
-    var isDownloading by remember { mutableStateOf(false) }
-    var downloadingSubtitleName by remember { mutableStateOf("") }
-    var searchResults by remember { mutableStateOf<List<com.flex.elefin.subtitles.SubtitleResult>>(emptyList()) }
+    var showServerSubtitleSearch by remember { mutableStateOf(false) }
     var downloadedSubtitles by remember { mutableStateOf<List<com.flex.elefin.subtitles.DownloadedSubtitle>>(emptyList()) }
-    
-    // Get OpenSubtitles settings
-    val settings = remember { com.flex.elefin.jellyfin.AppSettings(context) }
-    val openSubtitlesApiKey = remember { settings.openSubtitlesApiKey }
-    val openSubtitlesUsername = remember { settings.openSubtitlesUsername }
-    val openSubtitlesPassword = remember { settings.openSubtitlesPassword }
-    
+
     // Load downloaded subtitles
     LaunchedEffect(item.Id) {
         downloadedSubtitles = com.flex.elefin.subtitles.OpenSubtitlesApi.getDownloadedSubtitles(context, item.Id)
@@ -2991,6 +2680,7 @@ fun EpisodeSubtitleSelectionDialog(
                                 ListItem(
                                     selected = storedSubtitleIndex == null,
                                     onClick = {
+                                        apiService?.let { com.flex.elefin.subtitles.clearLocalProviderSubtitle(context, it, item.Id) }
                                         onSubtitleSelected(null)
                                         onDismiss()
                                     },
@@ -3029,6 +2719,7 @@ fun EpisodeSubtitleSelectionDialog(
                                     selected = isSelected,
                                     onClick = {
                                         stream.Index?.let { index ->
+                                            apiService?.let { com.flex.elefin.subtitles.clearLocalProviderSubtitle(context, it, item.Id) }
                                             onSubtitleSelected(index)
                                             onDismiss()
                                         }
@@ -3094,6 +2785,8 @@ fun EpisodeSubtitleSelectionDialog(
                                     ListItem(
                                         selected = false,
                                         onClick = {
+                                            apiService?.let { com.flex.elefin.subtitles.selectLocalProviderSubtitle(context, it, item.Id, downloadedSub.filePath) }
+                                            onSubtitleSelected(null)
                                             onDownloadedSubtitleSelected?.invoke(downloadedSub.filePath)
                                             onDismiss()
                                         },
@@ -3133,19 +2826,8 @@ fun EpisodeSubtitleSelectionDialog(
                             item {
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Button(
-                                    onClick = { 
-                                        // Check if API key is configured
-                                        // Check if API key and credentials are configured
-                                        if (openSubtitlesApiKey.isNotBlank() && 
-                                            openSubtitlesUsername.isNotBlank() && 
-                                            openSubtitlesPassword.isNotBlank()) {
-                                            com.flex.elefin.subtitles.OpenSubtitlesApi.setApiKey(openSubtitlesApiKey)
-                                            com.flex.elefin.subtitles.OpenSubtitlesApi.setCredentials(openSubtitlesUsername, openSubtitlesPassword)
-                                            showLanguageDialog = true
-                                        } else {
-                                            showApiKeyRequiredDialog = true
-                                        }
-                                    },
+                                    onClick = { showServerSubtitleSearch = true },
+                                    enabled = apiService != null,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 8.dp)
@@ -3171,105 +2853,19 @@ fun EpisodeSubtitleSelectionDialog(
         }
     }
     
-    // API key required dialog
-    if (showApiKeyRequiredDialog) {
-        com.flex.elefin.subtitles.ApiKeyRequiredDialog(
-            onGoToSettings = {
-                showApiKeyRequiredDialog = false
-                onDismiss() // Close the subtitle dialog and go back
-                // User needs to go to Settings manually
+    if (showServerSubtitleSearch && apiService != null) {
+        com.flex.elefin.subtitles.ServerSubtitleSearchDialog(
+            itemId = item.Id,
+            api = apiService,
+            onDownloaded = { selection ->
+                itemDetails = selection.item
+                if (selection.localPath == null) com.flex.elefin.player.SubtitleDownloader.downloadSubtitle(
+                    context, apiService, item.Id, selection.sourceId, selection.stream
+                )
+                onSubtitleSelected(selection.stream.Index)
+                onDismiss()
             },
-            onDismiss = { showApiKeyRequiredDialog = false }
-        )
-    }
-    
-    // Language selection dialog
-    if (showLanguageDialog) {
-        com.flex.elefin.subtitles.SubtitleLanguageDialog(
-            onSelect = { language ->
-                showLanguageDialog = false
-                isSearching = true
-                showSearchResults = true
-                
-                // Search OpenSubtitles - for episodes, include season/episode info
-                scope.launch {
-                    try {
-                        val imdbId = item.ProviderIds?.get("Imdb") ?: itemDetails?.SeriesId?.let { 
-                            // Try to get series IMDB ID if episode doesn't have one
-                            apiService?.getItemDetails(it)?.ProviderIds?.get("Imdb")
-                        }
-                        val tmdbId = item.ProviderIds?.get("Tmdb")
-                        
-                        searchResults = com.flex.elefin.subtitles.OpenSubtitlesApi.searchSubtitles(
-                            imdbId = imdbId,
-                            tmdbId = tmdbId,
-                            query = if (imdbId == null && tmdbId == null) {
-                                item.SeriesName ?: item.Name
-                            } else null,
-                            language = language,
-                            seasonNumber = item.ParentIndexNumber,
-                            episodeNumber = item.IndexNumber
-                        )
-                    } catch (e: Exception) {
-                        Log.e("EpisodeSubtitleDialog", "Error searching subtitles", e)
-                        searchResults = emptyList()
-                    } finally {
-                        isSearching = false
-                    }
-                }
-            },
-            onDismiss = { showLanguageDialog = false }
-        )
-    }
-    
-    // Search results dialog
-    if (showSearchResults) {
-        com.flex.elefin.subtitles.SubtitleResultsDialog(
-            results = searchResults,
-            isLoading = isSearching,
-            onSelect = { subtitle ->
-                showSearchResults = false
-                isDownloading = true
-                downloadingSubtitleName = subtitle.attributes.release ?: "Subtitle"
-                
-                // Download the subtitle
-                scope.launch {
-                    try {
-                        val filePath = com.flex.elefin.subtitles.OpenSubtitlesApi.downloadAndSaveSubtitle(
-                            context = context,
-                            itemId = item.Id,
-                            subtitle = subtitle
-                        )
-                        
-                        if (filePath != null) {
-                            // Refresh downloaded subtitles list
-                            downloadedSubtitles = com.flex.elefin.subtitles.OpenSubtitlesApi.getDownloadedSubtitles(context, item.Id)
-                            
-                            // Optionally auto-select the downloaded subtitle
-                            onDownloadedSubtitleSelected?.invoke(filePath)
-                            onDismiss()
-                        } else {
-                            // Show error toast
-                            val errorMsg = com.flex.elefin.subtitles.OpenSubtitlesApi.lastError 
-                                ?: "Download failed"
-                            android.widget.Toast.makeText(context, errorMsg, android.widget.Toast.LENGTH_LONG).show()
-                        }
-                    } catch (e: Exception) {
-                        Log.e("EpisodeSubtitleDialog", "Error downloading subtitle", e)
-                        android.widget.Toast.makeText(context, "Download failed: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-                    } finally {
-                        isDownloading = false
-                    }
-                }
-            },
-            onDismiss = { showSearchResults = false }
-        )
-    }
-    
-    // Downloading dialog
-    if (isDownloading) {
-        com.flex.elefin.subtitles.SubtitleDownloadingDialog(
-            subtitleName = downloadingSubtitleName
+            onDismiss = { showServerSubtitleSearch = false }
         )
     }
 }
@@ -3493,4 +3089,3 @@ private fun getEpisodeResolution(episode: JellyfinItem): String? {
         null
     }
 }
-

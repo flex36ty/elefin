@@ -39,7 +39,8 @@ import com.flex.elefin.music.player.PlayerConnection
 private const val TAG = "AppleAlbumScreen"
 
 // Apple Music signature colors
-private val AppleMusicRed = Color(0xFFFA2D55)
+private val MusicAccent: Color
+    @Composable get() = MaterialTheme.colorScheme.primary
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -120,7 +121,7 @@ fun AppleAlbumScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = AppleMusicRed)
+                CircularProgressIndicator(color = MusicAccent)
             }
         } else {
             Row(
@@ -231,7 +232,7 @@ private fun AppleAlbumInfoPanel(
             Text(
                 text = album?.artist ?: "Unknown Artist",
                 style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
-                color = AppleMusicRed,
+                color = MusicAccent,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.padding(vertical = 4.dp, horizontal = 2.dp)
             )
@@ -281,9 +282,9 @@ private fun AppleAlbumInfoPanel(
                 onClick = onPlayAll,
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.colors(
-                    containerColor = AppleMusicRed,
-                    contentColor = Color.White,
-                    focusedContainerColor = AppleMusicRed.copy(alpha = 0.8f)
+                    containerColor = MusicAccent,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    focusedContainerColor = MusicAccent.copy(alpha = 0.8f)
                 ),
                 shape = ButtonDefaults.shape(RoundedCornerShape(10.dp))
             ) {
@@ -301,7 +302,7 @@ private fun AppleAlbumInfoPanel(
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.colors(
                     containerColor = Color.White.copy(alpha = 0.15f),
-                    contentColor = AppleMusicRed,
+                    contentColor = MusicAccent,
                     focusedContainerColor = Color.White.copy(alpha = 0.25f)
                 ),
                 shape = ButtonDefaults.shape(RoundedCornerShape(10.dp))

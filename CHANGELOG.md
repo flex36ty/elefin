@@ -2,9 +2,17 @@
 
 All notable changes to Elefin will be documented in this file.
 
-## 1.1.36 — Unreleased
+## 1.1.36 — 2026-11-23
 
+- Support top subtitles during native Cinema playback using a synchronized subtitle-only renderer and server-extracted subtitle files, while preserving hardware video decoding. Fix player popup contrast with explicit dark-theme colors.
+- Decode Dolby Digital Plus audio to PCM during TCL native Cinema playback to avoid the observed passthrough audio-clock stall; hardware video decoding is preserved.
+- Add an independent secondary subtitle picker, off by default, for top subtitles alongside the primary bottom track. MPV supports loaded tracks and server subtitle files; native playback uses server-extracted files. Bitmap/styled subtitle positioning may vary.
+- Make Cinema subtitle timing controls optional under Settings → Elefin Cinema, off by default.
+- Add Cinema subtitle timing minus/plus controls in 0.1-second steps, with a visible offset and support for MPV and native playback. Timing resets for each new player session.
+- Replace Cinema's generic playback error menu with an Elefin-styled dialog featuring Retry, Back, and expandable error details, with initial focus on Retry.
 - Add NEW badges to movie and TV libraries in the navigation drawer when content has been added since the previous Elefin session, with a small dot when collapsed. Opening a library clears its badge; tracking is separate for each server and account, and the first session establishes a baseline.
+
+Validation: release and performance builds passed; installed on Shield and TCL. TCL playback progress and PCM output were verified after the audio fix. Native dual-subtitle visual verification remains pending.
 
 ## 1.1.35 — 2026-10-14
 
