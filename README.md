@@ -1,8 +1,8 @@
 # Elefin
 
-Current version: **1.1.35**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current version: **1.1.36**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
-Upcoming **1.1.36 (unreleased)** adds NEW library badges for recently added content.
+Version 1.1.36 adds dual subtitles, optional subtitle timing controls, NEW library badges, clearer Cinema error dialogs, and a TCL Dolby Digital Plus playback fix.
 
 An Android TV client for Jellyfin built with Jetpack Compose. This is not a fork of the Jellyfin Android TV. Big credits to them for everything nonetheless.
 
@@ -60,6 +60,14 @@ Cinema uses Jellyfin intro/credits segments when available. Named intro chapters
 Press **OK** when the skip prompt is visible. Next-episode autoplay follows the existing settings, and **Back** cancels its countdown. Without a credits marker, the countdown uses the configured final seconds. Movies and episodes with nothing next return to their info screen when playback ends.
 
 Cinema controls include direct **Audio** and **Subtitles** pickers. Automatic audio selection prefers the device language and avoids commentary when a main track is available; saved selections remain available. Embedded image subtitles, including PGSSUB, are selected directly when available.
+
+For dual subtitles, choose the bottom language in the main subtitle picker and the top language under **Secondary subtitles · Top**. Each can be turned off independently. MPV uses loaded or server subtitle tracks; native compatibility playback downloads the selected subtitle from Jellyfin into a synchronized subtitle-only renderer. Server extraction must be available, and bitmap or specially styled subtitle positioning may vary. Native dual-subtitle playback still needs on-device visual verification.
+
+Enable **Settings → Elefin Cinema → Subtitle timing controls** to show earlier/later buttons in 0.1-second steps. This setting is off by default, applies on the next playback, and the offset resets with each new player session. Playback errors now offer **Retry**, **Back**, and expandable details, with readable dark-theme player menus.
+
+TCL native Cinema playback decodes Dolby Digital Plus to PCM to avoid an observed audio-output stall while retaining hardware video decoding. Advancing playback and PCM output were verified on TCL.
+
+Library navigation shows a **NEW** badge (or a dot when collapsed) when movies or episodes have been added since the previous session. Opening the library clears its badge. Tracking is separate for each server/account; the first session establishes the baseline.
 
 Under **Settings → Elefin Cinema**, optional refresh-rate matching keeps the output resolution and restores the previous display mode when playback ends. Optional MPV motion smoothing uses temporal interpolation, not AI-generated frames. Both are off by default.
 

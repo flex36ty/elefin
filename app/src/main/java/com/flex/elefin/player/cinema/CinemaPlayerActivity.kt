@@ -6,6 +6,8 @@ import com.flex.elefin.screens.PlayerSeekBar
 import com.flex.elefin.screens.AspectModeButton
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -213,6 +215,7 @@ class CinemaPlayerActivity : ComponentActivity() {
 
         var timelineFocused by remember { mutableStateOf(false) }
         val autoplaySettings = remember { com.flex.elefin.jellyfin.AppSettings(this@CinemaPlayerActivity) }
+        val showSubtitleTiming = remember { autoplaySettings.cinemaSubtitleTimingControls }
         LaunchedEffect(controller) {
             var elapsed = 0L
             while (true) {
@@ -332,6 +335,14 @@ class CinemaPlayerActivity : ComponentActivity() {
                             Spacer(Modifier.width(32.dp))
                             PlayerControlButton(Icons.Default.ClosedCaption, "Subtitles", { controller.refreshTracks(); menu = "Subtitles" })
                         }
+                        if (showSubtitleTiming) Row(Modifier.fillMaxWidth().padding(top = 12.dp),
+                            horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                            PlayerControlButton(Icons.Default.Remove, "Subtitles earlier", { controller.adjustSubtitleOffset(-100) })
+                            Text("Subtitle timing  " + String.format(java.util.Locale.ROOT, "%+.1f s", controller.subtitleOffsetMs / 1000.0),
+                                modifier = Modifier.padding(horizontal = 16.dp), color = Color.White,
+                                style = MaterialTheme.typography.bodyMedium)
+                            PlayerControlButton(Icons.Default.Add, "Subtitles later", { controller.adjustSubtitleOffset(100) })
+                        }
                     }
                 }
             }
@@ -390,14 +401,10 @@ class CinemaPlayerActivity : ComponentActivity() {
                 }
             }
             controller.error?.let { message ->
-                CinemaMenu("Playback", { finish() }) {
-                    item { Text(message, Modifier.padding(12.dp)) }
-                    item { Button(onClick = { retry() }) { Text("Retry") } }
-                    item { Button(onClick = { finish() }) { Text("Exit") } }
-                }
+                CinemaPlaybackError(message, onRetry = { retry() }, onBack = { finish() })
             }
         }
-        when (menu) {
+        when (menu.takeIf { controller.error == null }) {
             "Settings" -> CinemaMenu("Player Settings", { menu = null }) {
                 items(listOf("Audio", "Subtitles", "Speed")) { category ->
                     ListItem(selected = false, headlineContent = { Text(category) }, onClick = { menu = category })
@@ -414,6 +421,14 @@ class CinemaPlayerActivity : ComponentActivity() {
                     if (!subtitles && visibleTracks.isEmpty()) item {
                         Text("No audio tracks available", Modifier.padding(12.dp))
                     }
+                    if (subtitles) item {
+                        if (controller.supportsSecondarySubtitles) {
+                            ListItem(selected = controller.secondarySubtitleId != -1,
+                                headlineContent = { Text("Secondary subtitles · Top") },
+                                supportingContent = { Text(controller.tracks.firstOrNull { it.kind == "sub" && it.id == controller.secondarySubtitleId }?.label ?: if (controller.secondarySubtitleId == -1) "Off" else "Server subtitle") },
+                                onClick = { menu = "Secondary subtitles" })
+                        } else Text("Dual subtitles are unavailable with native compatibility playback.", Modifier.padding(12.dp))
+                    }
                     items(visibleTracks) { track ->
                         ListItem(modifier = if (!subtitles && track == visibleTracks.firstOrNull()) Modifier.focusRequester(firstEntryFocus) else Modifier,
                             selected = track.id == if (subtitles) controller.subtitleId else controller.audioId,
@@ -425,6 +440,22 @@ class CinemaPlayerActivity : ComponentActivity() {
                     }
                     if (subtitles && controller.api != null && !intent.getStringExtra("item_id").isNullOrEmpty()) item {
                         ListItem(selected = false, headlineContent = { Text("Find subtitles on server") }, onClick = { menu = "Search" })
+                    }
+                }
+            }
+            "Secondary subtitles" -> {
+                val firstEntryFocus = remember { FocusRequester() }
+                CinemaMenu("Secondary subtitles · Top", { menu = "Subtitles" }, firstEntryFocus) {
+                    item { Text("Choose the top track here; the main subtitle selection stays at the bottom. Text subtitles work best.") }
+                    item { ListItem(modifier = Modifier.focusRequester(firstEntryFocus), selected = controller.secondarySubtitleId == -1,
+                        headlineContent = { Text("Off") }, onClick = { controller.secondarySubtitlesOff(); menu = null }) }
+                    items(controller.tracks.filter { it.kind == "sub" }) { track ->
+                        ListItem(selected = controller.secondarySubtitleId == track.id,
+                            headlineContent = { Text(track.label) }, onClick = { controller.selectSecondarySubtitle(track); menu = null })
+                    }
+                    items(controller.serverSubtitleTracks) { stream ->
+                        ListItem(selected = false, headlineContent = { Text(cinemaTrackLabel(stream, null, stream.Language, "Server subtitle")) },
+                            onClick = { controller.selectSecondaryServerSubtitle(stream); menu = null })
                     }
                 }
             }
@@ -442,11 +473,55 @@ class CinemaPlayerActivity : ComponentActivity() {
 }
 
 @Composable
+private fun CinemaPlaybackError(message: String, onRetry: () -> Unit, onBack: () -> Unit) {
+    var showDetails by remember(message) { mutableStateOf(false) }
+    val retryFocus = remember { FocusRequester() }
+    MaterialTheme(colorScheme = darkColorScheme()) {
+    Dialog(onDismissRequest = onBack,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .75f)), contentAlignment = Alignment.Center) {
+            Surface(shape = RoundedCornerShape(24.dp),
+                colors = SurfaceDefaults.colors(containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface)) {
+                Column(Modifier.widthIn(max = 560.dp).fillMaxWidth(.65f).padding(32.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                    Text("ELEFIN CINEMA", style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary)
+                    Text("Unable to play this video", style = MaterialTheme.typography.headlineSmall)
+                    Text("Try again, or go back and choose another video.",
+                        style = MaterialTheme.typography.bodyLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Button(onClick = onRetry, modifier = Modifier.focusRequester(retryFocus)) { Text("Retry") }
+                        Button(onClick = onBack) { Text("Back") }
+                    }
+                    Button(onClick = { showDetails = !showDetails }) {
+                        Text(if (showDetails) "Hide error details" else "Error details")
+                    }
+                    if (showDetails) {
+                        LazyColumn(Modifier.heightIn(max = 140.dp).fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = .06f), RoundedCornerShape(12.dp))
+                            .padding(16.dp)) {
+                            item { Text(message, style = MaterialTheme.typography.bodyMedium) }
+                        }
+                    }
+                }
+            }
+        }
+        LaunchedEffect(Unit) {
+            androidx.compose.runtime.withFrameNanos { }
+            retryFocus.requestFocus()
+        }
+    }
+}
+}
+
+@Composable
 private fun CinemaMenu(title: String, dismiss: () -> Unit, firstEntryFocus: FocusRequester? = null, content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
     val closeFocus = remember { FocusRequester() }
+    MaterialTheme(colorScheme = darkColorScheme()) {
     Dialog(onDismissRequest = dismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .85f)), contentAlignment = Alignment.Center) {
-        Surface(shape = RoundedCornerShape(16.dp), colors = SurfaceDefaults.colors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = .5f))) {
+        Surface(shape = RoundedCornerShape(16.dp), colors = SurfaceDefaults.colors(containerColor = Color(0xFF202024), contentColor = Color.White)) {
             Column(Modifier.fillMaxWidth(.4f).fillMaxHeight(.6f).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(title, style = MaterialTheme.typography.headlineSmall)
                 LazyColumn(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
@@ -460,6 +535,7 @@ private fun CinemaMenu(title: String, dismiss: () -> Unit, firstEntryFocus: Focu
                 .onFailure { runCatching { closeFocus.requestFocus() } }
         }
     }
+}
 }
 
 internal fun cinemaTime(seconds: Double): String {

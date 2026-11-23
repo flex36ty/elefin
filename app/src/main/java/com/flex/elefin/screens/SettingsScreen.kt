@@ -263,6 +263,7 @@ fun SettingsScreen(
     var jellyseerrSearchEnabled by remember { mutableStateOf(settings.jellyseerrSearchEnabled) }
     
     var cinemaSharpen by remember { mutableStateOf(settings.cinemaSharpenUpscale) }
+    var cinemaSubtitleTiming by remember { mutableStateOf(settings.cinemaSubtitleTimingControls) }
     var cinemaDeband by remember { mutableStateOf(settings.cinemaDeband) }
     var cinemaPreferShieldAi by remember { mutableStateOf(settings.cinemaPreferShieldAi) }
     var cinemaMatchRefresh by remember { mutableStateOf(settings.cinemaMatchRefreshRate) }
@@ -290,6 +291,12 @@ fun SettingsScreen(
     fun SettingsOptions(category: SettingsCategory) {
         when (category) {
             SettingsCategory.CINEMA -> {
+                SettingToggle(title = "Subtitle timing controls",
+                    description = "Show minus and plus buttons in Cinema to move subtitles earlier or later in 0.1-second steps. Applies on next playback.",
+                    isEnabled = cinemaSubtitleTiming, onToggle = {
+                        cinemaSubtitleTiming = !cinemaSubtitleTiming
+                        settings.cinemaSubtitleTimingControls = cinemaSubtitleTiming
+                    })
                 val shieldAiSupported = com.flex.elefin.player.cinema.supportsShieldAiUpscaling(
                     android.os.Build.MANUFACTURER, android.os.Build.DEVICE)
                 if (shieldAiSupported) {

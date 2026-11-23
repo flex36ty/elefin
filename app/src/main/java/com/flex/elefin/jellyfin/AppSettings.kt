@@ -326,6 +326,10 @@ class AppSettings(context: Context) {
         set(value) = prefs.edit().putInt(KEY_EXO_SUBTITLE_TEXT_SIZE, value.coerceIn(20, 100)).apply()
     
     // Independent Cinema options; never inherit legacy MPV/ExoPlayer enhancements.
+    var cinemaSubtitleTimingControls: Boolean
+        get() = prefs.getBoolean("cinema_subtitle_timing_controls", false)
+        set(value) = prefs.edit().putBoolean("cinema_subtitle_timing_controls", value).apply()
+
     var cinemaSharpenUpscale: Boolean
         get() = prefs.getBoolean("cinema_sharpen_upscale", false)
         set(value) = prefs.edit().putBoolean("cinema_sharpen_upscale", value).apply()

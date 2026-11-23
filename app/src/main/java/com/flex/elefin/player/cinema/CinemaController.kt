@@ -66,6 +66,73 @@ internal class CinemaController(private val context: Context, private val reques
     var tracks by mutableStateOf<List<CinemaTrack>>(emptyList()); private set
     var audioId by mutableStateOf(-1); private set
     var subtitleId by mutableStateOf(-1); private set
+    var secondarySubtitleId by mutableStateOf(-1); private set
+    val supportsSecondarySubtitles get() = dolby != null || view != null
+    private var secondarySubtitleJob: Job? = null
+    fun secondarySubtitlesOff() {
+        secondarySubtitleJob?.cancel()
+        dolby?.secondaryOff()
+        nativeAction { MPVLib.setPropertyString("secondary-sid", "no") }
+        secondarySubtitleId = -1
+    }
+    fun selectSecondarySubtitle(track: CinemaTrack) {
+        if (!supportsSecondarySubtitles || track.kind != "sub") return
+        if (dolby != null) {
+            val stream = (source?.MediaStreams.orEmpty() + serverSubtitleTracks).firstOrNull { it.Type == "Subtitle" && it.Index == track.streamIndex }
+            if (stream != null) selectSecondaryServerSubtitle(stream, track.id)
+            else android.widget.Toast.makeText(context, "This subtitle is not available from the server. Choose a server subtitle below.", android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        secondarySubtitleJob?.cancel()
+        nativeAction {
+            MPVLib.setPropertyString("secondary-sid", track.id.toString())
+            secondarySubtitleId = track.id
+        }
+    }
+    fun selectSecondaryServerSubtitle(stream: MediaStream, trackId: Int = -2) {
+        if (!supportsSecondarySubtitles) return
+        val service = api ?: return
+        secondarySubtitleJob?.cancel()
+        secondarySubtitleJob = scope.launch {
+            val path = stream.Path?.let { File(it) }?.takeIf {
+                it.isFile && it.canonicalPath.startsWith(File(context.filesDir, "downloaded_subtitles").canonicalPath + File.separator)
+            }?.absolutePath ?: SubtitleDownloader.downloadSubtitle(context, service, itemId, source?.Id ?: itemId, stream)
+            ensureActive()
+            if (released) return@launch
+            if (path == null) {
+                android.widget.Toast.makeText(context, "Could not load this subtitle. Try another track.", android.widget.Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            dolby?.let {
+                it.attachTopSubtitle(path, stream.Codec)
+                secondarySubtitleId = trackId
+                return@launch
+            }
+            nativeAction {
+                subtitleFileIndices[path] = stream.Index ?: -1
+                subtitleFileIndices["file://$path"] = stream.Index ?: -1
+                val primary = view?.sid ?: -1
+                MPVLib.command(arrayOf("sub-add", path, "auto", stream.DisplayTitle ?: "Downloaded subtitle", stream.Language ?: "und"))
+                view?.sid = primary
+                val count = MPVLib.getPropertyInt("track-list/count") ?: 0
+                val id = (0 until count).firstNotNullOfOrNull { index ->
+                    val filename = MPVLib.getPropertyString("track-list/$index/external-filename")
+                    if (filename == path || filename == "file://$path") MPVLib.getPropertyInt("track-list/$index/id") else null
+                }
+                if (id != null) {
+                    MPVLib.setPropertyString("secondary-sid", id.toString())
+                    secondarySubtitleId = id
+                }
+                refreshTracks()
+            }
+        }
+    }
+    var subtitleOffsetMs by mutableStateOf(0); private set
+    fun adjustSubtitleOffset(deltaMs: Int) {
+        subtitleOffsetMs = (subtitleOffsetMs + deltaMs).coerceIn(-30_000, 30_000)
+        dolby?.setSubtitleOffset(subtitleOffsetMs)
+        if (view != null) nativeAction { MPVLib.setPropertyDouble("sub-delay", subtitleOffsetMs / 1000.0) }
+    }
     private var audioIndex = request.getIntExtra("audio_stream_index", -1)
     private var subtitleIndex = if (request.hasExtra("subtitle_stream_index")) request.getIntExtra("subtitle_stream_index", -1)
         else AppSettings(context).getSubtitlePreference(itemId) ?: -1
@@ -194,6 +261,7 @@ internal class CinemaController(private val context: Context, private val reques
                 engine.addObserver(observer)
                 MPVLib.setPropertyString("osd-level", "0")
                 applyVideoEnhancements(config)
+                MPVLib.setPropertyString("secondary-sid", "no")
                 if (AppSettings(context).cinemaMotionSmoothing) {
                     runCatching {
                         // Configure before loading so the decoder has interpolation buffers.

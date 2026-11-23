@@ -29,7 +29,61 @@ internal class CinemaDolbyPlayer(context: Context, url: String, headers: String?
             val colon = line.indexOf(':')
             if (colon <= 0) null else line.substring(0, colon).trim() to line.substring(colon + 1).trim()
         }.toMap())
-    val player = ExoPlayer.Builder(context, DefaultRenderersFactory(context)
+    @Volatile private var subtitleOffsetUs = 0L
+    fun setSubtitleOffset(milliseconds: Int) { subtitleOffsetUs = milliseconds * 1000L; topSubtitles?.setOffset(milliseconds) }
+    private var topSubtitles: CinemaTopSubtitles? = null
+    fun secondaryOff() { topSubtitles?.off() }
+    fun attachTopSubtitle(path: String, codec: String?) {
+        val top = topSubtitles ?: CinemaTopSubtitles(view.context, player).also {
+            topSubtitles = it
+            view.overlayFrameLayout?.addView(it.view, android.widget.FrameLayout.LayoutParams(-1, -1))
+        }
+        val mime = when (codec?.lowercase() ?: path.substringAfterLast('.').lowercase()) {
+            "ass", "ssa", "substationalpha" -> MimeTypes.TEXT_SSA
+            "vtt", "webvtt" -> MimeTypes.TEXT_VTT
+            "ttml" -> MimeTypes.APPLICATION_TTML
+            "pgs", "pgssub", "hdmv_pgs_subtitle", "sup" -> MimeTypes.APPLICATION_PGS
+            else -> MimeTypes.APPLICATION_SUBRIP
+        }
+        top.setOffset((subtitleOffsetUs / 1000).toInt())
+        top.load(path, mime)
+    }
+    val player = ExoPlayer.Builder(context, object : DefaultRenderersFactory(context) {
+        override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
+            enableAudioTrackPlaybackParams: Boolean): androidx.media3.exoplayer.audio.AudioSink? {
+            val sink = super.buildAudioSink(context, enableFloatOutput, enableAudioTrackPlaybackParams) ?: return null
+            if (!android.os.Build.MANUFACTURER.equals("TCL", ignoreCase = true)) return sink
+            // TCL advertises E-AC3 passthrough for its speaker route but can stall its audio clock.
+            // Reject encoded E-AC3 at the sink so Media3 decodes it before AudioTrack output.
+            return object : androidx.media3.exoplayer.audio.AudioSink by sink {
+                private fun decodeLocally(format: Format) = format.sampleMimeType == MimeTypes.AUDIO_E_AC3 ||
+                    format.sampleMimeType == MimeTypes.AUDIO_E_AC3_JOC
+                override fun supportsFormat(format: Format): Boolean = !decodeLocally(format) && sink.supportsFormat(format)
+                override fun getFormatSupport(format: Format): Int = if (decodeLocally(format))
+                    androidx.media3.exoplayer.audio.AudioSink.SINK_FORMAT_UNSUPPORTED else sink.getFormatSupport(format)
+            }
+        }
+        override fun buildTextRenderers(context: Context, output: androidx.media3.exoplayer.text.TextOutput,
+            outputLooper: android.os.Looper, extensionRendererMode: Int,
+            out: java.util.ArrayList<androidx.media3.exoplayer.Renderer>) {
+            val text = androidx.media3.exoplayer.text.TextRenderer(output, outputLooper)
+            out.add(object : androidx.media3.exoplayer.Renderer by text {
+                private var appliedOffsetUs = 0L
+                override fun render(positionUs: Long, elapsedRealtimeUs: Long) {
+                    val offset = subtitleOffsetUs
+                    if (appliedOffsetUs != offset) {
+                        text.resetPosition(positionUs - offset)
+                        appliedOffsetUs = offset
+                    }
+                    text.render(positionUs - offset, elapsedRealtimeUs)
+                }
+                override fun resetPosition(positionUs: Long) {
+                    appliedOffsetUs = subtitleOffsetUs
+                    text.resetPosition(positionUs - appliedOffsetUs)
+                }
+            })
+        }
+    }
         .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
         .setEnableDecoderFallback(true))
         .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http))).build()
@@ -200,6 +254,6 @@ internal class CinemaDolbyPlayer(context: Context, url: String, headers: String?
             else -> player.videoSize.let { if (it.height > 0) it.width * it.pixelWidthHeightRatio / it.height else 0f }
         })
     }
-    fun release() { view.player = null; player.release() }
+    fun release() { topSubtitles?.release(); topSubtitles = null; view.player = null; player.release() }
     companion object { private const val SIDECAR_LABEL = "Elefin downloaded subtitle" }
 }
