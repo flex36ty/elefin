@@ -1,6 +1,6 @@
 # Elefin
 
-Current version: **1.1.36**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current version: **1.1.37**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 Version 1.1.36 adds dual subtitles, optional subtitle timing controls, NEW library badges, clearer Cinema error dialogs, and a TCL Dolby Digital Plus playback fix.
 
@@ -54,6 +54,8 @@ Elefin is a modern Android TV Jellyfin client built from the ground up using Jet
 - **and a lot more (see changelog for detailed features list)
 
 ### Cinema playback
+
+**Auto quality** under **Settings → Elefin Cinema** is enabled by default for new playback sessions. It starts at original quality and uses sustained buffering as network feedback, requesting lower Jellyfin bitrates when necessary and cautiously increasing them after stable playback. It requires server transcoding; stream changes may briefly pause playback and can convert HDR to SDR. Turn it off to retain the existing fixed-quality behavior. Available starting with version 1.1.37.
 
 Cinema uses Jellyfin intro/credits segments when available. Named intro chapters must have a following chapter to establish the skip endpoint; ending-credits chapters can skip to the next chapter to preserve a post-credits scene. These features use server metadata, not video-content analysis.
 

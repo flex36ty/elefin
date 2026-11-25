@@ -181,6 +181,7 @@ data class SkipMarkers(
 @Stable
 @Serializable
 data class MediaSource(
+    val Bitrate: Long? = null,
     val Id: String? = null,
     val Protocol: String? = null,
     val Container: String? = null,
@@ -1188,21 +1189,26 @@ class JellyfinApiService(
     }
 
     /** Negotiate a server stream after direct playback fails; retain stream copy where supported. */
-    suspend fun getPlaybackFallbackUrl(itemId: String, audioIndex: Int): String? {
+    suspend fun getPlaybackFallbackUrl(itemId: String, audioIndex: Int, maxBitrateMbps: Int? = null, sourceId: String? = null): String? {
+        val bitrate = maxBitrateMbps?.coerceIn(2, 120)?.times(1_000_000) ?: 200000000
         val url = URLBuilder().takeFrom("${baseUrl.trimEnd('/')}/Items/$itemId/PlaybackInfo").apply {
             parameters.append("UserId", userId)
             parameters.append("EnableDirectPlay", "false")
-            parameters.append("EnableDirectStream", "true")
+            parameters.append("EnableDirectStream", (maxBitrateMbps == null).toString())
             parameters.append("EnableTranscoding", "true")
-            parameters.append("AllowVideoStreamCopy", "true")
-            parameters.append("AllowAudioStreamCopy", "true")
+            parameters.append("AllowVideoStreamCopy", (maxBitrateMbps == null).toString())
+            parameters.append("AllowAudioStreamCopy", (maxBitrateMbps == null).toString())
+            if (sourceId != null) parameters.append("MediaSourceId", sourceId)
+            parameters.append("MaxStreamingBitrate", bitrate.toString())
             parameters.append("SubtitleStreamIndex", "-1")
             if (audioIndex >= 0) parameters.append("AudioStreamIndex", audioIndex.toString())
         }.buildString()
         val response: JellyfinPlaybackInfo = client.post(url) {
             header(HttpHeaders.Authorization, jellyfinAuthorization(accessToken, config?.deviceId))
             contentType(ContentType.Application.Json)
-            setBody("""{"DeviceProfile":{"MaxStreamingBitrate":200000000,"DirectPlayProfiles":[],"TranscodingProfiles":[{"Container":"ts","Type":"Video","VideoCodec":"h264,hevc,mpeg2video","AudioCodec":"aac,ac3,eac3,mp3,dts","Protocol":"hls","Context":"Streaming","CopyTimestamps":true}],"CodecProfiles":[],"SubtitleProfiles":[]}}""")
+            val videoCodecs = if (maxBitrateMbps != null) "h264" else "h264,hevc,mpeg2video"
+            val audioCodecs = if (maxBitrateMbps != null) "aac" else "aac,ac3,eac3,mp3,dts"
+            setBody("""{"DeviceProfile":{"MaxStreamingBitrate":$bitrate,"DirectPlayProfiles":[],"TranscodingProfiles":[{"Container":"ts","Type":"Video","VideoCodec":"$videoCodecs","AudioCodec":"$audioCodecs","Protocol":"hls","Context":"Streaming","CopyTimestamps":true}],"CodecProfiles":[],"SubtitleProfiles":[]}}""")
         }.body()
         val path = response.MediaSources?.firstOrNull()?.TranscodingUrl ?: return null
         return if (path.startsWith("http")) path else "${baseUrl.trimEnd('/')}/${path.trimStart('/')}"

@@ -264,6 +264,7 @@ fun SettingsScreen(
     
     var cinemaSharpen by remember { mutableStateOf(settings.cinemaSharpenUpscale) }
     var cinemaSubtitleTiming by remember { mutableStateOf(settings.cinemaSubtitleTimingControls) }
+    var cinemaAutoQuality by remember { mutableStateOf(settings.cinemaAutoQuality) }
     var cinemaDeband by remember { mutableStateOf(settings.cinemaDeband) }
     var cinemaPreferShieldAi by remember { mutableStateOf(settings.cinemaPreferShieldAi) }
     var cinemaMatchRefresh by remember { mutableStateOf(settings.cinemaMatchRefreshRate) }
@@ -291,6 +292,12 @@ fun SettingsScreen(
     fun SettingsOptions(category: SettingsCategory) {
         when (category) {
             SettingsCategory.CINEMA -> {
+                SettingToggle(title = "Auto quality",
+                    description = "Start at original quality, lower bitrate after sustained buffering, and raise it after stable playback. Requires Jellyfin transcoding; changes may briefly pause playback and can convert HDR to SDR. Applies on next playback.",
+                    isEnabled = cinemaAutoQuality, onToggle = {
+                        cinemaAutoQuality = !cinemaAutoQuality
+                        settings.cinemaAutoQuality = cinemaAutoQuality
+                    })
                 SettingToggle(title = "Subtitle timing controls",
                     description = "Show minus and plus buttons in Cinema to move subtitles earlier or later in 0.1-second steps. Applies on next playback.",
                     isEnabled = cinemaSubtitleTiming, onToggle = {

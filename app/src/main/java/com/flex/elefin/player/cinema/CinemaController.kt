@@ -30,6 +30,10 @@ internal class CinemaController(private val context: Context, private val reques
 
     private var fallbackAttempted = false
     private var fallbackPending = false
+    private var qualityPending = false
+    private val autoQuality = CinemaAutoQuality()
+    private val autoQualityEnabled = AppSettings(context).cinemaAutoQuality
+    private var secondaryStream: MediaStream? = null
     private var loaded = false
     private var reporting = false
     private var reportJob: Job? = null
@@ -70,6 +74,7 @@ internal class CinemaController(private val context: Context, private val reques
     val supportsSecondarySubtitles get() = dolby != null || view != null
     private var secondarySubtitleJob: Job? = null
     fun secondarySubtitlesOff() {
+        secondaryStream = null
         secondarySubtitleJob?.cancel()
         dolby?.secondaryOff()
         nativeAction { MPVLib.setPropertyString("secondary-sid", "no") }
@@ -77,6 +82,7 @@ internal class CinemaController(private val context: Context, private val reques
     }
     fun selectSecondarySubtitle(track: CinemaTrack) {
         if (!supportsSecondarySubtitles || track.kind != "sub") return
+        secondaryStream = source?.MediaStreams?.firstOrNull { it.Type == "Subtitle" && it.Index == track.streamIndex }
         if (dolby != null) {
             val stream = (source?.MediaStreams.orEmpty() + serverSubtitleTracks).firstOrNull { it.Type == "Subtitle" && it.Index == track.streamIndex }
             if (stream != null) selectSecondaryServerSubtitle(stream, track.id)
@@ -90,6 +96,7 @@ internal class CinemaController(private val context: Context, private val reques
         }
     }
     fun selectSecondaryServerSubtitle(stream: MediaStream, trackId: Int = -2) {
+        secondaryStream = stream
         if (!supportsSecondarySubtitles) return
         val service = api ?: return
         secondarySubtitleJob?.cancel()
@@ -210,6 +217,18 @@ internal class CinemaController(private val context: Context, private val reques
 
     fun createView(): android.view.View {
         check(view == null && dolby == null)
+        if (autoQualityEnabled && api != null) scope.launch {
+            var previousPosition = position
+            while (isActive && !released) {
+                delay(1_000)
+                val advancing = position > previousPosition + .2
+                previousPosition = position
+                val sourceMbps = source?.Bitrate?.let { ((it + 999_999) / 1_000_000).coerceIn(2, 200).toInt() } ?: 20
+                val cap = autoQuality.tick(loaded && !paused && !completed && error == null && !fallbackPending && !qualityPending,
+                    buffering, advancing, sourceMbps)
+                if (cap != null) changeQuality(cap)
+            }
+        }
         // Realtek AVC copy output can tint padded rows; HEVC through MPV can
         // stall frame output. Keep both on the platform's native video surface.
         val realtekMime = when (videoCodec) {
@@ -241,7 +260,7 @@ internal class CinemaController(private val context: Context, private val reques
             dolby = engine
             scope.launch {
                 while (isActive) {
-                    position = engine.player.currentPosition.coerceAtLeast(0) / 1000.0
+                    if (!qualityPending || loaded) position = engine.player.currentPosition.coerceAtLeast(0) / 1000.0
                     duration = engine.player.duration.coerceAtLeast(0) / 1000.0
                     paused = !engine.player.playWhenReady
                     buffering = engine.player.playbackState == androidx.media3.common.Player.STATE_BUFFERING
@@ -340,6 +359,7 @@ internal class CinemaController(private val context: Context, private val reques
                         }
                         if (android.os.SystemClock.elapsedRealtime() - unchangedSince >= 10_000) {
                             unchangedSince = android.os.SystemClock.elapsedRealtime()
+                            if (qualityPending || (autoQualityEnabled && buffering)) continue
                             if (!copyDecoderAttempted && engine.hwdecActive == "mediacodec") {
                                 copyDecoderAttempted = true
                                 copyRecoveryPosition = position
@@ -361,6 +381,35 @@ internal class CinemaController(private val context: Context, private val reques
         }
     }
 
+    private suspend fun changeQuality(cap: Int) {
+        val service = api ?: return
+        qualityPending = true
+        autoQuality.defer()
+        try {
+            val url = withTimeout(20_000) { service.getPlaybackFallbackUrl(itemId, audioIndex, cap, source?.Id) }
+                ?: return
+            if (released) return
+            // Freeze UI position until the replacement reports ready, preserving resume and tracks.
+            loaded = false
+            buffering = true
+            val resumeMs = (position * 1000).toLong()
+            dolby?.retryStream(url, resumeMs) ?: run {
+                MPVLib.command(arrayOf("loadfile", url, "replace"))
+            }
+            autoQuality.changed(cap)
+            android.util.Log.i("CinemaPlayer", "Auto quality requested ${cap}Mbps at ${resumeMs}ms")
+            withTimeout(30_000) { while (!loaded && !released && error == null) delay(250) }
+        } catch (e: CancellationException) {
+            if (e is TimeoutCancellationException) {
+                android.util.Log.w("CinemaPlayer", "Auto quality request timed out")
+                if (!loaded && !released) retryServerStream()
+            } else throw e
+        } catch (e: Exception) {
+            android.util.Log.w("CinemaPlayer", "Auto quality unavailable: ${e.javaClass.simpleName}")
+            if (!loaded && !released) retryServerStream()
+        } finally { qualityPending = false }
+    }
+
     private fun retryServerStream() {
         if (released || fallbackPending) return
         val service = api
@@ -375,7 +424,7 @@ internal class CinemaController(private val context: Context, private val reques
         error = null
         scope.launch {
             try {
-                val url = withTimeout(20_000) { service.getPlaybackFallbackUrl(itemId, audioIndex) }
+                val url = withTimeout(20_000) { service.getPlaybackFallbackUrl(itemId, audioIndex, autoQuality.capMbps, source?.Id) }
                     ?: throw IllegalStateException("No server fallback available")
                 if (released) return@launch
                 loaded = false
@@ -534,6 +583,7 @@ internal class CinemaController(private val context: Context, private val reques
                 }
             }
         }
+        secondaryStream?.let { selectSecondaryServerSubtitle(it) }
     }
 
     fun refreshTracks() {
