@@ -330,6 +330,10 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("cinema_subtitle_timing_controls", false)
         set(value) = prefs.edit().putBoolean("cinema_subtitle_timing_controls", value).apply()
 
+    var cinemaAutoQuality: Boolean
+        get() = prefs.getBoolean("cinema_auto_quality", true)
+        set(value) = prefs.edit().putBoolean("cinema_auto_quality", value).apply()
+
     var cinemaSharpenUpscale: Boolean
         get() = prefs.getBoolean("cinema_sharpen_upscale", false)
         set(value) = prefs.edit().putBoolean("cinema_sharpen_upscale", value).apply()

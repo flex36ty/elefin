@@ -2,6 +2,10 @@
 
 All notable changes to Elefin will be documented in this file.
 
+## 1.1.37 — 2026-11-24
+
+- Add Cinema Auto quality, enabled by default. Original quality is retained during smooth playback; sustained buffering requests a lower Jellyfin bitrate, and prolonged stable playback allows gradual increases. Requires server transcoding and may briefly interrupt playback or convert HDR to SDR.
+
 ## 1.1.36 — 2026-11-23
 
 - Support top subtitles during native Cinema playback using a synchronized subtitle-only renderer and server-extracted subtitle files, while preserving hardware video decoding. Fix player popup contrast with explicit dark-theme colors.
