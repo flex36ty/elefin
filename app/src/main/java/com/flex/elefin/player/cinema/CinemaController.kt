@@ -230,15 +230,18 @@ internal class CinemaController(private val context: Context, private val reques
             }
         }
         // Realtek AVC copy output can tint padded rows; HEVC through MPV can
-        // stall frame output. Keep both on the platform's native video surface.
+        // stall frame output. MStar/MediaTek TV SoCs (TCL "OMX.MS.") decode
+        // HEVC fine but MPV's GPU output stays black. Keep these on the
+        // platform's native video surface.
         val realtekMime = when (videoCodec) {
             "h264" -> "video/avc"
             "hevc", "h265" -> "video/hevc"
             else -> null
         }
+        val nativeDecoderPrefixes = listOf("OMX.realtek.", "OMX.MS.")
         val realtekNative = realtekMime != null && runCatching {
             android.media.MediaCodecList(android.media.MediaCodecList.ALL_CODECS).codecInfos.any {
-                !it.isEncoder && it.name.startsWith("OMX.realtek.", ignoreCase = true) &&
+                !it.isEncoder && nativeDecoderPrefixes.any { prefix -> it.name.startsWith(prefix, ignoreCase = true) } &&
                     it.supportedTypes.any { type -> type.equals(realtekMime, ignoreCase = true) }
             }
         }.getOrDefault(false)
